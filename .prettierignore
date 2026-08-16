@@ -1,0 +1,11 @@
+out
+dist
+pnpm-lock.yaml
+package-lock.json
+LICENSE.md
+tsconfig.json
+tsconfig.*.json
+
+# Documentation is hand-written prose. Prettier rewrites emphasis markers and
+# collapses list/paragraph boundaries, which churns diffs without adding value.
+*.md

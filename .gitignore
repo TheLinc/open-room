@@ -1,0 +1,12 @@
+node_modules
+dist
+out
+.DS_Store
+.eslintcache
+*.log*
+
+# Local working documents — design notes, implementation plan, and agent
+# instructions. Kept out of the repo deliberately.
+CLAUDE.md
+notes.md
+plan.md
