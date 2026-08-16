@@ -1,0 +1,196 @@
+import { memo } from 'react'
+import { Brain, ChevronRight, CircleAlert, Terminal, Wrench } from 'lucide-react'
+import type { TranscriptEntry } from '@shared/agent-runtime'
+import { cn } from '@/lib/utils'
+
+/**
+ * Renders one SDK message.
+ *
+ * The rule from CLAUDE.md is absolute: content is shown as it arrived. Text is
+ * never rewritten, summarised, or truncated, and tool inputs are shown as the
+ * model wrote them. Anything this component does not recognise falls back to
+ * pretty-printed JSON rather than being dropped — showing an unfamiliar
+ * message honestly beats hiding it.
+ */
+
+type ContentBlock = {
+  type: string
+  text?: string
+  thinking?: string
+  name?: string
+  input?: unknown
+  content?: unknown
+  is_error?: boolean
+  tool_use_id?: string
+}
+
+type SdkMessage = {
+  type: string
+  subtype?: string
+  message?: { role?: string; content?: ContentBlock[] | string }
+  result?: string
+  is_error?: boolean
+  total_cost_usd?: number
+  num_turns?: number
+  error?: string
+}
+
+function Json({ value }: { value: unknown }): React.JSX.Element {
+  return (
+    <pre className="overflow-x-auto rounded bg-muted/40 p-2 font-mono text-[11px] whitespace-pre-wrap">
+      {typeof value === 'string' ? value : JSON.stringify(value, null, 2)}
+    </pre>
+  )
+}
+
+function Block({ block }: { block: ContentBlock }): React.JSX.Element | null {
+  switch (block.type) {
+    case 'text':
+      return <p className="text-sm whitespace-pre-wrap">{block.text}</p>
+
+    case 'thinking':
+      return (
+        <details className="rounded border border-border/60 bg-muted/20 px-2 py-1.5">
+          <summary className="flex cursor-pointer items-center gap-1.5 text-xs text-muted-foreground select-none">
+            <Brain className="size-3.5" /> Thinking
+          </summary>
+          <p className="mt-2 text-xs whitespace-pre-wrap text-muted-foreground">{block.thinking}</p>
+        </details>
+      )
+
+    case 'tool_use':
+      return (
+        <details className="rounded border border-border/60 bg-muted/20 px-2 py-1.5">
+          <summary className="flex cursor-pointer items-center gap-1.5 text-xs select-none">
+            <Wrench className="size-3.5 text-muted-foreground" />
+            <span className="font-mono">{block.name}</span>
+          </summary>
+          <div className="mt-2">
+            <Json value={block.input} />
+          </div>
+        </details>
+      )
+
+    case 'tool_result':
+      return (
+        <details
+          className={cn(
+            'rounded border px-2 py-1.5',
+            block.is_error
+              ? 'border-destructive/40 bg-destructive/5'
+              : 'border-border/60 bg-muted/20'
+          )}
+        >
+          <summary className="flex cursor-pointer items-center gap-1.5 text-xs text-muted-foreground select-none">
+            <ChevronRight className="size-3.5" />
+            {block.is_error ? 'Tool error' : 'Tool result'}
+          </summary>
+          <div className="mt-2">
+            <Json value={block.content} />
+          </div>
+        </details>
+      )
+
+    default:
+      return (
+        <details className="rounded border border-border/60 bg-muted/20 px-2 py-1.5">
+          <summary className="cursor-pointer font-mono text-xs text-muted-foreground select-none">
+            {block.type}
+          </summary>
+          <div className="mt-2">
+            <Json value={block} />
+          </div>
+        </details>
+      )
+  }
+}
+
+function blocksOf(message: SdkMessage): ContentBlock[] {
+  const content = message.message?.content
+  if (typeof content === 'string') return [{ type: 'text', text: content }]
+  return Array.isArray(content) ? content : []
+}
+
+export const TranscriptMessage = memo(function TranscriptMessage({
+  entry
+}: {
+  entry: TranscriptEntry
+}): React.JSX.Element | null {
+  const message = entry.message as SdkMessage
+
+  if (message.type === 'assistant') {
+    return (
+      <div className="flex flex-col gap-2">
+        {message.error && (
+          <p className="flex items-center gap-1.5 text-sm text-destructive">
+            <CircleAlert className="size-3.5" /> {message.error}
+          </p>
+        )}
+        {blocksOf(message).map((block, i) => (
+          <Block key={i} block={block} />
+        ))}
+      </div>
+    )
+  }
+
+  if (message.type === 'user') {
+    const blocks = blocksOf(message)
+    // Tool results come back as user-role messages; showing them under a
+    // "you said" heading would misattribute them.
+    const isToolResult = blocks.every((b) => b.type === 'tool_result')
+
+    if (isToolResult) {
+      return (
+        <div className="flex flex-col gap-2">
+          {blocks.map((block, i) => (
+            <Block key={i} block={block} />
+          ))}
+        </div>
+      )
+    }
+
+    return (
+      <div className="flex justify-end">
+        <div className="max-w-[85%] rounded-lg bg-muted px-3 py-2 text-sm whitespace-pre-wrap">
+          {blocks.map((b) => b.text).join('\n')}
+        </div>
+      </div>
+    )
+  }
+
+  if (message.type === 'result') {
+    return (
+      <div
+        className={cn(
+          'flex items-center gap-2 rounded-md border px-3 py-1.5 text-xs',
+          message.is_error
+            ? 'border-destructive/40 bg-destructive/5 text-destructive'
+            : 'border-border/60 text-muted-foreground'
+        )}
+      >
+        <Terminal className="size-3.5 shrink-0" />
+        <span>
+          {message.is_error ? `Ended: ${message.subtype}` : 'Turn complete'}
+          {typeof message.num_turns === 'number' && ` · ${message.num_turns} turns`}
+          {typeof message.total_cost_usd === 'number' && ` · $${message.total_cost_usd.toFixed(4)}`}
+        </span>
+      </div>
+    )
+  }
+
+  // system/init and the long tail of status messages carry no user-facing
+  // content worth a row of their own.
+  if (message.type === 'system' || message.type === 'stream_event') return null
+
+  return (
+    <details className="rounded border border-border/60 bg-muted/20 px-2 py-1.5">
+      <summary className="cursor-pointer font-mono text-xs text-muted-foreground select-none">
+        {message.type}
+        {message.subtype ? ` · ${message.subtype}` : ''}
+      </summary>
+      <div className="mt-2">
+        <Json value={message} />
+      </div>
+    </details>
+  )
+})

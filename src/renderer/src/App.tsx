@@ -1,13 +1,15 @@
 import { useState } from 'react'
 import { Plus } from 'lucide-react'
 import { useAgents } from '@/hooks/use-agents'
+import { useSessions } from '@/hooks/use-sessions'
 import { AgentSidebar } from '@/components/agent-sidebar'
-import { AgentDetail } from '@/components/agent-detail'
+import { AgentChat } from '@/components/agent-chat'
 import { AgentEditor } from '@/components/agent-editor'
 import { Button } from '@/components/ui/button'
 
 function App(): React.JSX.Element {
   const { agents, errors, loading, refresh } = useAgents()
+  const sessions = useSessions()
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [editorOpen, setEditorOpen] = useState(false)
   const [editingNew, setEditingNew] = useState(false)
@@ -32,14 +34,23 @@ function App(): React.JSX.Element {
       <AgentSidebar
         agents={agents}
         errors={errors}
-        selectedId={selectedId}
+        selectedId={selected?.config.id ?? null}
+        runtimeFor={sessions.runtimeFor}
         onSelect={setSelectedId}
         onCreate={openNew}
       />
 
       <main className="flex min-w-0 flex-1 flex-col">
         {selected ? (
-          <AgentDetail agent={selected} onEdit={openEdit} />
+          <AgentChat
+            key={selected.config.id}
+            agent={selected}
+            runtime={sessions.runtimeFor(selected.config.id)}
+            entries={sessions.entriesFor(selected.config.id)}
+            truncated={sessions.truncatedFor(selected.config.id)}
+            permissions={sessions.permissionsFor(selected.config.id)}
+            onEdit={openEdit}
+          />
         ) : (
           <div className="flex flex-1 flex-col items-center justify-center gap-4 p-8 text-center">
             <div className="flex flex-col gap-1">

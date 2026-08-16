@@ -1,5 +1,6 @@
-import { AlertTriangle, Plus } from 'lucide-react'
+import { AlertTriangle, CircleAlert, Loader2, Plus } from 'lucide-react'
 import { AGENT_COLORS, type Agent } from '@shared/agent'
+import { isTransient, type AgentRuntime } from '@shared/agent-runtime'
 import type { AgentLoadError } from '@shared/ipc'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -9,6 +10,7 @@ type Props = {
   agents: Agent[]
   errors: AgentLoadError[]
   selectedId: string | null
+  runtimeFor: (agentId: string) => AgentRuntime
   onSelect: (id: string) => void
   onCreate: () => void
 }
@@ -17,10 +19,36 @@ function colorHex(id: string): string {
   return AGENT_COLORS.find((c) => c.id === id)?.hex ?? '#71717a'
 }
 
+/**
+ * A running agent needs to be visible from the sidebar — the whole point of
+ * the app is working while you look at something else. Quota conditions get
+ * their own colour, since waiting fixes them and a crash does not.
+ */
+function StatusDot({ runtime }: { runtime: AgentRuntime }): React.JSX.Element | null {
+  if (runtime.state === 'working' || runtime.state === 'starting') {
+    return <Loader2 className="size-3 shrink-0 animate-spin text-muted-foreground" />
+  }
+  if (runtime.state === 'error') {
+    return (
+      <CircleAlert
+        className={cn(
+          'size-3 shrink-0',
+          runtime.error && isTransient(runtime.error.kind) ? 'text-amber-500' : 'text-destructive'
+        )}
+      />
+    )
+  }
+  if (runtime.state === 'ready') {
+    return <span aria-label="ready" className="size-1.5 shrink-0 rounded-full bg-emerald-500" />
+  }
+  return null
+}
+
 export function AgentSidebar({
   agents,
   errors,
   selectedId,
+  runtimeFor,
   onSelect,
   onCreate
 }: Props): React.JSX.Element {
@@ -52,7 +80,8 @@ export function AgentSidebar({
                 className="size-2.5 shrink-0 rounded-full"
                 style={{ backgroundColor: colorHex(agent.config.color) }}
               />
-              <span className="truncate">{agent.config.name}</span>
+              <span className="flex-1 truncate">{agent.config.name}</span>
+              <StatusDot runtime={runtimeFor(agent.config.id)} />
             </button>
           ))}
 

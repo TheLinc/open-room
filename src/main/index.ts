@@ -2,19 +2,37 @@ import { app, shell, BrowserWindow } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
-import { broadcastAgentsChanged, registerIpcHandlers } from './ipc'
+import {
+  broadcastAgentsChanged,
+  broadcastPermissionRequest,
+  broadcastPermissionResolved,
+  broadcastRuntime,
+  broadcastTranscript,
+  registerIpcHandlers
+} from './ipc'
 import { ConfigStore } from './config-store'
+import { AgentSupervisor } from './agent-supervisor'
 
 // OPEN_ROOM_HOME relocates the config root. Useful for testing against a
 // throwaway directory, and for anyone who keeps dotfiles somewhere else.
 const store = new ConfigStore(process.env.OPEN_ROOM_HOME || undefined)
 
+const supervisor = new AgentSupervisor({
+  onRuntime: broadcastRuntime,
+  onTranscript: broadcastTranscript,
+  onPermissionRequest: broadcastPermissionRequest,
+  onPermissionResolved: broadcastPermissionResolved
+})
+
+/** Ends sessions left idle, since each one holds a full CLI subprocess. */
+let idleReaper: NodeJS.Timeout | null = null
+
 function createWindow(): void {
   const mainWindow = new BrowserWindow({
-    width: 1200,
-    height: 800,
-    minWidth: 940,
-    minHeight: 600,
+    width: 1280,
+    height: 840,
+    minWidth: 980,
+    minHeight: 640,
     show: false,
     autoHideMenuBar: true,
     backgroundColor: '#0a0a0a',
@@ -46,14 +64,17 @@ function createWindow(): void {
   }
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   electronApp.setAppUserModelId('com.openroom.app')
 
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
   })
 
-  registerIpcHandlers(store)
+  const settings = await store.readSettings()
+  supervisor.setOptions({ maxConcurrent: settings.maxConcurrentAgents })
+
+  registerIpcHandlers(store, supervisor)
   createWindow()
 
   // Agent files are hand-editable, so edits made outside the app must show up
@@ -62,13 +83,29 @@ app.whenReady().then(() => {
     console.error('Failed to watch the agents directory:', error)
   })
 
+  if (settings.idleTimeoutMinutes > 0) {
+    const maxIdleMs = settings.idleTimeoutMinutes * 60_000
+    idleReaper = setInterval(() => {
+      void supervisor.reapIdle(maxIdleMs)
+    }, 60_000)
+  }
+
   app.on('activate', function () {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
 })
 
-app.on('before-quit', () => {
+app.on('before-quit', async (event) => {
   store.stopWatching()
+  if (idleReaper) clearInterval(idleReaper)
+
+  // Agent subprocesses outlive the app unless they are stopped, so quitting
+  // waits for teardown once.
+  if (supervisor.runningCount > 0) {
+    event.preventDefault()
+    await supervisor.stopAll()
+    app.quit()
+  }
 })
 
 app.on('window-all-closed', () => {

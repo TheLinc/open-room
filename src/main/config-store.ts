@@ -3,6 +3,7 @@ import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { agentConfigSchema, type Agent, type AgentConfig } from '@shared/agent'
+import { appSettingsSchema, DEFAULT_SETTINGS, type AppSettings } from '@shared/settings'
 
 /**
  * Reads and writes agents under `~/.open-room/agents/<id>/`.
@@ -15,6 +16,7 @@ import { agentConfigSchema, type Agent, type AgentConfig } from '@shared/agent'
 
 export const CONFIG_FILE = 'config.json'
 export const CONTEXT_FILE = 'AGENT.md'
+export const SETTINGS_FILE = 'settings.json'
 
 /** A directory that exists but could not be loaded. Surfaced, never dropped. */
 export type AgentLoadError = {
@@ -130,6 +132,29 @@ export class ConfigStore {
     await mkdir(dir, { recursive: true })
     await writeFile(join(dir, CONFIG_FILE), `${JSON.stringify(parsed, null, 2)}\n`, 'utf8')
     await writeFile(join(dir, CONTEXT_FILE), agent.context, 'utf8')
+  }
+
+  /**
+   * Reads app settings, falling back to defaults.
+   *
+   * Unlike agent configs, a malformed settings file falls back silently: it
+   * is app-wide, so refusing to start over it would lock the user out of the
+   * UI they would use to fix it.
+   */
+  async readSettings(): Promise<AppSettings> {
+    try {
+      const raw = await readFile(join(this.root, SETTINGS_FILE), 'utf8')
+      const parsed = appSettingsSchema.safeParse(JSON.parse(raw))
+      return parsed.success ? parsed.data : { ...DEFAULT_SETTINGS }
+    } catch {
+      return { ...DEFAULT_SETTINGS }
+    }
+  }
+
+  async writeSettings(settings: AppSettings): Promise<void> {
+    const parsed = appSettingsSchema.parse(settings)
+    await mkdir(this.root, { recursive: true })
+    await writeFile(join(this.root, SETTINGS_FILE), `${JSON.stringify(parsed, null, 2)}\n`, 'utf8')
   }
 
   async exists(id: string): Promise<boolean> {

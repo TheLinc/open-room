@@ -1,0 +1,27 @@
+# Normalise line endings so the same bytes land in every clone.
+#
+# Without this, checkout depends on each contributor's core.autocrlf setting,
+# and a Windows and a macOS clone of the same commit differ on every line.
+# Open Room targets both, so pin it: LF in the repository and in the working
+# tree everywhere.
+* text=auto eol=lf
+
+# Windows-only tooling that genuinely wants CRLF.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Never touch these — line-ending translation corrupts them.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.icns binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary
+*.wav binary
+*.mp3 binary
+*.onnx binary
+*.bin binary

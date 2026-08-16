@@ -1,7 +1,15 @@
 import { app, BrowserWindow, dialog, ipcMain } from 'electron'
 import { agentConfigSchema, slugifyAgentName, type Agent } from '@shared/agent'
+import type {
+  AgentRuntime,
+  PermissionDecision,
+  PermissionRequest,
+  TranscriptEntry
+} from '@shared/agent-runtime'
+import { appSettingsSchema, type AppSettings } from '@shared/settings'
 import { IpcChannel, type AgentsSnapshot, type AppInfo, type MutationResult } from '@shared/ipc'
 import { ConfigStore } from './config-store'
+import type { AgentSupervisor } from './agent-supervisor'
 
 /**
  * Registers every main-process IPC handler. Called once on app ready.
@@ -10,7 +18,7 @@ import { ConfigStore } from './config-store'
  * non-blocking — anything long-running belongs on a supervisor that streams
  * results back, not on an `invoke` round trip.
  */
-export function registerIpcHandlers(store: ConfigStore): void {
+export function registerIpcHandlers(store: ConfigStore, supervisor: AgentSupervisor): void {
   ipcMain.handle(IpcChannel.getAppInfo, (): AppInfo => {
     return {
       name: app.getName(),
@@ -66,6 +74,72 @@ export function registerIpcHandlers(store: ConfigStore): void {
 
     return result.canceled ? null : (result.filePaths[0] ?? null)
   })
+
+  ipcMain.handle(
+    IpcChannel.sendPrompt,
+    async (_e, agentId: string, text: string): Promise<MutationResult> => {
+      // Config is re-read per prompt so edits made in the editor — or in the
+      // file directly — take effect on the next turn without a restart.
+      try {
+        const agent = await store.read(agentId)
+        return await supervisor.send(agent, text)
+      } catch (error) {
+        return { ok: false, message: describeError(error) }
+      }
+    }
+  )
+
+  ipcMain.handle(
+    IpcChannel.interruptAgent,
+    async (_e, agentId: string): Promise<MutationResult> => {
+      return guard(() => supervisor.interrupt(agentId))
+    }
+  )
+
+  ipcMain.handle(IpcChannel.stopAgent, async (_e, agentId: string): Promise<MutationResult> => {
+    return guard(() => supervisor.stop(agentId))
+  })
+
+  ipcMain.handle(IpcChannel.listRuntimes, (): AgentRuntime[] => supervisor.allRuntimes())
+
+  ipcMain.handle(
+    IpcChannel.respondPermission,
+    (_e, requestId: string, decision: PermissionDecision): void => {
+      supervisor.respondToPermission(requestId, decision)
+    }
+  )
+
+  ipcMain.handle(IpcChannel.getSettings, (): Promise<AppSettings> => store.readSettings())
+
+  ipcMain.handle(IpcChannel.saveSettings, async (_e, settings: AppSettings) => {
+    return guard(async () => {
+      const parsed = appSettingsSchema.parse(settings)
+      await store.writeSettings(parsed)
+      supervisor.setOptions({ maxConcurrent: parsed.maxConcurrentAgents })
+    })
+  })
+}
+
+export function broadcastRuntime(runtime: AgentRuntime): void {
+  broadcast(IpcChannel.runtimeChanged, runtime)
+}
+
+export function broadcastTranscript(entry: TranscriptEntry): void {
+  broadcast(IpcChannel.transcriptAppended, entry)
+}
+
+export function broadcastPermissionRequest(request: PermissionRequest): void {
+  broadcast(IpcChannel.permissionRequested, request)
+}
+
+export function broadcastPermissionResolved(requestId: string): void {
+  broadcast(IpcChannel.permissionResolved, requestId)
+}
+
+function broadcast(channel: string, payload: unknown): void {
+  for (const window of BrowserWindow.getAllWindows()) {
+    if (!window.isDestroyed()) window.webContents.send(channel, payload)
+  }
 }
 
 /** Broadcasts an on-disk change to every open window. */

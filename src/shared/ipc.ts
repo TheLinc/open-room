@@ -1,4 +1,11 @@
 import type { Agent } from './agent'
+import type {
+  AgentRuntime,
+  PermissionDecision,
+  PermissionRequest,
+  TranscriptEntry
+} from './agent-runtime'
+import type { AppSettings } from './settings'
 
 /**
  * The IPC contract between main, preload, and renderer.
@@ -39,13 +46,31 @@ export type MutationResult = { ok: true } | { ok: false; message: string }
 
 export const IpcChannel = {
   getAppInfo: 'app:get-info',
+
   listAgents: 'agents:list',
   createAgent: 'agents:create',
   updateAgent: 'agents:update',
   deleteAgent: 'agents:delete',
   pickWorkspace: 'agents:pick-workspace',
   /** main → renderer, fired when the agents directory changes on disk. */
-  agentsChanged: 'agents:changed'
+  agentsChanged: 'agents:changed',
+
+  sendPrompt: 'session:send',
+  interruptAgent: 'session:interrupt',
+  stopAgent: 'session:stop',
+  listRuntimes: 'session:runtimes',
+  /** main → renderer, per-agent lifecycle and usage updates. */
+  runtimeChanged: 'session:runtime-changed',
+  /** main → renderer, one SDK message appended to an agent's transcript. */
+  transcriptAppended: 'session:transcript',
+  /** main → renderer, a tool is waiting on the user's decision. */
+  permissionRequested: 'session:permission-requested',
+  /** main → renderer, that request has been answered or withdrawn. */
+  permissionResolved: 'session:permission-resolved',
+  respondPermission: 'session:permission-respond',
+
+  getSettings: 'settings:get',
+  saveSettings: 'settings:save'
 } as const
 
 export type IpcChannelName = (typeof IpcChannel)[keyof typeof IpcChannel]
@@ -56,6 +81,7 @@ export type IpcChannelName = (typeof IpcChannel)[keyof typeof IpcChannel]
  */
 export type OpenRoomApi = {
   getAppInfo: () => Promise<AppInfo>
+
   listAgents: () => Promise<AgentsSnapshot>
   createAgent: (agent: Agent) => Promise<MutationResult>
   updateAgent: (agent: Agent) => Promise<MutationResult>
@@ -64,4 +90,21 @@ export type OpenRoomApi = {
   pickWorkspace: () => Promise<string | null>
   /** Subscribes to on-disk changes. Returns an unsubscribe function. */
   onAgentsChanged: (listener: () => void) => () => void
+
+  /** Starts the agent's session if needed, then queues the prompt. */
+  sendPrompt: (agentId: string, text: string) => Promise<MutationResult>
+  /** Stops the current turn, leaving the session alive. */
+  interruptAgent: (agentId: string) => Promise<MutationResult>
+  /** Ends the session and tears down the subprocess. */
+  stopAgent: (agentId: string) => Promise<MutationResult>
+  listRuntimes: () => Promise<AgentRuntime[]>
+  onRuntimeChanged: (listener: (runtime: AgentRuntime) => void) => () => void
+  onTranscriptAppended: (listener: (entry: TranscriptEntry) => void) => () => void
+
+  onPermissionRequested: (listener: (request: PermissionRequest) => void) => () => void
+  onPermissionResolved: (listener: (requestId: string) => void) => () => void
+  respondPermission: (requestId: string, decision: PermissionDecision) => Promise<void>
+
+  getSettings: () => Promise<AppSettings>
+  saveSettings: (settings: AppSettings) => Promise<MutationResult>
 }
