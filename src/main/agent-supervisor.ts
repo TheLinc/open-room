@@ -23,6 +23,7 @@ import {
   kindFromAssistantError
 } from './agent-errors'
 import { PushableQueue } from './message-queue'
+import type { ConversationStore } from './conversation-store'
 
 /**
  * Owns the lifecycle of every running agent.
@@ -36,6 +37,8 @@ import { PushableQueue } from './message-queue'
 
 type Session = {
   agentId: string
+  /** Kept so session-scoped work (tagging, resume) has the config to hand. */
+  agent: Agent
   queue: PushableQueue<SDKUserInput>
   query: Query
   /** Resolves when the message pump finishes, so stop() can await teardown. */
@@ -63,6 +66,11 @@ export type SupervisorEvents = {
   onPermissionRequest: (request: PermissionRequest) => void
   /** Fired when a request is answered or withdrawn, so the UI can dismiss it. */
   onPermissionResolved: (requestId: string) => void
+  /**
+   * Fired when an agent's streamed transcript no longer belongs to what the
+   * pane is showing — switching conversations, or starting a new one.
+   */
+  onTranscriptCleared: (agentId: string) => void
 }
 
 type PendingPermission = {
@@ -84,6 +92,7 @@ export class AgentSupervisor {
 
   constructor(
     private readonly events: SupervisorEvents,
+    private readonly conversations: ConversationStore,
     private options: SupervisorOptions = { maxConcurrent: 3 }
   ) {}
 
@@ -114,7 +123,8 @@ export class AgentSupervisor {
     const existing = this.sessions.get(agent.config.id)
 
     if (!existing) {
-      const started = await this.start(agent)
+      const resumeId = this.runtimeFor(agent.config.id).activeConversationId
+      const started = await this.start(agent, resumeId)
       if (!started.ok) return started
     }
 
@@ -145,7 +155,10 @@ export class AgentSupervisor {
     return { ok: true }
   }
 
-  private async start(agent: Agent): Promise<{ ok: true } | { ok: false; message: string }> {
+  private async start(
+    agent: Agent,
+    resumeSessionId: string | null
+  ): Promise<{ ok: true } | { ok: false; message: string }> {
     const id = agent.config.id
 
     if (this.sessions.size >= this.options.maxConcurrent) {
@@ -173,9 +186,13 @@ export class AgentSupervisor {
     const queue = new PushableQueue<SDKUserInput>()
 
     try {
-      const q = query({ prompt: queue.stream(), options: this.optionsFor(agent) })
+      const q = query({
+        prompt: queue.stream(),
+        options: this.optionsFor(agent, resumeSessionId)
+      })
       const session: Session = {
         agentId: id,
+        agent,
         queue,
         query: q,
         pump: Promise.resolve(),
@@ -193,7 +210,7 @@ export class AgentSupervisor {
     }
   }
 
-  private optionsFor(agent: Agent): Options {
+  private optionsFor(agent: Agent, resumeSessionId: string | null): Options {
     const { config } = agent
 
     return {
@@ -207,7 +224,13 @@ export class AgentSupervisor {
       allowedTools: config.allowedTools,
       disallowedTools: config.disallowedTools,
       persistSession: config.persistSession,
-      title: `Open Room — ${config.name}`,
+      // `resume` opens an existing conversation; the streaming generator
+      // drives it from there.
+      ...(resumeSessionId && config.persistSession ? { resume: resumeSessionId } : {}),
+      // No `title` is set deliberately: it lands in both customTitle and
+      // summary, so every conversation would carry the same name and the
+      // switcher would be useless. The SDK's own summary is per-conversation,
+      // and the agent is identified by tag instead.
       // Replaces process.env rather than merging, so it is built explicitly
       // with ANTHROPIC_API_KEY removed.
       env: buildChildEnv(),
@@ -268,6 +291,20 @@ export class AgentSupervisor {
     }
   }
 
+  /**
+   * Chooses which conversation the next prompt continues. Nothing spawns —
+   * selecting a conversation is a decision about resume, not a start.
+   */
+  setActiveConversation(agentId: string, sessionId: string | null): void {
+    if (this.runtimeFor(agentId).activeConversationId === sessionId) return
+
+    // Live entries belong to the conversation that produced them. Leaving
+    // them mounted would show the previous conversation's messages under the
+    // newly selected one; persisted history is reloaded from disk instead.
+    this.events.onTranscriptCleared(agentId)
+    this.patch(agentId, { activeConversationId: sessionId, sessionId, error: null })
+  }
+
   respondToPermission(requestId: string, decision: PermissionDecision): void {
     const pending = this.pendingPermissions.get(requestId)
     if (!pending) return
@@ -321,7 +358,14 @@ export class AgentSupervisor {
     })
 
     if (message.type === 'system' && 'session_id' in message) {
-      this.patch(id, { sessionId: message.session_id, state: 'working' })
+      const sessionId = message.session_id
+      this.patch(id, { sessionId, activeConversationId: sessionId, state: 'working' })
+
+      // Tag the session so it can be found again as this agent's. Resumed
+      // sessions are already tagged; re-tagging is harmless and keeps a
+      // freshly created one from being orphaned.
+      const agent = session.agent
+      void this.conversations.claim(agent, sessionId)
       return
     }
 

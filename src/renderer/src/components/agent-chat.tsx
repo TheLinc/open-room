@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { CircleAlert, Gauge, Loader2, Pencil, Send, Square, X } from 'lucide-react'
 import { AGENT_COLORS, MODELS, type Agent } from '@shared/agent'
 import {
@@ -13,6 +13,9 @@ import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { TranscriptMessage } from '@/components/transcript-message'
 import { isRenderable } from '@/lib/transcript'
+import { ConversationSwitcher } from '@/components/conversation-switcher'
+import { describeLastActive } from '@shared/conversation'
+import type { ConversationsApi } from '@/hooks/use-conversations'
 import { PermissionPrompt } from '@/components/permission-prompt'
 import { MAX_RETAINED_ENTRIES } from '@/hooks/use-sessions'
 
@@ -22,6 +25,7 @@ type Props = {
   entries: TranscriptEntry[]
   truncated: boolean
   permissions: PermissionRequest[]
+  conversations: ConversationsApi
   onEdit: () => void
 }
 
@@ -39,6 +43,7 @@ export function AgentChat({
   entries,
   truncated,
   permissions,
+  conversations,
   onEdit
 }: Props): React.JSX.Element {
   const [draft, setDraft] = useState('')
@@ -53,18 +58,43 @@ export function AgentChat({
   // Silent messages must be dropped before render, not inside the row: an
   // empty wrapper still reserves its contain-intrinsic-size placeholder.
   const visible = entries.filter(isRenderable)
+  const historyVisible = conversations.history.filter(isRenderable)
 
   // Follow the tail only while the user is already at the bottom — yanking
   // them down mid-scroll while an agent streams is the classic chat-log
   // annoyance.
   useEffect(() => {
     if (pinned.current) bottom.current?.scrollIntoView({ block: 'end' })
-  }, [entries, permissions])
+  }, [entries, permissions, historyVisible.length])
+
+  /**
+   * Distance from the bottom at the moment older messages were requested.
+   *
+   * Prepending content grows `scrollHeight` above the viewport, so a fixed
+   * `scrollTop` would jump the reader backwards by exactly the height of what
+   * just loaded. Anchoring to the bottom instead keeps the same messages
+   * under the cursor.
+   */
+  const anchorFromBottom = useRef<number | null>(null)
+
+  useLayoutEffect(() => {
+    const el = scroller.current
+    if (!el || anchorFromBottom.current === null) return
+    el.scrollTop = el.scrollHeight - anchorFromBottom.current
+    anchorFromBottom.current = null
+  }, [historyVisible.length])
 
   const onScroll = (): void => {
     const el = scroller.current
     if (!el) return
     pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80
+
+    // Load the previous page before the reader actually reaches the top, so
+    // the fetch usually lands before they get there.
+    if (el.scrollTop < 200 && conversations.hasEarlier && !conversations.loadingEarlier) {
+      anchorFromBottom.current = el.scrollHeight - el.scrollTop
+      void conversations.loadEarlier()
+    }
   }
 
   const submit = async (): Promise<void> => {
@@ -90,7 +120,21 @@ export function AgentChat({
             style={{ backgroundColor: color }}
           />
           <div className="min-w-0">
-            <h2 className="truncate text-base font-semibold tracking-tight">{agent.config.name}</h2>
+            <div className="flex items-center gap-1">
+              <h2 className="truncate text-base font-semibold tracking-tight">
+                {agent.config.name}
+              </h2>
+              {agent.config.persistSession && (
+                <ConversationSwitcher
+                  conversations={conversations.conversations}
+                  active={conversations.active}
+                  onSelect={(id) => void conversations.select(id)}
+                  onNew={() => void conversations.startNew()}
+                  onRename={(id, title) => void conversations.rename(id, title)}
+                  onDelete={(id) => void conversations.remove(id)}
+                />
+              )}
+            </div>
             <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
               {busy && <Loader2 className="size-3 animate-spin" />}
               {STATE_LABEL[runtime.state]}
@@ -164,7 +208,40 @@ export function AgentChat({
           </p>
         )}
 
-        {visible.length === 0 && permissions.length === 0 ? (
+        {conversations.hasEarlier && (
+          <div className="flex items-center justify-center gap-2 pb-4 text-xs text-muted-foreground">
+            <Loader2 className="size-3.5 animate-spin" />
+            Loading earlier messages…
+          </div>
+        )}
+
+        {historyVisible.length > 0 && (
+          <div className="flex flex-col gap-3 pb-3">
+            {historyVisible.map((entry) => (
+              <div
+                key={entry.seq}
+                style={{ contentVisibility: 'auto', containIntrinsicSize: 'auto 60px' }}
+              >
+                <TranscriptMessage entry={entry} />
+              </div>
+            ))}
+          </div>
+        )}
+
+        {historyVisible.length > 0 && (
+          <div className="flex items-center gap-3 py-3 text-xs text-muted-foreground">
+            <span className="h-px flex-1 bg-border" />
+            <span>
+              Resumed
+              {conversations.active
+                ? ` · last active ${describeLastActive(conversations.active.lastModified)}`
+                : ''}
+            </span>
+            <span className="h-px flex-1 bg-border" />
+          </div>
+        )}
+
+        {visible.length === 0 && permissions.length === 0 && historyVisible.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center gap-1 text-center">
             <p className="text-sm text-muted-foreground">
               Nothing yet. Ask {agent.config.name} to do something.

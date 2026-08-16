@@ -7,6 +7,7 @@ import type {
   PermissionRequest,
   TranscriptEntry
 } from '@shared/agent-runtime'
+import type { Conversation, ConversationPage } from '@shared/conversation'
 import type { AppSettings } from '@shared/settings'
 import {
   IpcChannel,
@@ -59,6 +60,9 @@ const openRoom: OpenRoomApi = {
   onTranscriptAppended: (listener: (entry: TranscriptEntry) => void): (() => void) =>
     subscribe(IpcChannel.transcriptAppended, (entry) => listener(entry as TranscriptEntry)),
 
+  onTranscriptCleared: (listener: (agentId: string) => void): (() => void) =>
+    subscribe(IpcChannel.transcriptCleared, (id) => listener(id as string)),
+
   onPermissionRequested: (listener: (request: PermissionRequest) => void): (() => void) =>
     subscribe(IpcChannel.permissionRequested, (r) => listener(r as PermissionRequest)),
 
@@ -67,6 +71,35 @@ const openRoom: OpenRoomApi = {
 
   respondPermission: (requestId: string, decision: PermissionDecision): Promise<void> =>
     ipcRenderer.invoke(IpcChannel.respondPermission, requestId, decision),
+
+  listConversations: (agentId: string): Promise<Conversation[]> =>
+    ipcRenderer.invoke(IpcChannel.listConversations, agentId),
+
+  loadConversation: (
+    agentId: string,
+    sessionId: string,
+    options: { limit: number; offset?: number }
+  ): Promise<ConversationPage> =>
+    ipcRenderer.invoke(IpcChannel.loadConversation, agentId, sessionId, options),
+
+  selectConversation: (agentId: string, sessionId: string): Promise<MutationResult> =>
+    ipcRenderer.invoke(IpcChannel.selectConversation, agentId, sessionId),
+
+  newConversation: (agentId: string): Promise<MutationResult> =>
+    ipcRenderer.invoke(IpcChannel.newConversation, agentId),
+
+  renameConversation: (
+    agentId: string,
+    sessionId: string,
+    title: string
+  ): Promise<MutationResult> =>
+    ipcRenderer.invoke(IpcChannel.renameConversation, agentId, sessionId, title),
+
+  deleteConversation: (agentId: string, sessionId: string): Promise<MutationResult> =>
+    ipcRenderer.invoke(IpcChannel.deleteConversation, agentId, sessionId),
+
+  clearConversations: (agentId: string): Promise<MutationResult> =>
+    ipcRenderer.invoke(IpcChannel.clearConversations, agentId),
 
   getSettings: (): Promise<AppSettings> => ipcRenderer.invoke(IpcChannel.getSettings),
 

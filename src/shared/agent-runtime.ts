@@ -88,6 +88,14 @@ export type AgentRuntime = {
   state: AgentState
   /** Present once the session has initialised; used to resume it later. */
   sessionId: string | null
+  /**
+   * The conversation the next prompt continues.
+   *
+   * Set without a session being live — selecting a conversation only decides
+   * what to resume; nothing spawns until the user actually says something.
+   * Null means the next prompt starts a fresh conversation.
+   */
+  activeConversationId: string | null
   error: AgentError | null
   usage: AgentUsage
   rateLimit: RateLimitStatus | null
@@ -136,6 +144,7 @@ export function emptyRuntime(agentId: string): AgentRuntime {
     agentId,
     state: 'idle',
     sessionId: null,
+    activeConversationId: null,
     error: null,
     usage: { ...EMPTY_USAGE },
     rateLimit: null,

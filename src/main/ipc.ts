@@ -10,6 +10,8 @@ import { appSettingsSchema, type AppSettings } from '@shared/settings'
 import { IpcChannel, type AgentsSnapshot, type AppInfo, type MutationResult } from '@shared/ipc'
 import { ConfigStore } from './config-store'
 import type { AgentSupervisor } from './agent-supervisor'
+import type { ConversationStore } from './conversation-store'
+import type { Conversation, ConversationPage } from '@shared/conversation'
 
 /**
  * Registers every main-process IPC handler. Called once on app ready.
@@ -18,7 +20,11 @@ import type { AgentSupervisor } from './agent-supervisor'
  * non-blocking — anything long-running belongs on a supervisor that streams
  * results back, not on an `invoke` round trip.
  */
-export function registerIpcHandlers(store: ConfigStore, supervisor: AgentSupervisor): void {
+export function registerIpcHandlers(
+  store: ConfigStore,
+  supervisor: AgentSupervisor,
+  conversations: ConversationStore
+): void {
   ipcMain.handle(IpcChannel.getAppInfo, (): AppInfo => {
     return {
       name: app.getName(),
@@ -109,6 +115,80 @@ export function registerIpcHandlers(store: ConfigStore, supervisor: AgentSupervi
     }
   )
 
+  ipcMain.handle(
+    IpcChannel.listConversations,
+    async (_e, agentId: string): Promise<Conversation[]> => {
+      const agent = await store.read(agentId).catch(() => null)
+      return agent ? conversations.list(agent) : []
+    }
+  )
+
+  ipcMain.handle(
+    IpcChannel.loadConversation,
+    async (
+      _e,
+      agentId: string,
+      sessionId: string,
+      options: { limit: number; offset?: number }
+    ): Promise<ConversationPage> => {
+      const agent = await store.read(agentId).catch(() => null)
+      if (!agent) return { sessionId, total: 0, offset: 0, messages: [] }
+      return conversations.page(agent, sessionId, options)
+    }
+  )
+
+  ipcMain.handle(
+    IpcChannel.selectConversation,
+    async (_e, agentId: string, sessionId: string): Promise<MutationResult> =>
+      guard(async () => {
+        // Switching conversations mid-session would leave the live subprocess
+        // attached to the previous one, so the session is torn down first and
+        // the next prompt resumes the chosen conversation.
+        await supervisor.stop(agentId)
+        supervisor.setActiveConversation(agentId, sessionId)
+      })
+  )
+
+  ipcMain.handle(IpcChannel.newConversation, async (_e, agentId: string): Promise<MutationResult> =>
+    guard(async () => {
+      await supervisor.stop(agentId)
+      supervisor.setActiveConversation(agentId, null)
+    })
+  )
+
+  ipcMain.handle(
+    IpcChannel.renameConversation,
+    async (_e, agentId: string, sessionId: string, title: string): Promise<MutationResult> =>
+      guard(async () => {
+        const agent = await store.read(agentId)
+        await conversations.rename(agent, sessionId, title.trim() || 'Untitled')
+      })
+  )
+
+  ipcMain.handle(
+    IpcChannel.deleteConversation,
+    async (_e, agentId: string, sessionId: string): Promise<MutationResult> =>
+      guard(async () => {
+        const agent = await store.read(agentId)
+        if (supervisor.runtimeFor(agentId).activeConversationId === sessionId) {
+          await supervisor.stop(agentId)
+          supervisor.setActiveConversation(agentId, null)
+        }
+        await conversations.remove(agent, sessionId)
+      })
+  )
+
+  ipcMain.handle(
+    IpcChannel.clearConversations,
+    async (_e, agentId: string): Promise<MutationResult> =>
+      guard(async () => {
+        const agent = await store.read(agentId)
+        await supervisor.stop(agentId)
+        supervisor.setActiveConversation(agentId, null)
+        await conversations.removeAll(agent)
+      })
+  )
+
   ipcMain.handle(IpcChannel.getSettings, (): Promise<AppSettings> => store.readSettings())
 
   ipcMain.handle(IpcChannel.saveSettings, async (_e, settings: AppSettings) => {
@@ -126,6 +206,10 @@ export function broadcastRuntime(runtime: AgentRuntime): void {
 
 export function broadcastTranscript(entry: TranscriptEntry): void {
   broadcast(IpcChannel.transcriptAppended, entry)
+}
+
+export function broadcastTranscriptCleared(agentId: string): void {
+  broadcast(IpcChannel.transcriptCleared, agentId)
 }
 
 export function broadcastPermissionRequest(request: PermissionRequest): void {

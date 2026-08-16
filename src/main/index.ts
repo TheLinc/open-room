@@ -8,21 +8,29 @@ import {
   broadcastPermissionResolved,
   broadcastRuntime,
   broadcastTranscript,
+  broadcastTranscriptCleared,
   registerIpcHandlers
 } from './ipc'
 import { ConfigStore } from './config-store'
 import { AgentSupervisor } from './agent-supervisor'
+import { ConversationStore } from './conversation-store'
 
 // OPEN_ROOM_HOME relocates the config root. Useful for testing against a
 // throwaway directory, and for anyone who keeps dotfiles somewhere else.
 const store = new ConfigStore(process.env.OPEN_ROOM_HOME || undefined)
 
-const supervisor = new AgentSupervisor({
-  onRuntime: broadcastRuntime,
-  onTranscript: broadcastTranscript,
-  onPermissionRequest: broadcastPermissionRequest,
-  onPermissionResolved: broadcastPermissionResolved
-})
+const conversations = new ConversationStore()
+
+const supervisor = new AgentSupervisor(
+  {
+    onRuntime: broadcastRuntime,
+    onTranscript: broadcastTranscript,
+    onPermissionRequest: broadcastPermissionRequest,
+    onPermissionResolved: broadcastPermissionResolved,
+    onTranscriptCleared: broadcastTranscriptCleared
+  },
+  conversations
+)
 
 /** Ends sessions left idle, since each one holds a full CLI subprocess. */
 let idleReaper: NodeJS.Timeout | null = null
@@ -74,7 +82,7 @@ app.whenReady().then(async () => {
   const settings = await store.readSettings()
   supervisor.setOptions({ maxConcurrent: settings.maxConcurrentAgents })
 
-  registerIpcHandlers(store, supervisor)
+  registerIpcHandlers(store, supervisor, conversations)
   createWindow()
 
   // Agent files are hand-editable, so edits made outside the app must show up

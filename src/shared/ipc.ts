@@ -5,6 +5,7 @@ import type {
   PermissionRequest,
   TranscriptEntry
 } from './agent-runtime'
+import type { Conversation, ConversationPage } from './conversation'
 import type { AppSettings } from './settings'
 
 /**
@@ -63,11 +64,21 @@ export const IpcChannel = {
   runtimeChanged: 'session:runtime-changed',
   /** main → renderer, one SDK message appended to an agent's transcript. */
   transcriptAppended: 'session:transcript',
+  /** main → renderer, drop this agent's streamed entries. */
+  transcriptCleared: 'session:transcript-cleared',
   /** main → renderer, a tool is waiting on the user's decision. */
   permissionRequested: 'session:permission-requested',
   /** main → renderer, that request has been answered or withdrawn. */
   permissionResolved: 'session:permission-resolved',
   respondPermission: 'session:permission-respond',
+
+  listConversations: 'conversation:list',
+  loadConversation: 'conversation:load',
+  selectConversation: 'conversation:select',
+  newConversation: 'conversation:new',
+  renameConversation: 'conversation:rename',
+  deleteConversation: 'conversation:delete',
+  clearConversations: 'conversation:clear-all',
 
   getSettings: 'settings:get',
   saveSettings: 'settings:save'
@@ -100,10 +111,26 @@ export type OpenRoomApi = {
   listRuntimes: () => Promise<AgentRuntime[]>
   onRuntimeChanged: (listener: (runtime: AgentRuntime) => void) => () => void
   onTranscriptAppended: (listener: (entry: TranscriptEntry) => void) => () => void
+  onTranscriptCleared: (listener: (agentId: string) => void) => () => void
 
   onPermissionRequested: (listener: (request: PermissionRequest) => void) => () => void
   onPermissionResolved: (listener: (requestId: string) => void) => () => void
   respondPermission: (requestId: string, decision: PermissionDecision) => Promise<void>
+
+  listConversations: (agentId: string) => Promise<Conversation[]>
+  /** Omit `offset` for the most recent slice. */
+  loadConversation: (
+    agentId: string,
+    sessionId: string,
+    options: { limit: number; offset?: number }
+  ) => Promise<ConversationPage>
+  /** Chooses what the next prompt resumes. Does not spawn anything. */
+  selectConversation: (agentId: string, sessionId: string) => Promise<MutationResult>
+  /** Clears the selection so the next prompt starts fresh. */
+  newConversation: (agentId: string) => Promise<MutationResult>
+  renameConversation: (agentId: string, sessionId: string, title: string) => Promise<MutationResult>
+  deleteConversation: (agentId: string, sessionId: string) => Promise<MutationResult>
+  clearConversations: (agentId: string) => Promise<MutationResult>
 
   getSettings: () => Promise<AppSettings>
   saveSettings: (settings: AppSettings) => Promise<MutationResult>

@@ -95,6 +95,17 @@ export function useSessions(): SessionsApi {
       if (frame.current === null) frame.current = requestAnimationFrame(flush)
     })
 
+    const offCleared = window.openRoom.onTranscriptCleared((agentId) => {
+      // Anything still queued for this agent belongs to the conversation being
+      // left behind, so it is dropped too.
+      pending.current = pending.current.filter((entry) => entry.agentId !== agentId)
+      setState((prev) => ({
+        ...prev,
+        entries: { ...prev.entries, [agentId]: [] },
+        truncated: { ...prev.truncated, [agentId]: false }
+      }))
+    })
+
     const offPermission = window.openRoom.onPermissionRequested((request) => {
       setState((prev) => ({ ...prev, permissions: [...prev.permissions, request] }))
     })
@@ -112,6 +123,7 @@ export function useSessions(): SessionsApi {
       cancelled = true
       offRuntime()
       offTranscript()
+      offCleared()
       offPermission()
       offResolved()
       if (frame.current !== null) cancelAnimationFrame(frame.current)
