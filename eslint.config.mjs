@@ -39,5 +39,13 @@ export default defineConfig(
       'react-refresh/only-export-components': 'off'
     }
   },
+  {
+    // Annotating return types on test helpers and assertions is noise —
+    // the expressions are inline and their types are obvious in context.
+    files: ['**/*.test.{ts,tsx}'],
+    rules: {
+      '@typescript-eslint/explicit-function-return-type': 'off'
+    }
+  },
   eslintConfigPrettier
 )

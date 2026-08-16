@@ -1,62 +1,80 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
+import { Plus } from 'lucide-react'
+import { useAgents } from '@/hooks/use-agents'
+import { AgentSidebar } from '@/components/agent-sidebar'
+import { AgentDetail } from '@/components/agent-detail'
+import { AgentEditor } from '@/components/agent-editor'
 import { Button } from '@/components/ui/button'
-import type { AppInfo } from '@shared/ipc'
 
-/**
- * Phase 0 smoke screen. Proves the three things this phase exists to prove:
- * Tailwind + shadcn render, the typed IPC bridge round-trips, and the window
- * boots on both platforms. Replaced in Phase 1 by the agent list and editor.
- */
 function App(): React.JSX.Element {
-  const [info, setInfo] = useState<AppInfo | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const { agents, errors, loading, refresh } = useAgents()
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [editorOpen, setEditorOpen] = useState(false)
+  const [editingNew, setEditingNew] = useState(false)
 
-  useEffect(() => {
-    window.openRoom
-      .getAppInfo()
-      .then(setInfo)
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
-  }, [])
+  // Derived during render rather than synced in an effect. The list changes
+  // underneath us whenever the agents directory is edited outside the app, so
+  // falling back here keeps the selection valid without a cascading render.
+  const selected = agents.find((a) => a.config.id === selectedId) ?? agents[0] ?? null
+
+  const openNew = (): void => {
+    setEditingNew(true)
+    setEditorOpen(true)
+  }
+
+  const openEdit = (): void => {
+    setEditingNew(false)
+    setEditorOpen(true)
+  }
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center gap-6 bg-background p-8 text-foreground">
-      <div className="flex flex-col items-center gap-2 text-center">
-        <h1 className="text-3xl font-semibold tracking-tight">Open Room</h1>
-        <p className="max-w-md text-sm text-muted-foreground">
-          Run multiple named Claude Code agents concurrently, addressed by voice or chat.
-        </p>
-      </div>
+    <div className="flex h-screen bg-background text-foreground">
+      <AgentSidebar
+        agents={agents}
+        errors={errors}
+        selectedId={selectedId}
+        onSelect={setSelectedId}
+        onCreate={openNew}
+      />
 
-      <div className="rounded-lg border border-border bg-card p-4 font-mono text-xs text-card-foreground">
-        {error ? (
-          <span className="text-destructive">IPC error: {error}</span>
-        ) : info ? (
-          <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
-            <dt className="text-muted-foreground">app</dt>
-            <dd>
-              {info.name} {info.version}
-            </dd>
-            <dt className="text-muted-foreground">electron</dt>
-            <dd>{info.electron}</dd>
-            <dt className="text-muted-foreground">chrome</dt>
-            <dd>{info.chrome}</dd>
-            <dt className="text-muted-foreground">node</dt>
-            <dd>{info.node}</dd>
-            <dt className="text-muted-foreground">platform</dt>
-            <dd>{info.platform}</dd>
-          </dl>
+      <main className="flex min-w-0 flex-1 flex-col">
+        {selected ? (
+          <AgentDetail agent={selected} onEdit={openEdit} />
         ) : (
-          <span className="text-muted-foreground">Loading app info over IPC…</span>
+          <div className="flex flex-1 flex-col items-center justify-center gap-4 p-8 text-center">
+            <div className="flex flex-col gap-1">
+              <h2 className="text-lg font-semibold tracking-tight">
+                {loading ? 'Loading agents…' : 'No agents yet'}
+              </h2>
+              {!loading && (
+                <p className="max-w-sm text-sm text-muted-foreground">
+                  An agent is a named Claude Code session with its own model, tools, and role.
+                  Create one and give it a folder to work in.
+                </p>
+              )}
+            </div>
+            {!loading && (
+              <Button onClick={openNew}>
+                <Plus /> New agent
+              </Button>
+            )}
+          </div>
         )}
-      </div>
+      </main>
 
-      <div className="flex gap-2">
-        <Button onClick={() => window.openRoom.getAppInfo().then(setInfo)}>Refresh over IPC</Button>
-        <Button variant="outline" onClick={() => setInfo(null)}>
-          Clear
-        </Button>
-      </div>
-    </main>
+      <AgentEditor
+        key={editingNew ? 'new' : (selected?.config.id ?? 'none')}
+        agent={editingNew ? undefined : (selected ?? undefined)}
+        existingNames={agents.map((a) => a.config.name)}
+        open={editorOpen}
+        onOpenChange={setEditorOpen}
+        onSaved={refresh}
+        onDeleted={() => {
+          setSelectedId(null)
+          void refresh()
+        }}
+      />
+    </div>
   )
 }
 

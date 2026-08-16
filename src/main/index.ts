@@ -2,7 +2,12 @@ import { app, shell, BrowserWindow } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
-import { registerIpcHandlers } from './ipc'
+import { broadcastAgentsChanged, registerIpcHandlers } from './ipc'
+import { ConfigStore } from './config-store'
+
+// OPEN_ROOM_HOME relocates the config root. Useful for testing against a
+// throwaway directory, and for anyone who keeps dotfiles somewhere else.
+const store = new ConfigStore(process.env.OPEN_ROOM_HOME || undefined)
 
 function createWindow(): void {
   const mainWindow = new BrowserWindow({
@@ -48,12 +53,22 @@ app.whenReady().then(() => {
     optimizer.watchWindowShortcuts(window)
   })
 
-  registerIpcHandlers()
+  registerIpcHandlers(store)
   createWindow()
+
+  // Agent files are hand-editable, so edits made outside the app must show up
+  // without a restart.
+  store.startWatching(broadcastAgentsChanged).catch((error) => {
+    console.error('Failed to watch the agents directory:', error)
+  })
 
   app.on('activate', function () {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
+})
+
+app.on('before-quit', () => {
+  store.stopWatching()
 })
 
 app.on('window-all-closed', () => {
