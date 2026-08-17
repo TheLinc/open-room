@@ -72,13 +72,12 @@ const WHISPER_FILES = [
 ] as const
 
 /** Sizes and checksums come from the generated record, not from here. */
-function whisperFiles(base: string): ModelFile[] {
+function whisperFiles(id: string, base: string): ModelFile[] {
   return WHISPER_FILES.map((name) => {
-    const url = `${base}/${name}`
-    const recorded = MODEL_HASHES[url]
+    const recorded = MODEL_HASHES[`${id}/${name}`]
     return {
       name,
-      url,
+      url: `${base}/${name}`,
       sha256: recorded?.sha256 ?? '',
       sizeBytes: recorded?.sizeBytes ?? 0
     }
@@ -107,7 +106,7 @@ export const CATALOG: CatalogEntry[] = [
     license: 'Apache-2.0',
     attribution: 'Whisper — OpenAI; ONNX conversion by onnx-community',
     homepage: 'https://huggingface.co/onnx-community/whisper-tiny.en',
-    files: whisperFiles(TINY)
+    files: whisperFiles('whisper-tiny-en', TINY)
   },
   {
     id: 'whisper-base-en',
@@ -117,7 +116,7 @@ export const CATALOG: CatalogEntry[] = [
     license: 'Apache-2.0',
     attribution: 'Whisper — OpenAI; ONNX conversion by onnx-community',
     homepage: 'https://huggingface.co/onnx-community/whisper-base.en',
-    files: whisperFiles(BASE)
+    files: whisperFiles('whisper-base-en', BASE)
   }
 ]
 
