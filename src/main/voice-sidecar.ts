@@ -1,8 +1,10 @@
 import { spawn, type ChildProcess } from 'node:child_process'
+import { encodePcm } from '@shared/pcm'
 import {
   decodeMessages,
   encodeMessage,
   type KokoroStatus,
+  type SttStatus,
   type SystemVoice,
   type VoiceRequest,
   type VoiceResponse
@@ -170,5 +172,29 @@ export class VoiceSidecar {
     // Fire and forget: a failed stop is not worth surfacing, and the caller
     // is usually mid-preemption with somewhere better to be.
     await this.request((id) => ({ id, method: 'stop' })).catch(() => {})
+  }
+
+  async sttStatus(): Promise<SttStatus> {
+    const result = await this.request((id) => ({ id, method: 'sttStatus' }))
+    return (result ?? { loaded: false, installed: false }) as SttStatus
+  }
+
+  /**
+   * Downloads the model if it is missing, then loads it.
+   *
+   * Minutes on first call — 147 MB — and under a second afterwards. Poll
+   * `sttStatus` for progress rather than waiting on this in a UI.
+   */
+  async loadStt(): Promise<void> {
+    await this.request((id) => ({ id, method: 'loadStt' }))
+  }
+
+  async transcribe(samples: Float32Array): Promise<string> {
+    const result = await this.request((id) => ({
+      id,
+      method: 'transcribe',
+      params: { pcm: encodePcm(samples) }
+    }))
+    return (result as { text?: string })?.text ?? ''
   }
 }
