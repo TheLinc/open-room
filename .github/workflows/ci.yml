@@ -1,8 +1,10 @@
 name: CI
 
+# Every branch, deliberately. Pinning this to `main` meant it never ran at
+# all — the repository's default branch is `master`, so eight pushes produced
+# zero runs and the "CI is green" claim was never checkable.
 on:
   push:
-    branches: [main]
   pull_request:
   workflow_dispatch:
 

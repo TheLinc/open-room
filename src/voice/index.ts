@@ -31,9 +31,14 @@ const player = new WavPlayer()
  */
 const kokoroModule = (): Promise<typeof import('./kokoro')> => import('./kokoro')
 
+/** Speech-to-text is loaded the same way, and only when voice input is used. */
+const sttModule = (): Promise<typeof import('./stt')> => import('./stt')
+
 /** Last reported weight-download progress, so status can be polled. */
 let kokoroProgress: number | undefined
 let kokoroError: string | undefined
+let sttProgress: number | undefined
+let sttError: string | undefined
 
 /** The in-flight utterance, so a new one can cancel the one before it. */
 let currentSpeech: { cleanup: () => Promise<void> } | null = null
@@ -68,6 +73,37 @@ async function handle(request: VoiceRequest): Promise<unknown> {
         throw error
       }
       return { loaded: true }
+    }
+
+    case 'sttStatus': {
+      const { isSttLoaded } = await sttModule()
+      return { loaded: isSttLoaded(), progress: sttProgress, error: sttError }
+    }
+
+    case 'loadStt': {
+      sttError = undefined
+      try {
+        const { loadStt } = await sttModule()
+        await loadStt((p) => {
+          sttProgress = p
+        })
+        sttProgress = 1
+      } catch (error) {
+        sttError = error instanceof Error ? error.message : String(error)
+        throw error
+      }
+      return { loaded: true }
+    }
+
+    case 'transcribe': {
+      const { transcribe } = await sttModule()
+      // Samples arrive base64-encoded: a JSON array of tens of thousands of
+      // floats would dwarf the audio it describes.
+      const buffer = Buffer.from(request.params.pcm, 'base64')
+      const samples = new Float32Array(
+        buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength)
+      )
+      return { text: await transcribe(samples) }
     }
 
     case 'stop':

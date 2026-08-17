@@ -17,12 +17,28 @@ export type VoiceRequest =
   | { id: number; method: 'ping' }
   | { id: number; method: 'kokoroStatus' }
   | { id: number; method: 'loadKokoro' }
+  | { id: number; method: 'sttStatus' }
+  | { id: number; method: 'loadStt' }
+  | {
+      id: number
+      method: 'transcribe'
+      /** Base64 of a Float32Array of 16 kHz mono samples. */
+      params: { pcm: string }
+    }
 
 export type VoiceResponse =
   { id: number; ok: true; result?: unknown } | { id: number; ok: false; error: string }
 
 /** Whether the neural model is present and usable. */
 export type KokoroStatus = {
+  loaded: boolean
+  /** 0–1 while the weights are downloading. */
+  progress?: number
+  error?: string
+}
+
+/** Whether the speech-to-text model is present and usable. */
+export type SttStatus = {
   loaded: boolean
   /** 0–1 while the weights are downloading. */
   progress?: number
