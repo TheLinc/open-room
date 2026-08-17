@@ -16,12 +16,20 @@ import { env, pipeline, type AutomaticSpeechRecognitionPipeline } from '@hugging
  * comfortably accurate enough for them.
  */
 
-const MODEL_ID = 'onnx-community/whisper-tiny.en'
-
 /** Whisper is trained on 16 kHz mono; anything else must be resampled first. */
 export const STT_SAMPLE_RATE = 16_000
 
-env.cacheDir = process.env.OPEN_ROOM_MODELS || join(homedir(), '.open-room', 'models', 'kokoro')
+/**
+ * Where `ModelManager` installs speech-to-text models.
+ *
+ * Read at call time rather than at module load, so relocating the models root
+ * — which is how tests drive this without touching a real home directory —
+ * takes effect.
+ */
+export function sttModelRoot(): string {
+  const root = process.env.OPEN_ROOM_MODELS || join(homedir(), '.open-room', 'models')
+  return join(root, 'stt')
+}
 
 let instance: AutomaticSpeechRecognitionPipeline | null = null
 let loading: Promise<AutomaticSpeechRecognitionPipeline> | null = null
@@ -30,13 +38,29 @@ export function isSttLoaded(): boolean {
   return instance !== null
 }
 
+/**
+ * Loads a model that is already on disk.
+ *
+ * Remote loading is disabled deliberately. Acquisition belongs to
+ * `ModelManager`, which verifies a sha256 and can resume a 147 MB download;
+ * transformers.js fetching its own copy would bypass both and put a second
+ * copy in a second cache directory.
+ *
+ * `modelId` is the catalog id, which is also the directory name — so
+ * `whisper-tiny-en` resolves to `<models>/stt/whisper-tiny-en/`.
+ */
 export function loadStt(
+  modelId: string,
   onProgress?: (progress: number | undefined) => void
 ): Promise<AutomaticSpeechRecognitionPipeline> {
   if (instance) return Promise.resolve(instance)
 
   if (!loading) {
-    loading = pipeline('automatic-speech-recognition', MODEL_ID, {
+    env.allowRemoteModels = false
+    env.allowLocalModels = true
+    env.localModelPath = sttModelRoot()
+
+    loading = pipeline('automatic-speech-recognition', modelId, {
       dtype: 'fp32',
       device: 'cpu',
       progress_callback: (report) => {
@@ -49,7 +73,7 @@ export function loadStt(
         return asr
       })
       .catch((error) => {
-        // Clear the shared promise so a failed download can be retried rather
+        // Clear the shared promise so a failed load can be retried rather
         // than every later caller inheriting the same rejection.
         loading = null
         throw error
@@ -69,8 +93,11 @@ export function loadStt(
 export async function transcribe(samples: Float32Array): Promise<string> {
   if (samples.length < STT_SAMPLE_RATE * 0.2) return ''
 
-  const asr = await loadStt()
-  const result = await asr(samples)
+  // Loading is the caller's job: it needs a model id, and doing it here would
+  // hide a 147 MB download behind what looks like a transcription call.
+  if (!instance) throw new Error('No speech-to-text model is loaded.')
+
+  const result = await instance(samples)
   const text = Array.isArray(result) ? result[0]?.text : result.text
 
   return cleanTranscript(text ?? '')

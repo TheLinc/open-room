@@ -4,7 +4,9 @@ import {
   type VoiceRequest,
   type VoiceResponse
 } from '@shared/voice-rpc'
+import { findEntry } from '@shared/model-catalog'
 import { listSystemVoices, synthesize } from './synth'
+import { ModelManager } from './model-manager'
 import { WavPlayer } from './player'
 
 /**
@@ -21,6 +23,17 @@ import { WavPlayer } from './player'
  */
 
 const player = new WavPlayer()
+
+const models = new ModelManager()
+
+/**
+ * The only speech-to-text model this phase wires up.
+ *
+ * `whisper-base-en` is catalogued and downloadable but not selectable yet —
+ * choosing between them is a settings surface Phase 5b can add once there is
+ * a reason to prefer the slower one.
+ */
+const STT_MODEL_ID = 'whisper-tiny-en'
 
 /**
  * The neural stack is imported on demand.
@@ -77,16 +90,28 @@ async function handle(request: VoiceRequest): Promise<unknown> {
 
     case 'sttStatus': {
       const { isSttLoaded } = await sttModule()
-      return { loaded: isSttLoaded(), progress: sttProgress, error: sttError }
+      const entry = findEntry(STT_MODEL_ID)
+      const installed = entry ? await models.isInstalled(entry) : false
+      return { loaded: isSttLoaded(), installed, progress: sttProgress, error: sttError }
     }
 
     case 'loadStt': {
       sttError = undefined
       try {
+        const entry = findEntry(STT_MODEL_ID)
+        if (!entry) throw new Error(`Unknown model: ${STT_MODEL_ID}`)
+
+        // Download reports 0–0.9 and loading the last tenth. The download is
+        // 147 MB and the load is under a second, so a bar that sat at 100%
+        // while the model initialised would read as a hang.
+        if (!(await models.isInstalled(entry))) {
+          await models.download(STT_MODEL_ID, (p) => {
+            sttProgress = (p.receivedBytes / p.totalBytes) * 0.9
+          })
+        }
+
         const { loadStt } = await sttModule()
-        await loadStt((p) => {
-          sttProgress = p
-        })
+        await loadStt(STT_MODEL_ID)
         sttProgress = 1
       } catch (error) {
         sttError = error instanceof Error ? error.message : String(error)

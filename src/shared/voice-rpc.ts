@@ -39,7 +39,15 @@ export type KokoroStatus = {
 
 /** Whether the speech-to-text model is present and usable. */
 export type SttStatus = {
+  /** In memory and ready to transcribe. */
   loaded: boolean
+  /**
+   * On disk and checksum-verified, whether or not it is loaded.
+   *
+   * Separate from `loaded` because the gate on voice input is installation —
+   * loading takes under a second, downloading takes minutes.
+   */
+  installed: boolean
   /** 0–1 while the weights are downloading. */
   progress?: number
   error?: string
