@@ -7,6 +7,7 @@ import type {
 } from './agent-runtime'
 import type { Conversation, ConversationPage } from './conversation'
 import type { AppSettings } from './settings'
+import type { SystemVoice } from './voice-rpc'
 
 /**
  * The IPC contract between main, preload, and renderer.
@@ -80,6 +81,9 @@ export const IpcChannel = {
   deleteConversation: 'conversation:delete',
   clearConversations: 'conversation:clear-all',
 
+  listVoices: 'voice:list',
+  previewVoice: 'voice:preview',
+
   getSettings: 'settings:get',
   saveSettings: 'settings:save'
 } as const
@@ -131,6 +135,9 @@ export type OpenRoomApi = {
   renameConversation: (agentId: string, sessionId: string, title: string) => Promise<MutationResult>
   deleteConversation: (agentId: string, sessionId: string) => Promise<MutationResult>
   clearConversations: (agentId: string) => Promise<MutationResult>
+
+  listVoices: () => Promise<SystemVoice[]>
+  previewVoice: (voiceId: string, rate: number) => Promise<MutationResult>
 
   getSettings: () => Promise<AppSettings>
   saveSettings: (settings: AppSettings) => Promise<MutationResult>

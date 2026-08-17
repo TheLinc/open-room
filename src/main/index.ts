@@ -16,6 +16,8 @@ import { AgentSupervisor } from './agent-supervisor'
 import { ConversationStore } from './conversation-store'
 import { SpeechBus } from './speech-bus'
 import { NotificationSink } from './notification-sink'
+import { VoiceSidecar } from './voice-sidecar'
+import { VoiceSink } from './voice-sink'
 
 // OPEN_ROOM_HOME relocates the config root. Useful for testing against a
 // throwaway directory, and for anyone who keeps dotfiles somewhere else.
@@ -23,9 +25,14 @@ const store = new ConfigStore(process.env.OPEN_ROOM_HOME || undefined)
 
 const conversations = new ConversationStore()
 
-// One global playback lane for every agent. Delivery is notifications for
-// now; the voice sidecar swaps in an audio sink without changing arbitration.
-const speech = new SpeechBus(new NotificationSink())
+// One global playback lane for every agent. The sink decides delivery —
+// speech for agents with TTS on, notifications for everyone else and whenever
+// the sidecar is unavailable.
+const voiceScript = app.isPackaged
+  ? join(process.resourcesPath, 'app.asar', 'out', 'main', 'voice.js')
+  : join(app.getAppPath(), 'out', 'main', 'voice.js')
+const voice = new VoiceSidecar(voiceScript)
+const speech = new SpeechBus(new VoiceSink(voice, new NotificationSink(), store))
 
 const supervisor = new AgentSupervisor(
   {
@@ -89,7 +96,8 @@ app.whenReady().then(async () => {
   const settings = await store.readSettings()
   supervisor.setOptions({ maxConcurrent: settings.maxConcurrentAgents })
 
-  registerIpcHandlers(store, supervisor, conversations)
+  voice.start()
+  registerIpcHandlers(store, supervisor, conversations, voice)
   createWindow()
 
   // Agent files are hand-editable, so edits made outside the app must show up
@@ -112,6 +120,7 @@ app.whenReady().then(async () => {
 
 app.on('before-quit', async (event) => {
   store.stopWatching()
+  voice.stop()
   if (idleReaper) clearInterval(idleReaper)
 
   // Agent subprocesses outlive the app unless they are stopped, so quitting

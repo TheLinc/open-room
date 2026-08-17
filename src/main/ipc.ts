@@ -11,6 +11,8 @@ import { IpcChannel, type AgentsSnapshot, type AppInfo, type MutationResult } fr
 import { ConfigStore } from './config-store'
 import type { AgentSupervisor } from './agent-supervisor'
 import type { ConversationStore } from './conversation-store'
+import type { VoiceSidecar } from './voice-sidecar'
+import type { SystemVoice } from '@shared/voice-rpc'
 import type { Conversation, ConversationPage } from '@shared/conversation'
 
 /**
@@ -23,7 +25,8 @@ import type { Conversation, ConversationPage } from '@shared/conversation'
 export function registerIpcHandlers(
   store: ConfigStore,
   supervisor: AgentSupervisor,
-  conversations: ConversationStore
+  conversations: ConversationStore,
+  voice: VoiceSidecar
 ): void {
   ipcMain.handle(IpcChannel.getAppInfo, (): AppInfo => {
     return {
@@ -187,6 +190,16 @@ export function registerIpcHandlers(
         supervisor.setActiveConversation(agentId, null)
         await conversations.removeAll(agent)
       })
+  )
+
+  ipcMain.handle(IpcChannel.listVoices, async (): Promise<SystemVoice[]> => {
+    return voice.listVoices().catch(() => [])
+  })
+
+  ipcMain.handle(
+    IpcChannel.previewVoice,
+    async (_e, voiceId: string, rate: number): Promise<MutationResult> =>
+      guard(() => voice.speak('This is how this agent will sound.', { voiceId, rate }))
   )
 
   ipcMain.handle(IpcChannel.getSettings, (): Promise<AppSettings> => store.readSettings())

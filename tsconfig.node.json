@@ -4,6 +4,7 @@
     "electron.vite.config.*",
     "src/main/**/*",
     "src/preload/**/*",
+    "src/voice/**/*",
     "src/shared/**/*",
     "vitest.config.ts"
   ],

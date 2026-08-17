@@ -57,7 +57,9 @@ export const agentFormSchema = z
   // A speaking agent with no voice would fail validation in main with an
   // unhelpful message, so catch it here where the field can be highlighted.
   .superRefine((values, ctx) => {
-    if (values.ttsEnabled && !values.voiceId.trim()) {
+    // System voices may be left unset, meaning the platform default. A Piper
+    // voice names a specific model file, so it cannot be blank.
+    if (values.ttsEnabled && values.voiceProvider === 'piper' && !values.voiceId.trim()) {
       ctx.addIssue({
         code: 'custom',
         path: ['voiceId'],
@@ -134,7 +136,7 @@ export function toFormValues(agent: Agent, tools: readonly string[]): AgentFormV
       : '',
     context: agent.context,
     ttsEnabled: config.tts.enabled,
-    voiceProvider: config.tts.enabled ? config.tts.voice.provider : 'piper',
+    voiceProvider: config.tts.enabled ? config.tts.voice.provider : 'system',
     voiceId: config.tts.enabled ? config.tts.voice.id : '',
     rate: config.tts.enabled ? config.tts.rate : 1
   }

@@ -9,6 +9,7 @@ import type {
 } from '@shared/agent-runtime'
 import type { Conversation, ConversationPage } from '@shared/conversation'
 import type { AppSettings } from '@shared/settings'
+import type { SystemVoice } from '@shared/voice-rpc'
 import {
   IpcChannel,
   type AgentsSnapshot,
@@ -100,6 +101,11 @@ const openRoom: OpenRoomApi = {
 
   clearConversations: (agentId: string): Promise<MutationResult> =>
     ipcRenderer.invoke(IpcChannel.clearConversations, agentId),
+
+  listVoices: (): Promise<SystemVoice[]> => ipcRenderer.invoke(IpcChannel.listVoices),
+
+  previewVoice: (voiceId: string, rate: number): Promise<MutationResult> =>
+    ipcRenderer.invoke(IpcChannel.previewVoice, voiceId, rate),
 
   getSettings: (): Promise<AppSettings> => ipcRenderer.invoke(IpcChannel.getSettings),
 

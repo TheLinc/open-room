@@ -77,7 +77,10 @@ const mcpRemoteSchema = z.looseObject({
 export const mcpServerSchema = z.union([mcpStdioSchema, mcpRemoteSchema])
 
 export const voiceRefSchema = z.discriminatedUnion('provider', [
-  z.object({ provider: z.literal('system'), id: z.string().min(1) }),
+  // An empty system id means "whatever this machine's default voice is",
+  // which travels between machines better than a named voice that may not
+  // exist on the other one.
+  z.object({ provider: z.literal('system'), id: z.string() }),
   z.object({ provider: z.literal('piper'), id: z.string().min(1) })
 ])
 

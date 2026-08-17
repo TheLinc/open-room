@@ -10,6 +10,16 @@ export default defineConfig({
         '@main': resolve('src/main'),
         '@shared': resolve('src/shared')
       }
+    },
+    build: {
+      rollupOptions: {
+        // The voice sidecar is bundled alongside main but runs as its own
+        // process, spawned with Electron's binary in Node mode.
+        input: {
+          index: resolve('src/main/index.ts'),
+          voice: resolve('src/voice/index.ts')
+        }
+      }
     }
   },
   preload: {

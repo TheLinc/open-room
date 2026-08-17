@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useForm, Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { AlertTriangle, FolderOpen, Loader2, Trash2 } from 'lucide-react'
+import { AlertTriangle, FolderOpen, Loader2, Trash2, Volume2 } from 'lucide-react'
 import {
   AGENT_COLORS,
   CLAUDE_CODE_TOOLS,
@@ -11,6 +11,7 @@ import {
   type Agent
 } from '@shared/agent'
 import { checkAgentName } from '@shared/phonetics'
+import type { SystemVoice } from '@shared/voice-rpc'
 import {
   agentFormSchema,
   toAgent,
@@ -45,11 +46,26 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 
 /**
- * Voice options are a placeholder until Phase 4a enumerates real ones.
- * The bundled Piper voice ships with the app, so it is the only guaranteed
- * entry; downloaded and system voices join it once the sidecar exists.
+ * Voices come from the sidecar, which reports what the operating system has
+ * installed. Downloaded Piper voices join this list once the model manager
+ * exists; until then every entry is a system voice.
  */
-const PLACEHOLDER_VOICES = [{ id: 'bundled', label: 'Bundled voice (default)' }]
+function useSystemVoices(enabled: boolean): SystemVoice[] {
+  const [voices, setVoices] = useState<SystemVoice[]>([])
+
+  useEffect(() => {
+    if (!enabled) return
+    let cancelled = false
+    void window.openRoom.listVoices().then((list) => {
+      if (!cancelled) setVoices(list)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [enabled])
+
+  return voices
+}
 
 /** Radix Select rejects an empty string as a value, so "unset" needs a stand-in. */
 const UNSET = '__unset__'
@@ -99,6 +115,7 @@ export function AgentEditor({
 
   const watchedName = form.watch('name')
   const ttsEnabled = form.watch('ttsEnabled')
+  const voices = useSystemVoices(open && ttsEnabled)
   const persistSession = form.watch('persistSession')
 
   const nameWarnings = useMemo(
@@ -419,14 +436,7 @@ export function AgentEditor({
                         <Switch
                           id="ttsEnabled"
                           checked={field.value}
-                          onCheckedChange={(checked) => {
-                            field.onChange(checked)
-                            // Turning speech on with no voice selected would
-                            // fail validation on save; pick the guaranteed one.
-                            if (checked && !form.getValues('voiceId')) {
-                              form.setValue('voiceId', PLACEHOLDER_VOICES[0].id)
-                            }
-                          }}
+                          onCheckedChange={field.onChange}
                         />
                       )}
                     />
@@ -440,18 +450,38 @@ export function AgentEditor({
                           control={form.control}
                           name="voiceId"
                           render={({ field }) => (
-                            <Select value={field.value || 'bundled'} onValueChange={field.onChange}>
-                              <SelectTrigger>
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {PLACEHOLDER_VOICES.map((voice) => (
-                                  <SelectItem key={voice.id} value={voice.id}>
-                                    {voice.label}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
+                            <div className="flex gap-2">
+                              <Select
+                                value={field.value || UNSET}
+                                onValueChange={(next) => field.onChange(next === UNSET ? '' : next)}
+                              >
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Choose a voice" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value={UNSET}>System default</SelectItem>
+                                  {voices.map((voice) => (
+                                    <SelectItem key={voice.id} value={voice.id}>
+                                      {voice.label}
+                                      {voice.locale ? ` · ${voice.locale}` : ''}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                aria-label="Preview voice"
+                                onClick={() =>
+                                  void window.openRoom.previewVoice(
+                                    field.value,
+                                    form.getValues('rate')
+                                  )
+                                }
+                              >
+                                <Volume2 /> Preview
+                              </Button>
+                            </div>
                           )}
                         />
                         <FieldDescription>

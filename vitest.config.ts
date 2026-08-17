@@ -10,6 +10,9 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['src/**/*.{test,spec}.ts'],
+    // Integration tests spawn the voice sidecar and play real audio, so they
+    // are opt-in via `npm run test:voice` rather than part of every run.
+    exclude: ['**/node_modules/**', 'src/**/*.integration.test.ts'],
     globals: false
   },
   resolve: {
