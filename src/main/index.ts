@@ -14,12 +14,18 @@ import {
 import { ConfigStore } from './config-store'
 import { AgentSupervisor } from './agent-supervisor'
 import { ConversationStore } from './conversation-store'
+import { SpeechBus } from './speech-bus'
+import { NotificationSink } from './notification-sink'
 
 // OPEN_ROOM_HOME relocates the config root. Useful for testing against a
 // throwaway directory, and for anyone who keeps dotfiles somewhere else.
 const store = new ConfigStore(process.env.OPEN_ROOM_HOME || undefined)
 
 const conversations = new ConversationStore()
+
+// One global playback lane for every agent. Delivery is notifications for
+// now; the voice sidecar swaps in an audio sink without changing arbitration.
+const speech = new SpeechBus(new NotificationSink())
 
 const supervisor = new AgentSupervisor(
   {
@@ -29,7 +35,8 @@ const supervisor = new AgentSupervisor(
     onPermissionResolved: broadcastPermissionResolved,
     onTranscriptCleared: broadcastTranscriptCleared
   },
-  conversations
+  conversations,
+  speech
 )
 
 /** Ends sessions left idle, since each one holds a full CLI subprocess. */

@@ -24,6 +24,15 @@ import {
 } from './agent-errors'
 import { PushableQueue } from './message-queue'
 import type { ConversationStore } from './conversation-store'
+import type { SpeechBus } from './speech-bus'
+import {
+  createSpeakServer,
+  newTurnSpeechState,
+  SPEAK_TOOL_NAME,
+  VOICE_SERVER_NAME,
+  type TurnSpeechState
+} from './speak-tool'
+import { condenseForSpeech, FALLBACK_MIN_TURN_MS } from './condense'
 
 /**
  * Owns the lifecycle of every running agent.
@@ -51,6 +60,8 @@ type Session = {
    * "needs attention" because someone pressed Stop is wrong.
    */
   interrupting: boolean
+  /** Reset each turn; caps how often an agent may speak and records whether it did. */
+  turnSpeech: TurnSpeechState
 }
 
 /** The shape `query()` accepts on its input stream. */
@@ -93,6 +104,7 @@ export class AgentSupervisor {
   constructor(
     private readonly events: SupervisorEvents,
     private readonly conversations: ConversationStore,
+    private readonly speech: SpeechBus,
     private options: SupervisorOptions = { maxConcurrent: 3 }
   ) {}
 
@@ -132,6 +144,9 @@ export class AgentSupervisor {
     if (!session) return { ok: false, message: 'Session did not start.' }
 
     this.patch(agent.config.id, { state: 'working', lastActiveAt: Date.now(), error: null })
+
+    session.turnSpeech.calls = 0
+    session.turnSpeech.spoke = false
 
     const userMessage: SDKUserInput = {
       type: 'user',
@@ -185,10 +200,14 @@ export class AgentSupervisor {
 
     const queue = new PushableQueue<SDKUserInput>()
 
+    const turnSpeech = newTurnSpeechState()
+
     try {
+      // Options are built with the turn state in hand so the `speak` tool can
+      // enforce its per-turn budget against the live session.
       const q = query({
         prompt: queue.stream(),
-        options: this.optionsFor(agent, resumeSessionId)
+        options: this.optionsFor(agent, resumeSessionId, turnSpeech)
       })
       const session: Session = {
         agentId: id,
@@ -197,7 +216,8 @@ export class AgentSupervisor {
         query: q,
         pump: Promise.resolve(),
         seq: 0,
-        interrupting: false
+        interrupting: false,
+        turnSpeech
       }
       session.pump = this.pump(session)
       this.sessions.set(id, session)
@@ -210,7 +230,11 @@ export class AgentSupervisor {
     }
   }
 
-  private optionsFor(agent: Agent, resumeSessionId: string | null): Options {
+  private optionsFor(
+    agent: Agent,
+    resumeSessionId: string | null,
+    turnSpeech: TurnSpeechState
+  ): Options {
     const { config } = agent
 
     return {
@@ -219,9 +243,15 @@ export class AgentSupervisor {
       model: config.model,
       ...(config.effort ? { effort: config.effort } : {}),
       ...(config.fallbackModel ? { fallbackModel: config.fallbackModel } : {}),
-      mcpServers: config.mcpServers as Options['mcpServers'],
+      mcpServers: {
+        ...(config.mcpServers as Options['mcpServers']),
+        // In-process, so the spoken line never leaves the app.
+        [VOICE_SERVER_NAME]: createSpeakServer(agent, this.speech, turnSpeech)
+      },
       permissionMode: config.permissionMode,
-      allowedTools: config.allowedTools,
+      // Speaking is always allowed: it is Open Room's own in-process tool and
+      // asking permission for it would stall every turn behind a dialog.
+      allowedTools: [...config.allowedTools, SPEAK_TOOL_NAME],
       disallowedTools: config.disallowedTools,
       persistSession: config.persistSession,
       // `resume` opens an existing conversation; the streaming generator
@@ -261,6 +291,12 @@ export class AgentSupervisor {
         blockedPath?: string
       }
     ): Promise<PermissionResult> => {
+      // Defence in depth: allowedTools should already cover this, but a
+      // permission prompt for speech would hang the turn, so never ask.
+      if (toolName === SPEAK_TOOL_NAME) {
+        return { behavior: 'allow' as const }
+      }
+
       const id = randomUUID()
 
       return new Promise<PermissionResult>((resolve) => {
@@ -417,8 +453,45 @@ export class AgentSupervisor {
 
       if (message.is_error && message.subtype !== 'success' && !wasInterrupted) {
         this.fail(id, classifyThrownError(new Error(String(message.subtype))))
+        return
+      }
+
+      if (message.subtype === 'success' && !wasInterrupted) {
+        void this.speakFallback(session, message.result, message.duration_ms)
       }
     }
+  }
+
+  /**
+   * Says something when a turn finished but the agent never called `speak`.
+   *
+   * Prevents silence after a long run. Gated three ways so it stays rare:
+   * the agent must have speech enabled, the turn must have been long enough
+   * that silence is genuinely confusing, and the agent must not have already
+   * spoken for itself.
+   */
+  private async speakFallback(
+    session: Session,
+    finalText: string,
+    durationMs: number
+  ): Promise<void> {
+    const { config, name } = { config: session.agent.config, name: session.agent.config.name }
+
+    if (session.turnSpeech.spoke) return
+    if (!config.tts.enabled) return
+    if (durationMs < FALLBACK_MIN_TURN_MS) return
+
+    const sentence = await condenseForSpeech(finalText)
+    if (!sentence) return
+
+    this.speech.enqueue({
+      id: randomUUID(),
+      agentId: config.id,
+      agentName: name,
+      text: sentence,
+      priority: 'done',
+      queuedAt: Date.now()
+    })
   }
 
   async interrupt(agentId: string): Promise<void> {
