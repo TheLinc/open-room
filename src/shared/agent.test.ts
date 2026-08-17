@@ -76,7 +76,7 @@ describe('agentConfigSchema', () => {
     expect(
       agentConfigSchema.safeParse({
         ...validConfig,
-        tts: { enabled: true, rate: 1, voice: { provider: 'piper', id: 'en_US-amy-low' } }
+        tts: { enabled: true, rate: 1, voice: { provider: 'kokoro', id: 'af_heart' } }
       }).success
     ).toBe(true)
   })

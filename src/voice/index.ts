@@ -22,6 +22,19 @@ import { WavPlayer } from './player'
 
 const player = new WavPlayer()
 
+/**
+ * The neural stack is imported on demand.
+ *
+ * Loading transformers.js pulls in a large wasm phonemizer, which would delay
+ * sidecar startup and make even `ping` wait on machinery an agent using system
+ * voices never needs.
+ */
+const kokoroModule = (): Promise<typeof import('./kokoro')> => import('./kokoro')
+
+/** Last reported weight-download progress, so status can be polled. */
+let kokoroProgress: number | undefined
+let kokoroError: string | undefined
+
 /** The in-flight utterance, so a new one can cancel the one before it. */
 let currentSpeech: { cleanup: () => Promise<void> } | null = null
 
@@ -37,6 +50,26 @@ async function handle(request: VoiceRequest): Promise<unknown> {
     case 'listVoices':
       return listSystemVoices()
 
+    case 'kokoroStatus': {
+      const { isKokoroLoaded } = await kokoroModule()
+      return { loaded: isKokoroLoaded(), progress: kokoroProgress, error: kokoroError }
+    }
+
+    case 'loadKokoro': {
+      kokoroError = undefined
+      try {
+        const { loadKokoro } = await kokoroModule()
+        await loadKokoro((p) => {
+          kokoroProgress = p.progress
+        })
+        kokoroProgress = 1
+      } catch (error) {
+        kokoroError = error instanceof Error ? error.message : String(error)
+        throw error
+      }
+      return { loaded: true }
+    }
+
     case 'stop':
       player.stop()
       return null
@@ -50,7 +83,8 @@ async function handle(request: VoiceRequest): Promise<unknown> {
 
       const synthesized = await synthesize(request.params.text, {
         voiceId: request.params.voiceId,
-        rate: request.params.rate
+        rate: request.params.rate,
+        provider: request.params.provider
       })
       currentSpeech = synthesized
 

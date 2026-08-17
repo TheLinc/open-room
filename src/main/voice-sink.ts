@@ -57,16 +57,21 @@ export class VoiceSink implements SpeechSink {
   }
 
   /** Reads live config so an agent's voice settings apply without a restart. */
-  private async ttsFor(agentId: string): Promise<{ voiceId?: string; rate: number } | null> {
+  private async ttsFor(
+    agentId: string
+  ): Promise<{ voiceId?: string; rate: number; provider: 'system' | 'kokoro' } | null> {
     try {
       const agent = await this.store.read(agentId)
       if (!agent.config.tts.enabled) return null
 
       const { voice, rate } = agent.config.tts
-      // Only system voices exist so far; Piper ids arrive with the model
-      // manager and are resolved by the sidecar, not here.
-      // An empty id falls through to the platform default.
-      return { voiceId: voice.provider === 'system' ? voice.id || undefined : undefined, rate }
+      // An empty system id falls through to the platform default; a Kokoro id
+      // names a specific speaker and is resolved inside the sidecar.
+      return {
+        provider: voice.provider,
+        voiceId: voice.id || undefined,
+        rate
+      }
     } catch {
       return null
     }

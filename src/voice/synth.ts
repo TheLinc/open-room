@@ -102,7 +102,7 @@ export async function listSystemVoices(): Promise<SystemVoice[]> {
  */
 export async function synthesize(
   text: string,
-  options: { voiceId?: string; rate: number }
+  options: { voiceId?: string; rate: number; provider?: 'system' | 'kokoro' }
 ): Promise<Synthesized> {
   const { dir, file } = await tempWav()
   const cleanup = async (): Promise<void> => {
@@ -110,6 +110,14 @@ export async function synthesize(
   }
 
   try {
+    if (options.provider === 'kokoro') {
+      // Kokoro writes the WAV itself, so playback and interruption are
+      // unchanged — the backend only supplies a different file.
+      const { synthesizeKokoro } = await import('./kokoro')
+      await synthesizeKokoro(text, options, file)
+      return { wavPath: file, cleanup }
+    }
+
     if (isWindows) {
       // SAPI rate is -10..10 with 0 natural. Our scale is inverted (higher =
       // slower), so it is negated on the way in.

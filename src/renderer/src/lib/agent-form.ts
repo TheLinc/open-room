@@ -50,16 +50,16 @@ export const agentFormSchema = z
       .refine((text) => parseMcpServers(text).ok, { message: 'Not valid MCP server JSON' }),
     context: z.string(),
     ttsEnabled: z.boolean(),
-    voiceProvider: z.enum(['system', 'piper']),
+    voiceProvider: z.enum(['system', 'kokoro']),
     voiceId: z.string(),
     rate: z.number().min(0.5).max(2)
   })
   // A speaking agent with no voice would fail validation in main with an
   // unhelpful message, so catch it here where the field can be highlighted.
   .superRefine((values, ctx) => {
-    // System voices may be left unset, meaning the platform default. A Piper
-    // voice names a specific model file, so it cannot be blank.
-    if (values.ttsEnabled && values.voiceProvider === 'piper' && !values.voiceId.trim()) {
+    // System voices may be left unset, meaning the platform default. A Kokoro
+    // voice names a specific speaker, so it cannot be blank.
+    if (values.ttsEnabled && values.voiceProvider === 'kokoro' && !values.voiceId.trim()) {
       ctx.addIssue({
         code: 'custom',
         path: ['voiceId'],

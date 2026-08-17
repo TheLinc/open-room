@@ -58,8 +58,8 @@ describe('form round trip', () => {
       effort: 'high' as const,
       fallbackModel: 'claude-haiku-4-5',
       ttsEnabled: true,
-      voiceProvider: 'piper' as const,
-      voiceId: 'en_US-amy-low',
+      voiceProvider: 'kokoro' as const,
+      voiceId: 'af_heart',
       rate: 1.2
     }
 

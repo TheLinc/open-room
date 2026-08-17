@@ -7,7 +7,7 @@ import type {
 } from './agent-runtime'
 import type { Conversation, ConversationPage } from './conversation'
 import type { AppSettings } from './settings'
-import type { SystemVoice } from './voice-rpc'
+import type { KokoroStatus, SystemVoice } from './voice-rpc'
 
 /**
  * The IPC contract between main, preload, and renderer.
@@ -83,6 +83,8 @@ export const IpcChannel = {
 
   listVoices: 'voice:list',
   previewVoice: 'voice:preview',
+  kokoroStatus: 'voice:kokoro-status',
+  loadKokoro: 'voice:kokoro-load',
 
   getSettings: 'settings:get',
   saveSettings: 'settings:save'
@@ -137,7 +139,14 @@ export type OpenRoomApi = {
   clearConversations: (agentId: string) => Promise<MutationResult>
 
   listVoices: () => Promise<SystemVoice[]>
-  previewVoice: (voiceId: string, rate: number) => Promise<MutationResult>
+  previewVoice: (
+    voiceId: string,
+    rate: number,
+    provider: 'system' | 'kokoro'
+  ) => Promise<MutationResult>
+  kokoroStatus: () => Promise<KokoroStatus>
+  /** Downloads the neural weights. Resolves when the model is usable. */
+  loadKokoro: () => Promise<MutationResult>
 
   getSettings: () => Promise<AppSettings>
   saveSettings: (settings: AppSettings) => Promise<MutationResult>

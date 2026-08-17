@@ -2,6 +2,7 @@ import { spawn, type ChildProcess } from 'node:child_process'
 import {
   decodeMessages,
   encodeMessage,
+  type KokoroStatus,
   type SystemVoice,
   type VoiceRequest,
   type VoiceResponse
@@ -139,12 +140,30 @@ export class VoiceSidecar {
   }
 
   /** Resolves when playback finishes or is stopped. */
-  async speak(text: string, options: { voiceId?: string; rate: number }): Promise<void> {
+  async speak(
+    text: string,
+    options: { voiceId?: string; rate: number; provider?: 'system' | 'kokoro' }
+  ): Promise<void> {
     await this.request((id) => ({
       id,
       method: 'speak',
-      params: { text, voiceId: options.voiceId, rate: options.rate }
+      params: {
+        text,
+        voiceId: options.voiceId,
+        rate: options.rate,
+        provider: options.provider
+      }
     }))
+  }
+
+  async kokoroStatus(): Promise<KokoroStatus> {
+    const result = await this.request((id) => ({ id, method: 'kokoroStatus' }))
+    return (result ?? { loaded: false }) as KokoroStatus
+  }
+
+  /** Downloads the weights if needed. Slow on first call; safe to repeat. */
+  async loadKokoro(): Promise<void> {
+    await this.request((id) => ({ id, method: 'loadKokoro' }))
   }
 
   async stopSpeaking(): Promise<void> {

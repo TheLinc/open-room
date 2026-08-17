@@ -9,7 +9,7 @@ import type {
 } from '@shared/agent-runtime'
 import type { Conversation, ConversationPage } from '@shared/conversation'
 import type { AppSettings } from '@shared/settings'
-import type { SystemVoice } from '@shared/voice-rpc'
+import type { KokoroStatus, SystemVoice } from '@shared/voice-rpc'
 import {
   IpcChannel,
   type AgentsSnapshot,
@@ -104,8 +104,16 @@ const openRoom: OpenRoomApi = {
 
   listVoices: (): Promise<SystemVoice[]> => ipcRenderer.invoke(IpcChannel.listVoices),
 
-  previewVoice: (voiceId: string, rate: number): Promise<MutationResult> =>
-    ipcRenderer.invoke(IpcChannel.previewVoice, voiceId, rate),
+  previewVoice: (
+    voiceId: string,
+    rate: number,
+    provider: 'system' | 'kokoro'
+  ): Promise<MutationResult> =>
+    ipcRenderer.invoke(IpcChannel.previewVoice, voiceId, rate, provider),
+
+  kokoroStatus: (): Promise<KokoroStatus> => ipcRenderer.invoke(IpcChannel.kokoroStatus),
+
+  loadKokoro: (): Promise<MutationResult> => ipcRenderer.invoke(IpcChannel.loadKokoro),
 
   getSettings: (): Promise<AppSettings> => ipcRenderer.invoke(IpcChannel.getSettings),
 

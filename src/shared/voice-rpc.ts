@@ -11,13 +11,23 @@ export type VoiceRequest =
   | {
       id: number
       method: 'speak'
-      params: { text: string; voiceId?: string; rate: number }
+      params: { text: string; voiceId?: string; rate: number; provider?: 'system' | 'kokoro' }
     }
   | { id: number; method: 'stop' }
   | { id: number; method: 'ping' }
+  | { id: number; method: 'kokoroStatus' }
+  | { id: number; method: 'loadKokoro' }
 
 export type VoiceResponse =
   { id: number; ok: true; result?: unknown } | { id: number; ok: false; error: string }
+
+/** Whether the neural model is present and usable. */
+export type KokoroStatus = {
+  loaded: boolean
+  /** 0–1 while the weights are downloading. */
+  progress?: number
+  error?: string
+}
 
 export type SystemVoice = {
   id: string

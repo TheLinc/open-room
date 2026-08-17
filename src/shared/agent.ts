@@ -81,7 +81,9 @@ export const voiceRefSchema = z.discriminatedUnion('provider', [
   // which travels between machines better than a named voice that may not
   // exist on the other one.
   z.object({ provider: z.literal('system'), id: z.string() }),
-  z.object({ provider: z.literal('piper'), id: z.string().min(1) })
+  // Kokoro is the neural backend: Apache-2.0 engine, weights and voices, the
+  // same on every platform. Requires a one-time model download.
+  z.object({ provider: z.literal('kokoro'), id: z.string().min(1) })
 ])
 
 export const ttsSchema = z.discriminatedUnion('enabled', [

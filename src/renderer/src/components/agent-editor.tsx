@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useForm, Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { AlertTriangle, FolderOpen, Loader2, Trash2, Volume2 } from 'lucide-react'
+import { AlertTriangle, Download, FolderOpen, Loader2, Trash2, Volume2 } from 'lucide-react'
 import {
   AGENT_COLORS,
   CLAUDE_CODE_TOOLS,
@@ -11,7 +11,8 @@ import {
   type Agent
 } from '@shared/agent'
 import { checkAgentName } from '@shared/phonetics'
-import type { SystemVoice } from '@shared/voice-rpc'
+import type { KokoroStatus, SystemVoice } from '@shared/voice-rpc'
+import { DEFAULT_KOKORO_VOICE, KOKORO_VOICES } from '@shared/kokoro-voices'
 import {
   agentFormSchema,
   toAgent,
@@ -46,9 +47,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 
 /**
- * Voices come from the sidecar, which reports what the operating system has
- * installed. Downloaded Piper voices join this list once the model manager
- * exists; until then every entry is a system voice.
+ * System voices come from the sidecar, which reports what the operating
+ * system has installed. Kokoro's roster is static and lives in shared code,
+ * so it can be listed before the 163 MB model has been downloaded.
  */
 function useSystemVoices(enabled: boolean): SystemVoice[] {
   const [voices, setVoices] = useState<SystemVoice[]>([])
@@ -65,6 +66,32 @@ function useSystemVoices(enabled: boolean): SystemVoice[] {
   }, [enabled])
 
   return voices
+}
+
+/** Tracks whether the neural weights are present, polling while they load. */
+function useKokoroStatus(enabled: boolean): KokoroStatus {
+  const [status, setStatus] = useState<KokoroStatus>({ loaded: false })
+
+  useEffect(() => {
+    if (!enabled) return
+    let cancelled = false
+
+    const poll = async (): Promise<void> => {
+      const next = await window.openRoom.kokoroStatus()
+      if (!cancelled) setStatus(next)
+    }
+
+    void poll()
+    // Polled rather than pushed: the download reports progress from inside the
+    // sidecar, and a status request is far cheaper than another event channel.
+    const timer = setInterval(poll, 1000)
+    return () => {
+      cancelled = true
+      clearInterval(timer)
+    }
+  }, [enabled])
+
+  return status
 }
 
 /** Radix Select rejects an empty string as a value, so "unset" needs a stand-in. */
@@ -115,7 +142,9 @@ export function AgentEditor({
 
   const watchedName = form.watch('name')
   const ttsEnabled = form.watch('ttsEnabled')
-  const voices = useSystemVoices(open && ttsEnabled)
+  const voiceProvider = form.watch('voiceProvider')
+  const systemVoices = useSystemVoices(open && ttsEnabled && voiceProvider === 'system')
+  const kokoro = useKokoroStatus(open && ttsEnabled && voiceProvider === 'kokoro')
   const persistSession = form.watch('persistSession')
 
   const nameWarnings = useMemo(
@@ -445,6 +474,64 @@ export function AgentEditor({
                   {ttsEnabled && (
                     <>
                       <Field>
+                        <FieldLabel>Engine</FieldLabel>
+                        <Controller
+                          control={form.control}
+                          name="voiceProvider"
+                          render={({ field }) => (
+                            <Select
+                              value={field.value}
+                              onValueChange={(next) => {
+                                field.onChange(next)
+                                // Voice ids are per-engine, so a leftover id
+                                // from the other one would never resolve.
+                                form.setValue(
+                                  'voiceId',
+                                  next === 'kokoro' ? DEFAULT_KOKORO_VOICE : ''
+                                )
+                              }}
+                            >
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="system">System — instant, built in</SelectItem>
+                                <SelectItem value="kokoro">
+                                  Neural — better quality, 163 MB download
+                                </SelectItem>
+                              </SelectContent>
+                            </Select>
+                          )}
+                        />
+                        <FieldDescription>
+                          {voiceProvider === 'kokoro'
+                            ? 'Sounds markedly more natural and is identical on Windows and macOS. Adds roughly a third of a second before each line.'
+                            : 'Uses the voices already installed on this machine. Fastest to start speaking.'}
+                        </FieldDescription>
+                      </Field>
+
+                      {voiceProvider === 'kokoro' && !kokoro.loaded && (
+                        <div className="flex items-center justify-between gap-3 rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2.5 text-sm">
+                          <span className="text-amber-500">
+                            {kokoro.error
+                              ? `Download failed: ${kokoro.error}`
+                              : kokoro.progress !== undefined && kokoro.progress < 1
+                                ? `Downloading voice model… ${Math.round(kokoro.progress * 100)}%`
+                                : 'Voice model not downloaded yet (163 MB, one time).'}
+                          </span>
+                          {kokoro.progress === undefined && (
+                            <Button
+                              type="button"
+                              size="sm"
+                              onClick={() => void window.openRoom.loadKokoro()}
+                            >
+                              <Download /> Download
+                            </Button>
+                          )}
+                        </div>
+                      )}
+
+                      <Field>
                         <FieldLabel>Voice</FieldLabel>
                         <Controller
                           control={form.control}
@@ -459,23 +546,40 @@ export function AgentEditor({
                                   <SelectValue placeholder="Choose a voice" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                  <SelectItem value={UNSET}>System default</SelectItem>
-                                  {voices.map((voice) => (
-                                    <SelectItem key={voice.id} value={voice.id}>
-                                      {voice.label}
-                                      {voice.locale ? ` · ${voice.locale}` : ''}
-                                    </SelectItem>
-                                  ))}
+                                  {voiceProvider === 'system' ? (
+                                    <>
+                                      <SelectItem value={UNSET}>System default</SelectItem>
+                                      {systemVoices.map((voice) => (
+                                        <SelectItem key={voice.id} value={voice.id}>
+                                          {voice.label}
+                                          {voice.locale ? ` · ${voice.locale}` : ''}
+                                        </SelectItem>
+                                      ))}
+                                    </>
+                                  ) : (
+                                    // Listed best-first with Kokoro's own grade
+                                    // shown: the roster runs A to F, and the
+                                    // weakest entries would otherwise define the
+                                    // impression of the engine.
+                                    KOKORO_VOICES.map((voice) => (
+                                      <SelectItem key={voice.id} value={voice.id}>
+                                        {voice.name} · {voice.gender} · {voice.locale} ·{' '}
+                                        {voice.grade}
+                                      </SelectItem>
+                                    ))
+                                  )}
                                 </SelectContent>
                               </Select>
                               <Button
                                 type="button"
                                 variant="outline"
                                 aria-label="Preview voice"
+                                disabled={voiceProvider === 'kokoro' && !kokoro.loaded}
                                 onClick={() =>
                                   void window.openRoom.previewVoice(
                                     field.value,
-                                    form.getValues('rate')
+                                    form.getValues('rate'),
+                                    voiceProvider
                                   )
                                 }
                               >

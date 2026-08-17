@@ -12,7 +12,7 @@ import { ConfigStore } from './config-store'
 import type { AgentSupervisor } from './agent-supervisor'
 import type { ConversationStore } from './conversation-store'
 import type { VoiceSidecar } from './voice-sidecar'
-import type { SystemVoice } from '@shared/voice-rpc'
+import type { KokoroStatus, SystemVoice } from '@shared/voice-rpc'
 import type { Conversation, ConversationPage } from '@shared/conversation'
 
 /**
@@ -198,9 +198,22 @@ export function registerIpcHandlers(
 
   ipcMain.handle(
     IpcChannel.previewVoice,
-    async (_e, voiceId: string, rate: number): Promise<MutationResult> =>
-      guard(() => voice.speak('This is how this agent will sound.', { voiceId, rate }))
+    async (
+      _e,
+      voiceId: string,
+      rate: number,
+      provider: 'system' | 'kokoro'
+    ): Promise<MutationResult> =>
+      guard(() => voice.speak('This is how this agent will sound.', { voiceId, rate, provider }))
   )
+
+  ipcMain.handle(IpcChannel.kokoroStatus, async (): Promise<KokoroStatus> => {
+    return voice.kokoroStatus().catch(() => ({ loaded: false }))
+  })
+
+  ipcMain.handle(IpcChannel.loadKokoro, async (): Promise<MutationResult> => {
+    return guard(() => voice.loadKokoro())
+  })
 
   ipcMain.handle(IpcChannel.getSettings, (): Promise<AppSettings> => store.readSettings())
 

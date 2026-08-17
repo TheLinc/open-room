@@ -30,9 +30,11 @@
     "@electron-toolkit/utils": "^4.0.0",
     "@fontsource-variable/geist": "^5.3.0",
     "@hookform/resolvers": "^5.9.0",
+    "@huggingface/transformers": "^3.8.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "double-metaphone": "^2.0.1",
+    "kokoro-js": "^1.2.1",
     "lucide-react": "^1.31.0",
     "next-themes": "^0.4.6",
     "radix-ui": "^1.6.7",
@@ -66,5 +68,8 @@
     "typescript": "^5.9.3",
     "vite": "^7.2.6",
     "vitest": "^4.1.10"
+  },
+  "overrides": {
+    "sharp": "^0.35.3"
   }
 }
