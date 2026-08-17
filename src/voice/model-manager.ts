@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 import { createReadStream, createWriteStream } from 'node:fs'
 import { mkdir, rename, rm, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { pipeline } from 'node:stream/promises'
 import { Readable } from 'node:stream'
 import {
@@ -107,6 +107,10 @@ export class ModelManager {
 
       for (const file of entry.files) {
         const target = this.pathFor(entry, file)
+
+        // Catalog files may sit in subdirectories — transformers.js expects
+        // the ONNX weights under `onnx/`, mirroring the upstream repo layout.
+        await mkdir(dirname(target), { recursive: true })
 
         // Skip files already present and the right size, so retrying an
         // interrupted multi-file entry does not re-fetch what it has.

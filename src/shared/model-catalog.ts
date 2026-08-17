@@ -10,11 +10,16 @@
  * every entry is something we have checked the licence of and are willing to
  * point people at.
  */
+import { MODEL_HASHES } from './model-hashes'
 
 export type ModelKind = 'voice' | 'stt'
 
 export type ModelFile = {
-  /** Filename on disk, inside the model's own directory. */
+  /**
+   * Path on disk inside the model's own directory. May contain forward
+   * slashes: transformers.js resolves `onnx/encoder_model.onnx` literally
+   * under `localModelPath`, so the upstream layout has to be preserved.
+   */
   name: string
   url: string
   /** Lowercase hex SHA-256. Verified after download; a mismatch discards it. */
@@ -45,12 +50,53 @@ export type ModelStatus = {
   progress?: number
 }
 
+const TINY = 'https://huggingface.co/onnx-community/whisper-tiny.en/resolve/main'
+const BASE = 'https://huggingface.co/onnx-community/whisper-base.en/resolve/main'
+
 /**
- * Speech-to-text models for Phase 5.
+ * The files transformers.js fetches for an ASR pipeline at `dtype: 'fp32'`.
  *
- * whisper.cpp's GGML conversions are MIT, same as whisper.cpp itself, and are
- * published by its author — an unambiguous licence, which is why these are in
- * the catalog while other candidates are not.
+ * Derived rather than guessed: the pipeline was run once against a scratch
+ * cache and this is exactly what it wrote — no more, and nothing missing. The
+ * two repositories share a layout, so one list serves both. Largest first, so
+ * a failed download fails early rather than after the small files succeed.
+ */
+const WHISPER_FILES = [
+  'onnx/decoder_model_merged.onnx',
+  'onnx/encoder_model.onnx',
+  'tokenizer.json',
+  'tokenizer_config.json',
+  'config.json',
+  'generation_config.json',
+  'preprocessor_config.json'
+] as const
+
+/** Sizes and checksums come from the generated record, not from here. */
+function whisperFiles(base: string): ModelFile[] {
+  return WHISPER_FILES.map((name) => {
+    const url = `${base}/${name}`
+    const recorded = MODEL_HASHES[url]
+    return {
+      name,
+      url,
+      sha256: recorded?.sha256 ?? '',
+      sizeBytes: recorded?.sizeBytes ?? 0
+    }
+  })
+}
+
+/**
+ * Speech-to-text models.
+ *
+ * These are the ONNX conversions, not whisper.cpp's GGML weights: `stt.ts`
+ * runs Whisper on transformers.js and onnxruntime, the stack Kokoro already
+ * uses, so voice input costs a model download rather than a second inference
+ * engine and a native binding.
+ *
+ * Quantised variants are deliberately absent. The same measurement that
+ * decided Kokoro applies here — int8 has no fast path on this runtime and is
+ * markedly slower than fp32 — so the smaller file would buy a worse model.
+ * That is why "tiny" still means 147 MB.
  */
 export const CATALOG: CatalogEntry[] = [
   {
@@ -58,36 +104,20 @@ export const CATALOG: CatalogEntry[] = [
     kind: 'stt',
     label: 'Whisper Tiny (English)',
     description: 'Fastest. Enough for wake words and short commands.',
-    license: 'MIT',
-    attribution: 'whisper.cpp — Georgi Gerganov',
-    homepage: 'https://huggingface.co/ggerganov/whisper.cpp',
-    files: [
-      {
-        name: 'ggml-tiny.en.bin',
-        url: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.en.bin',
-        // Filled in by `npm run verify:catalog`, which downloads each file
-        // once and records what it actually got.
-        sha256: '',
-        sizeBytes: 77_704_715
-      }
-    ]
+    license: 'Apache-2.0',
+    attribution: 'Whisper — OpenAI; ONNX conversion by onnx-community',
+    homepage: 'https://huggingface.co/onnx-community/whisper-tiny.en',
+    files: whisperFiles(TINY)
   },
   {
     id: 'whisper-base-en',
     kind: 'stt',
     label: 'Whisper Base (English)',
     description: 'More accurate on longer sentences. Roughly twice the size.',
-    license: 'MIT',
-    attribution: 'whisper.cpp — Georgi Gerganov',
-    homepage: 'https://huggingface.co/ggerganov/whisper.cpp',
-    files: [
-      {
-        name: 'ggml-base.en.bin',
-        url: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin',
-        sha256: '',
-        sizeBytes: 147_951_465
-      }
-    ]
+    license: 'Apache-2.0',
+    attribution: 'Whisper — OpenAI; ONNX conversion by onnx-community',
+    homepage: 'https://huggingface.co/onnx-community/whisper-base.en',
+    files: whisperFiles(BASE)
   }
 ]
 

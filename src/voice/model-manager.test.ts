@@ -167,6 +167,42 @@ describe('ModelManager download', () => {
     await expect(manager.download('test-model')).rejects.toThrow(/already downloading/i)
     await first
   })
+
+  it('creates parent directories for files nested in subdirectories', async () => {
+    // transformers.js resolves `onnx/encoder_model.onnx` literally under
+    // localModelPath, so the upstream layout has to survive the download.
+    const nested: CatalogEntry = {
+      id: 'nested-model',
+      kind: 'stt',
+      label: 'Nested',
+      description: 'Files inside a subdirectory',
+      license: 'MIT',
+      attribution: 'test',
+      homepage: 'https://example.com',
+      files: [
+        {
+          name: 'onnx/encoder_model.onnx',
+          url: `${baseUrl}/encoder`,
+          sha256: PAYLOAD_SHA,
+          sizeBytes: PAYLOAD.length
+        },
+        {
+          name: 'config.json',
+          url: `${baseUrl}/config`,
+          sha256: PAYLOAD_SHA,
+          sizeBytes: PAYLOAD.length
+        }
+      ]
+    }
+    CATALOG.push(nested)
+
+    await manager.download('nested-model')
+
+    expect((await stat(join(manager.dirFor(nested), 'onnx', 'encoder_model.onnx'))).size).toBe(
+      PAYLOAD.length
+    )
+    expect(await manager.isInstalled(nested)).toBe(true)
+  })
 })
 
 describe('ModelManager state', () => {
