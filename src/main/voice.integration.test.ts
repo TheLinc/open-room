@@ -131,3 +131,56 @@ describe('SpeechBus against real audio', () => {
     expect(overlaps.count).toBe(0)
   }, 40_000)
 })
+
+describe('per-agent voices, end to end', () => {
+  it('speaks two agents in their own configured voices', async () => {
+    const { mkdtemp, rm } = await import('node:fs/promises')
+    const { tmpdir } = await import('node:os')
+    const { createDefaultAgent } = await import('@shared/agent')
+    const { ConfigStore } = await import('./config-store')
+    const { VoiceSink } = await import('./voice-sink')
+
+    const root = await mkdtemp(resolve(tmpdir(), 'open-room-voices-'))
+    try {
+      const store = new ConfigStore(root)
+
+      // Two platform voices rather than neural ones: this asserts routing,
+      // and using system voices keeps it from depending on a 163 MB download.
+      const voices = await sidecar.listVoices()
+      expect(voices.length).toBeGreaterThanOrEqual(2)
+
+      const atlas = createDefaultAgent('Atlas', root, 'amber')
+      atlas.config.tts = {
+        enabled: true,
+        voice: { provider: 'system', id: voices[0].id },
+        rate: 1
+      }
+      await store.write(atlas)
+
+      const juniper = createDefaultAgent('Juniper', root, 'sky')
+      juniper.config.tts = {
+        enabled: true,
+        voice: { provider: 'system', id: voices[1].id },
+        rate: 1
+      }
+      await store.write(juniper)
+
+      // Notifications are stubbed so a routing failure is silent rather than
+      // masked by the fallback still producing sound.
+      const notifications = {
+        speak: async () => {},
+        notify: () => {}
+      } as unknown as ConstructorParameters<typeof VoiceSink>[1]
+
+      const sink = new VoiceSink(sidecar, notifications, store)
+      const bus = new SpeechBus(sink)
+
+      bus.enqueue(utter('atlas', 'done', 'This is the first agent speaking.'))
+      bus.enqueue(utter('juniper', 'done', 'And this is the second agent, in a different voice.'))
+
+      await new Promise((r) => setTimeout(r, 14_000))
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  }, 60_000)
+})

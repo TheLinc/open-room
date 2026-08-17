@@ -142,6 +142,7 @@ export function AgentEditor({
 
   const watchedName = form.watch('name')
   const ttsEnabled = form.watch('ttsEnabled')
+  const notificationsEnabled = form.watch('notificationsEnabled')
   const voiceProvider = form.watch('voiceProvider')
   const systemVoices = useSystemVoices(open && ttsEnabled && voiceProvider === 'system')
   const kokoro = useKokoroStatus(open && ttsEnabled && voiceProvider === 'kokoro')
@@ -213,7 +214,9 @@ export function AgentEditor({
                 a flex-sized parent here and lets content paint over the
                 footer. A plain scroll container in a `min-h-0` flex child is
                 the dependable form. */}
-            <div className="-mx-1 min-h-0 flex-1 overflow-y-auto px-1">
+            {/* No negative margin here: pairing `-mx-1` with `px-1` makes this
+                wider than its parent and produces a stray horizontal scrollbar. */}
+            <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-1">
               <div className="py-4">
                 <TabsContent value="general" className="mt-0 flex flex-col gap-5">
                   <Field>
@@ -453,9 +456,32 @@ export function AgentEditor({
                 <TabsContent value="voice" className="mt-0 flex flex-col gap-5">
                   <Field orientation="horizontal">
                     <div className="flex flex-col gap-1">
+                      <FieldLabel htmlFor="notificationsEnabled">Show notifications</FieldLabel>
+                      <FieldDescription>
+                        A desktop notification when this agent reports in. Independent of speech —
+                        speech is gone if you miss it, a notification stays.
+                      </FieldDescription>
+                    </div>
+                    <Controller
+                      control={form.control}
+                      name="notificationsEnabled"
+                      render={({ field }) => (
+                        <Switch
+                          id="notificationsEnabled"
+                          checked={field.value}
+                          onCheckedChange={field.onChange}
+                        />
+                      )}
+                    />
+                  </Field>
+
+                  <Separator />
+
+                  <Field orientation="horizontal">
+                    <div className="flex flex-col gap-1">
                       <FieldLabel htmlFor="ttsEnabled">Speak aloud</FieldLabel>
                       <FieldDescription>
-                        Off by default — the agent reports through system notifications instead.
+                        Read this agent&rsquo;s updates out loud, in its own voice.
                       </FieldDescription>
                     </div>
                     <Controller
@@ -470,6 +496,13 @@ export function AgentEditor({
                       )}
                     />
                   </Field>
+
+                  {!notificationsEnabled && !ttsEnabled && (
+                    <p className="text-sm text-amber-500">
+                      With both switched off this agent reports silently — its updates appear only
+                      in the chat transcript.
+                    </p>
+                  )}
 
                   {ttsEnabled && (
                     <>

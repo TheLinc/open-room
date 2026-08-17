@@ -5,16 +5,21 @@ import type { VoiceSidecar } from './voice-sidecar'
 import type { ConfigStore } from './config-store'
 
 /**
- * Routes each utterance to speech or to a notification.
+ * Delivers each utterance over the channels its agent has switched on.
  *
- * TTS is opt-in per agent, so a single bus feeds two delivery channels. The
- * bus arbitrates identically either way — only what happens at the end of the
- * lane differs.
+ * Notifications and speech are independent, not alternatives. Speech is
+ * transient — miss it and there is no record — while a notification persists.
+ * That matters most for questions and blockers, where missing the audio
+ * leaves an agent stuck with no trace of why.
  *
- * Falls back to a notification whenever speech cannot happen: the agent has
- * TTS switched off, the sidecar is down, or synthesis failed. A message the
- * user never receives is the one outcome worth avoiding.
+ * The bus arbitrates identically regardless; only delivery differs here.
  */
+
+type Delivery = {
+  notifications: boolean
+  tts: { provider: 'system' | 'kokoro'; voiceId?: string; rate: number } | null
+}
+
 export class VoiceSink implements SpeechSink {
   constructor(
     private readonly sidecar: VoiceSidecar,
@@ -27,10 +32,25 @@ export class VoiceSink implements SpeechSink {
     options: { signal: AbortSignal; utterance: Utterance }
   ): Promise<void> {
     const { utterance, signal } = options
-    const tts = await this.ttsFor(utterance.agentId)
+    const delivery = await this.deliveryFor(utterance.agentId)
 
-    if (!tts || !this.sidecar.isAvailable) {
+    if (!delivery) {
+      // The agent could not be read at all. Notify rather than drop it — a
+      // message the user never receives is the outcome worth avoiding.
       await this.notifications.speak(prefixed, options)
+      return
+    }
+
+    // Sent first so the durable record exists before the transient one, and
+    // so it still lands if speech then fails.
+    if (delivery.notifications) {
+      await this.notifications.speak(prefixed, options)
+    }
+
+    if (!delivery.tts) return
+
+    if (!this.sidecar.isAvailable) {
+      await this.notifyIfNotAlready(delivery, prefixed, options)
       return
     }
 
@@ -42,11 +62,19 @@ export class VoiceSink implements SpeechSink {
     signal.addEventListener('abort', onAbort, { once: true })
 
     try {
-      await this.sidecar.speak(prefixed, { voiceId: tts.voiceId, rate: tts.rate })
+      // The provider must be forwarded, not just read: without it the sidecar
+      // falls back to system synthesis and an agent configured for a neural
+      // voice silently speaks with the platform one instead.
+      await this.sidecar.speak(prefixed, {
+        provider: delivery.tts.provider,
+        voiceId: delivery.tts.voiceId,
+        rate: delivery.tts.rate
+      })
     } catch {
-      // Synthesis or playback failed. Say it some other way rather than
-      // dropping it — but not if the user deliberately cut it off.
-      if (!signal.aborted) await this.notifications.speak(prefixed, options)
+      // Speech failed. Fall back so the message still arrives — but never
+      // after a deliberate interrupt, which would resurrect exactly what the
+      // user just silenced.
+      if (!signal.aborted) await this.notifyIfNotAlready(delivery, prefixed, options)
     } finally {
       signal.removeEventListener('abort', onAbort)
     }
@@ -56,21 +84,35 @@ export class VoiceSink implements SpeechSink {
     this.notifications.notify(utterances)
   }
 
-  /** Reads live config so an agent's voice settings apply without a restart. */
-  private async ttsFor(
-    agentId: string
-  ): Promise<{ voiceId?: string; rate: number; provider: 'system' | 'kokoro' } | null> {
-    try {
-      const agent = await this.store.read(agentId)
-      if (!agent.config.tts.enabled) return null
+  /**
+   * Speech failed and notifications are switched off, so this is the only
+   * remaining channel. A one-off delivery failure is a different thing from
+   * the routine notifications the user opted out of.
+   */
+  private async notifyIfNotAlready(
+    delivery: Delivery,
+    prefixed: string,
+    options: { signal: AbortSignal; utterance: Utterance }
+  ): Promise<void> {
+    if (!delivery.notifications) await this.notifications.speak(prefixed, options)
+  }
 
-      const { voice, rate } = agent.config.tts
-      // An empty system id falls through to the platform default; a Kokoro id
-      // names a specific speaker and is resolved inside the sidecar.
+  /** Reads live config so an agent's settings apply without a restart. */
+  private async deliveryFor(agentId: string): Promise<Delivery | null> {
+    try {
+      const { config } = await this.store.read(agentId)
+
       return {
-        provider: voice.provider,
-        voiceId: voice.id || undefined,
-        rate
+        notifications: config.notifications,
+        tts: config.tts.enabled
+          ? {
+              provider: config.tts.voice.provider,
+              // An empty system id falls through to the platform default; a
+              // Kokoro id names a specific speaker, resolved in the sidecar.
+              voiceId: config.tts.voice.id || undefined,
+              rate: config.tts.rate
+            }
+          : null
       }
     } catch {
       return null

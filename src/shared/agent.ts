@@ -131,6 +131,16 @@ export const agentConfigSchema = z.object({
   persistSession: z.boolean().default(true),
   /** Optional per-agent push-to-talk binding, e.g. "CommandOrControl+Alt+1". */
   hotkey: z.string().optional(),
+
+  /**
+   * Native notifications, independent of speech.
+   *
+   * On by default and deliberately not exclusive with TTS: speech is
+   * transient, so if you are away from the desk it is simply gone. A
+   * notification persists, which matters most for the questions and blockers
+   * that leave an agent stuck waiting.
+   */
+  notifications: z.boolean().default(true),
   tts: ttsSchema.default({ enabled: false })
 })
 
@@ -190,6 +200,7 @@ export function createDefaultAgent(name: string, workspacePath: string, color: s
       allowedTools: ['Read', 'Glob', 'Grep'],
       disallowedTools: [],
       persistSession: true,
+      notifications: true,
       tts: { enabled: false }
     },
     context: DEFAULT_AGENT_CONTEXT

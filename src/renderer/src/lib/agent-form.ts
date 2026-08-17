@@ -49,6 +49,7 @@ export const agentFormSchema = z
       .string()
       .refine((text) => parseMcpServers(text).ok, { message: 'Not valid MCP server JSON' }),
     context: z.string(),
+    notificationsEnabled: z.boolean(),
     ttsEnabled: z.boolean(),
     voiceProvider: z.enum(['system', 'kokoro']),
     voiceId: z.string(),
@@ -135,6 +136,7 @@ export function toFormValues(agent: Agent, tools: readonly string[]): AgentFormV
       ? JSON.stringify(config.mcpServers, null, 2)
       : '',
     context: agent.context,
+    notificationsEnabled: config.notifications,
     ttsEnabled: config.tts.enabled,
     voiceProvider: config.tts.enabled ? config.tts.voice.provider : 'system',
     voiceId: config.tts.enabled ? config.tts.voice.id : '',
@@ -174,6 +176,7 @@ export function toAgent(values: AgentFormValues, id?: string): Agent {
       allowedTools,
       disallowedTools,
       persistSession: values.persistSession,
+      notifications: values.notificationsEnabled,
       ...(values.hotkey.trim() ? { hotkey: values.hotkey.trim() } : {}),
       tts: values.ttsEnabled
         ? {
