@@ -1,5 +1,6 @@
 import { Pencil } from 'lucide-react'
-import { AGENT_COLORS, MODELS, type Agent } from '@shared/agent'
+import { MODELS, type Agent } from '@shared/agent'
+import { colorHexFor } from '@shared/voice-input'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -21,7 +22,7 @@ function Row({ label, children }: { label: string; children: React.ReactNode }):
 
 export function AgentDetail({ agent, onEdit }: Props): React.JSX.Element {
   const { config } = agent
-  const color = AGENT_COLORS.find((c) => c.id === config.color)?.hex ?? '#71717a'
+  const color = colorHexFor(config.color)
   const model = MODELS.find((m) => m.id === config.model)
 
   return (

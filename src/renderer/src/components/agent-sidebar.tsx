@@ -1,5 +1,6 @@
 import { AlertTriangle, CircleAlert, Loader2, Plus } from 'lucide-react'
-import { AGENT_COLORS, type Agent } from '@shared/agent'
+import type { Agent } from '@shared/agent'
+import { colorHexFor } from '@shared/voice-input'
 import { isTransient, type AgentRuntime } from '@shared/agent-runtime'
 import type { AgentLoadError } from '@shared/ipc'
 import { cn } from '@/lib/utils'
@@ -13,10 +14,6 @@ type Props = {
   runtimeFor: (agentId: string) => AgentRuntime
   onSelect: (id: string) => void
   onCreate: () => void
-}
-
-function colorHex(id: string): string {
-  return AGENT_COLORS.find((c) => c.id === id)?.hex ?? '#71717a'
 }
 
 /**
@@ -78,7 +75,7 @@ export function AgentSidebar({
               <span
                 aria-hidden
                 className="size-2.5 shrink-0 rounded-full"
-                style={{ backgroundColor: colorHex(agent.config.color) }}
+                style={{ backgroundColor: colorHexFor(agent.config.color) }}
               />
               <span className="flex-1 truncate">{agent.config.name}</span>
               <StatusDot runtime={runtimeFor(agent.config.id)} />

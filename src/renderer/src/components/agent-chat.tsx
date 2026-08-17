@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { CircleAlert, Gauge, Loader2, Pencil, Send, Square, X } from 'lucide-react'
-import { AGENT_COLORS, MODELS, type Agent } from '@shared/agent'
+import { MODELS, type Agent } from '@shared/agent'
+import { colorHexFor } from '@shared/voice-input'
 import {
   describeRateLimit,
   isTransient,
@@ -52,7 +53,7 @@ export function AgentChat({
   const scroller = useRef<HTMLDivElement>(null)
   const pinned = useRef(true)
 
-  const color = AGENT_COLORS.find((c) => c.id === agent.config.color)?.hex ?? '#71717a'
+  const color = colorHexFor(agent.config.color)
   const busy = runtime.state === 'working' || runtime.state === 'starting'
   const quota = describeRateLimit(runtime.rateLimit)
   // Silent messages must be dropped before render, not inside the row: an
