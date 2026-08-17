@@ -10,3 +10,8 @@ out
 CLAUDE.md
 notes.md
 plan.md
+docs/superpowers/
+
+# Brainstorming companion scratch — mockups and session state.
+.superpowers/
+*.txt
