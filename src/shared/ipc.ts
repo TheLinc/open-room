@@ -92,7 +92,19 @@ export const IpcChannel = {
   /** main → overlay, the whole overlay state on every change. */
   overlayState: 'overlay:state',
   /** overlay → main, accept clicks while the pointer is over the bubble. */
-  overlaySetInteractive: 'overlay:set-interactive'
+  overlaySetInteractive: 'overlay:set-interactive',
+  /** main → overlay, open the microphone. */
+  overlayStartCapture: 'overlay:start-capture',
+  /** main → overlay, flush the audio and send it back. */
+  overlayStopCapture: 'overlay:stop-capture',
+  /** main → overlay, close the microphone and throw the audio away. */
+  overlayDiscardCapture: 'overlay:discard-capture',
+  /** overlay → main, the finished capture as base64 PCM. */
+  overlayAudio: 'overlay:audio',
+  /** overlay → main, what the endpointer observed. */
+  overlayEvent: 'overlay:event',
+  /** overlay → main, pointer entered or left the bubble; pauses dismissal. */
+  overlayHover: 'overlay:hover'
 } as const
 
 export type IpcChannelName = (typeof IpcChannel)[keyof typeof IpcChannel]

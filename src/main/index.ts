@@ -1,4 +1,4 @@
-import { app, shell, BrowserWindow, ipcMain } from 'electron'
+import { app, shell, BrowserWindow, ipcMain, session } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
@@ -114,6 +114,24 @@ app.whenReady().then(async () => {
   ipcMain.on(IpcChannel.overlaySetInteractive, (_event, interactive: boolean) => {
     overlay.setInteractive(interactive)
   })
+
+  /**
+   * The microphone belongs to the overlay and to nothing else.
+   *
+   * Electron grants permission requests by default, which would leave every
+   * window in the app able to open the microphone. Denying everything else
+   * outright means a future feature that needs a permission fails at a line
+   * that says why, rather than quietly inheriting an allow-all.
+   */
+  const allowMicrophone = (contents: { id: number }, permission: string): boolean =>
+    permission === 'media' && overlay.owns(contents)
+
+  session.defaultSession.setPermissionRequestHandler((contents, permission, callback) => {
+    callback(allowMicrophone(contents, permission))
+  })
+  session.defaultSession.setPermissionCheckHandler((contents, permission) =>
+    contents ? allowMicrophone(contents, permission) : false
+  )
 
   // Agent files are hand-editable, so edits made outside the app must show up
   // without a restart.

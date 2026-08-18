@@ -55,3 +55,36 @@ export function holdMsFor(transcript: string): number {
   const words = trimmed ? trimmed.split(/\s+/).length : 0
   return Math.min(HOLD_BASE_MS + words * HOLD_PER_WORD_MS, HOLD_MAX_MS)
 }
+
+/**
+ * What the overlay reports upward during a capture.
+ *
+ * A strict subset of the capture reducer's events: the overlay says what it
+ * observed and main decides what that means. Deliberately not the whole
+ * `CaptureEvent` union — nothing in the overlay may trigger a capture,
+ * dispatch a prompt, or declare a transcript.
+ */
+export type OverlayEvent =
+  | { type: 'speechStarted' }
+  | { type: 'silence' }
+  | { type: 'noSpeech' }
+  | { type: 'maxDuration' }
+  | { type: 'failed'; message: string }
+
+const OBSERVED = ['speechStarted', 'silence', 'noSpeech', 'maxDuration', 'failed'] as const
+
+/**
+ * Validates an event arriving over IPC.
+ *
+ * `ipcRenderer.send` payloads are whatever the sending document chose to put
+ * there. This one comes from a window that holds the microphone and sits above
+ * every other application, so main checks the shape rather than trusting it.
+ */
+export function isOverlayEvent(value: unknown): value is OverlayEvent {
+  if (typeof value !== 'object' || value === null) return false
+
+  const event = value as { type?: unknown; message?: unknown }
+  if (!OBSERVED.includes(event.type as (typeof OBSERVED)[number])) return false
+
+  return event.type !== 'failed' || typeof event.message === 'string'
+}

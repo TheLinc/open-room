@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { holdMsFor } from './voice-input'
+import { holdMsFor, isOverlayEvent } from './voice-input'
 
 describe('holdMsFor', () => {
   it('is the base duration plus a beat per word', () => {
@@ -20,5 +20,33 @@ describe('holdMsFor', () => {
 
   it('is not confused by runs of whitespace', () => {
     expect(holdMsFor('one   two')).toBe(holdMsFor('one two'))
+  })
+})
+
+describe('isOverlayEvent', () => {
+  it('accepts each observation the overlay is allowed to report', () => {
+    for (const type of ['speechStarted', 'silence', 'noSpeech', 'maxDuration']) {
+      expect(isOverlayEvent({ type })).toBe(true)
+    }
+  })
+
+  it('accepts a failure carrying its message', () => {
+    expect(isOverlayEvent({ type: 'failed', message: 'Microphone access was denied' })).toBe(true)
+  })
+
+  it('rejects a failure with no message, which would render as a blank error', () => {
+    expect(isOverlayEvent({ type: 'failed' })).toBe(false)
+  })
+
+  it('rejects events the overlay has no business sending', () => {
+    // The reducer understands these; the overlay may not originate them.
+    expect(isOverlayEvent({ type: 'trigger', agentId: 'atlas' })).toBe(false)
+    expect(isOverlayEvent({ type: 'transcript', text: 'ship it' })).toBe(false)
+  })
+
+  it('rejects values that are not events at all', () => {
+    expect(isOverlayEvent(null)).toBe(false)
+    expect(isOverlayEvent('silence')).toBe(false)
+    expect(isOverlayEvent({})).toBe(false)
   })
 })

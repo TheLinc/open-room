@@ -110,6 +110,18 @@ export class OverlayWindow {
     }
   }
 
+  /**
+   * Whether some webContents is this overlay's.
+   *
+   * The microphone permission is granted to this window and nothing else, and
+   * the window is rebuilt after a render-process crash — so identity has to be
+   * asked for rather than captured once.
+   */
+  owns(contents: { id: number }): boolean {
+    if (!this.window || this.window.isDestroyed()) return false
+    return this.window.webContents.id === contents.id
+  }
+
   /** Accepts clicks while the pointer is over the bubble; passes them through otherwise. */
   setInteractive(interactive: boolean): void {
     if (!this.window || this.window.isDestroyed()) return

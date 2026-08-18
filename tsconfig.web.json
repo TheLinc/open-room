@@ -4,6 +4,8 @@
     "src/renderer/src/env.d.ts",
     "src/renderer/src/**/*",
     "src/renderer/src/**/*.tsx",
+    "src/renderer/overlay-main.tsx",
+    "src/overlay/**/*",
     "src/shared/**/*",
     "src/preload/*.d.ts"
   ],
@@ -14,7 +16,8 @@
     "paths": {
       "@/*": ["src/renderer/src/*"],
       "@renderer/*": ["src/renderer/src/*"],
-      "@shared/*": ["src/shared/*"]
+      "@shared/*": ["src/shared/*"],
+      "@overlay/*": ["src/overlay/*"]
     }
   }
 }
