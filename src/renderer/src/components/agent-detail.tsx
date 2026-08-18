@@ -1,6 +1,6 @@
 import { Pencil } from 'lucide-react'
 import { MODELS, type Agent } from '@shared/agent'
-import { colorHexFor } from '@shared/voice-input'
+import { colorHexFor } from '@shared/agent-colors'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'

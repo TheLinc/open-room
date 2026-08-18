@@ -1,5 +1,3 @@
-import { AGENT_COLORS } from './agent'
-
 /**
  * What the overlay is showing, shared between main and both renderers.
  *
@@ -56,16 +54,4 @@ export function holdMsFor(transcript: string): number {
   const trimmed = transcript.trim()
   const words = trimmed ? trimmed.split(/\s+/).length : 0
   return Math.min(HOLD_BASE_MS + words * HOLD_PER_WORD_MS, HOLD_MAX_MS)
-}
-
-/**
- * Identity colour as hex, falling back to a neutral grey.
- *
- * `AgentConfig.color` holds a colour id, not a hex string, and four surfaces
- * now need to resolve it — the sidebar, the chat header, the detail pane and
- * the overlay. A fourth inlined copy of this lookup is how a palette change
- * starts missing a surface.
- */
-export function colorHexFor(colorId: string): string {
-  return AGENT_COLORS.find((c) => c.id === colorId)?.hex ?? '#71717a'
 }

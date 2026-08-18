@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { colorHexFor, holdMsFor } from './voice-input'
+import { holdMsFor } from './voice-input'
 
 describe('holdMsFor', () => {
   it('is the base duration plus a beat per word', () => {
@@ -20,16 +20,5 @@ describe('holdMsFor', () => {
 
   it('is not confused by runs of whitespace', () => {
     expect(holdMsFor('one   two')).toBe(holdMsFor('one two'))
-  })
-})
-
-describe('colorHexFor', () => {
-  it('resolves a known identity colour', () => {
-    expect(colorHexFor('amber')).toBe('#f59e0b')
-  })
-
-  it('falls back rather than returning undefined', () => {
-    expect(colorHexFor('not-a-colour')).toBe('#71717a')
-    expect(colorHexFor('')).toBe('#71717a')
   })
 })

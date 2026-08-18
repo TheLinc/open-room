@@ -1,4 +1,4 @@
-import { app, shell, BrowserWindow } from 'electron'
+import { app, shell, BrowserWindow, ipcMain } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
@@ -18,6 +18,8 @@ import { SpeechBus } from './speech-bus'
 import { NotificationSink } from './notification-sink'
 import { VoiceSidecar } from './voice-sidecar'
 import { VoiceSink } from './voice-sink'
+import { OverlayWindow } from './overlay-window'
+import { IpcChannel } from '@shared/ipc'
 
 // OPEN_ROOM_HOME relocates the config root. Useful for testing against a
 // throwaway directory, and for anyone who keeps dotfiles somewhere else.
@@ -45,6 +47,14 @@ const supervisor = new AgentSupervisor(
   conversations,
   speech
 )
+
+/**
+ * The listening overlay and working HUD.
+ *
+ * Created at launch and kept for the process lifetime — shown and hidden,
+ * never created and destroyed.
+ */
+const overlay = new OverlayWindow()
 
 /** Ends sessions left idle, since each one holds a full CLI subprocess. */
 let idleReaper: NodeJS.Timeout | null = null
@@ -99,6 +109,11 @@ app.whenReady().then(async () => {
   voice.start()
   registerIpcHandlers(store, supervisor, conversations, voice)
   createWindow()
+
+  overlay.create()
+  ipcMain.on(IpcChannel.overlaySetInteractive, (_event, interactive: boolean) => {
+    overlay.setInteractive(interactive)
+  })
 
   // Agent files are hand-editable, so edits made outside the app must show up
   // without a restart.

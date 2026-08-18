@@ -27,6 +27,17 @@ export default defineConfig({
       alias: {
         '@shared': resolve('src/shared')
       }
+    },
+    build: {
+      rollupOptions: {
+        // The overlay window gets its own, much smaller bridge: it displays
+        // state and reports what it observes, and has no reason to reach
+        // agents, conversations or settings.
+        input: {
+          index: resolve('src/preload/index.ts'),
+          overlay: resolve('src/preload/overlay.ts')
+        }
+      }
     }
   },
   renderer: {
@@ -36,7 +47,19 @@ export default defineConfig({
         // `@renderer` is kept for parity with the electron-vite scaffold.
         '@': resolve('src/renderer/src'),
         '@renderer': resolve('src/renderer/src'),
+        '@overlay': resolve('src/overlay'),
         '@shared': resolve('src/shared')
+      }
+    },
+    build: {
+      rollupOptions: {
+        // Two documents, one renderer build. The overlay is a separate
+        // window because push-to-talk is global and the main window is
+        // usually backgrounded when someone talks.
+        input: {
+          index: resolve('src/renderer/index.html'),
+          overlay: resolve('src/renderer/overlay.html')
+        }
       }
     },
     plugins: [react(), tailwindcss()]

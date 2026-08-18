@@ -1,0 +1,21 @@
+@import 'tailwindcss';
+
+/*
+ * The window itself is transparent — only the bubble paints. Anything that
+ * gives the body a background turns the whole always-on-top rectangle into a
+ * visible box sitting over the user's work.
+ */
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  background: transparent;
+  overflow: hidden;
+}
+
+body {
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: default;
+}

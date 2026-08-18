@@ -1,6 +1,6 @@
 import { AlertTriangle, CircleAlert, Loader2, Plus } from 'lucide-react'
 import type { Agent } from '@shared/agent'
-import { colorHexFor } from '@shared/voice-input'
+import { colorHexFor } from '@shared/agent-colors'
 import { isTransient, type AgentRuntime } from '@shared/agent-runtime'
 import type { AgentLoadError } from '@shared/ipc'
 import { cn } from '@/lib/utils'

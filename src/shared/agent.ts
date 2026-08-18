@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { AGENT_COLOR_IDS } from './agent-colors'
 
 /**
  * The agent domain model, shared by main (validation, persistence) and
@@ -23,23 +24,10 @@ export const MODEL_IDS = MODELS.map((m) => m.id) as [string, ...string[]]
 
 export const EFFORT_LEVELS = ['low', 'medium', 'high', 'xhigh', 'max'] as const
 
-/**
- * Identity colors. Deliberately high-contrast against each other — these
- * distinguish agents at a glance in the sidebar and in the listening overlay,
- * where the name may be too small to read quickly.
- */
-export const AGENT_COLORS = [
-  { id: 'amber', hex: '#f59e0b' },
-  { id: 'emerald', hex: '#10b981' },
-  { id: 'sky', hex: '#0ea5e9' },
-  { id: 'violet', hex: '#8b5cf6' },
-  { id: 'rose', hex: '#f43f5e' },
-  { id: 'lime', hex: '#84cc16' },
-  { id: 'cyan', hex: '#06b6d4' },
-  { id: 'orange', hex: '#f97316' }
-] as const
-
-export const AGENT_COLOR_IDS = AGENT_COLORS.map((c) => c.id) as [string, ...string[]]
+// The palette lives in its own module so the overlay can resolve a colour
+// without pulling this file's Zod schemas in with it. Re-exported here so
+// existing imports keep working.
+export { AGENT_COLORS, AGENT_COLOR_IDS } from './agent-colors'
 
 /**
  * Tools Claude Code exposes. Used to build the permission lists.

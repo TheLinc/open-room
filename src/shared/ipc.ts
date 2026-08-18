@@ -87,7 +87,12 @@ export const IpcChannel = {
   loadKokoro: 'voice:kokoro-load',
 
   getSettings: 'settings:get',
-  saveSettings: 'settings:save'
+  saveSettings: 'settings:save',
+
+  /** main → overlay, the whole overlay state on every change. */
+  overlayState: 'overlay:state',
+  /** overlay → main, accept clicks while the pointer is over the bubble. */
+  overlaySetInteractive: 'overlay:set-interactive'
 } as const
 
 export type IpcChannelName = (typeof IpcChannel)[keyof typeof IpcChannel]

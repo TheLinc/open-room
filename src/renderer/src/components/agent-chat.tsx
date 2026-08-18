@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { CircleAlert, Gauge, Loader2, Pencil, Send, Square, X } from 'lucide-react'
 import { MODELS, type Agent } from '@shared/agent'
-import { colorHexFor } from '@shared/voice-input'
+import { colorHexFor } from '@shared/agent-colors'
 import {
   describeRateLimit,
   isTransient,
