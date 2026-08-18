@@ -9,7 +9,8 @@ import type {
 } from '@shared/agent-runtime'
 import type { Conversation, ConversationPage } from '@shared/conversation'
 import type { AppSettings } from '@shared/settings'
-import type { KokoroStatus, SystemVoice } from '@shared/voice-rpc'
+import type { KokoroStatus, SttStatus, SystemVoice } from '@shared/voice-rpc'
+import type { HotkeyFailure } from '@shared/hotkeys'
 import {
   IpcChannel,
   type AgentsSnapshot,
@@ -122,10 +123,23 @@ const openRoom: OpenRoomApi = {
 
   loadKokoro: (): Promise<MutationResult> => ipcRenderer.invoke(IpcChannel.loadKokoro),
 
+  sttStatus: (): Promise<SttStatus> => ipcRenderer.invoke(IpcChannel.sttStatus),
+
+  loadSttModel: (): Promise<MutationResult> => ipcRenderer.invoke(IpcChannel.loadSttModel),
+
+  getHotkeyFailures: (): Promise<HotkeyFailure[]> =>
+    ipcRenderer.invoke(IpcChannel.getHotkeyFailures),
+
+  onHotkeyFailures: (listener: (failures: HotkeyFailure[]) => void): (() => void) =>
+    subscribe(IpcChannel.hotkeyFailures, (payload) => listener(payload as HotkeyFailure[])),
+
   getSettings: (): Promise<AppSettings> => ipcRenderer.invoke(IpcChannel.getSettings),
 
   saveSettings: (settings: AppSettings): Promise<MutationResult> =>
-    ipcRenderer.invoke(IpcChannel.saveSettings, settings)
+    ipcRenderer.invoke(IpcChannel.saveSettings, settings),
+
+  onSettingsChanged: (listener: (settings: AppSettings) => void): (() => void) =>
+    subscribe(IpcChannel.settingsChanged, (payload) => listener(payload as AppSettings))
 }
 
 /**

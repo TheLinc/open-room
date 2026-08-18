@@ -11,6 +11,7 @@ import {
   type Agent
 } from '@shared/agent'
 import { checkAgentName } from '@shared/phonetics'
+import type { HotkeyFailure } from '@shared/hotkeys'
 import type { KokoroStatus, SystemVoice } from '@shared/voice-rpc'
 import { DEFAULT_KOKORO_VOICE, KOKORO_VOICES } from '@shared/kokoro-voices'
 import {
@@ -105,6 +106,8 @@ type Props = {
   onOpenChange: (open: boolean) => void
   onSaved: () => void
   onDeleted: () => void
+  /** This agent's binding, if it could not be registered. */
+  hotkeyFailure?: HotkeyFailure | null
 }
 
 export function AgentEditor({
@@ -113,7 +116,8 @@ export function AgentEditor({
   open,
   onOpenChange,
   onSaved,
-  onDeleted
+  onDeleted,
+  hotkeyFailure
 }: Props): React.JSX.Element {
   const isNew = agent === undefined
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -670,9 +674,17 @@ export function AgentEditor({
                       placeholder="CommandOrControl+Alt+1"
                       {...form.register('hotkey')}
                     />
-                    <FieldDescription>
-                      Optional. Talks to this agent directly. Takes effect once voice input ships.
-                    </FieldDescription>
+                    {hotkeyFailure ? (
+                      <FieldDescription className="text-destructive">
+                        {hotkeyFailure.reason}
+                      </FieldDescription>
+                    ) : (
+                      <FieldDescription>
+                        Optional. Talks to this agent directly, whichever agent is selected.
+                        Electron accelerator form, e.g. <code>Alt+Shift+A</code>. Leave empty to use
+                        the global shortcut.
+                      </FieldDescription>
+                    )}
                   </Field>
 
                   <Separator />

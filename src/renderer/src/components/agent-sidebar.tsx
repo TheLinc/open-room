@@ -1,4 +1,4 @@
-import { AlertTriangle, CircleAlert, Loader2, Plus } from 'lucide-react'
+import { AlertTriangle, CircleAlert, Loader2, Plus, Settings } from 'lucide-react'
 import type { Agent } from '@shared/agent'
 import { colorHexFor } from '@shared/agent-colors'
 import { isTransient, type AgentRuntime } from '@shared/agent-runtime'
@@ -14,6 +14,7 @@ type Props = {
   runtimeFor: (agentId: string) => AgentRuntime
   onSelect: (id: string) => void
   onCreate: () => void
+  onOpenSettings: () => void
 }
 
 /**
@@ -47,15 +48,21 @@ export function AgentSidebar({
   selectedId,
   runtimeFor,
   onSelect,
-  onCreate
+  onCreate,
+  onOpenSettings
 }: Props): React.JSX.Element {
   return (
     <aside className="flex w-64 shrink-0 flex-col border-r border-border bg-card">
       <div className="flex items-center justify-between px-4 py-3">
         <h1 className="text-sm font-semibold tracking-tight">Open Room</h1>
-        <Button size="icon-sm" variant="ghost" onClick={onCreate} aria-label="New agent">
-          <Plus />
-        </Button>
+        <div className="flex items-center gap-0.5">
+          <Button size="icon-sm" variant="ghost" onClick={onCreate} aria-label="New agent">
+            <Plus />
+          </Button>
+          <Button size="icon-sm" variant="ghost" onClick={onOpenSettings} aria-label="Settings">
+            <Settings />
+          </Button>
+        </div>
       </div>
 
       <ScrollArea className="min-h-0 flex-1">

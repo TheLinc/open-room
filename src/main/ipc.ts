@@ -6,13 +6,14 @@ import type {
   PermissionRequest,
   TranscriptEntry
 } from '@shared/agent-runtime'
+import type { HotkeyFailure } from '@shared/hotkeys'
 import { appSettingsSchema, type AppSettings } from '@shared/settings'
 import { IpcChannel, type AgentsSnapshot, type AppInfo, type MutationResult } from '@shared/ipc'
 import { ConfigStore } from './config-store'
 import type { AgentSupervisor } from './agent-supervisor'
 import type { ConversationStore } from './conversation-store'
 import type { VoiceSidecar } from './voice-sidecar'
-import type { KokoroStatus, SystemVoice } from '@shared/voice-rpc'
+import type { KokoroStatus, SttStatus, SystemVoice } from '@shared/voice-rpc'
 import type { Conversation, ConversationPage } from '@shared/conversation'
 
 /**
@@ -27,8 +28,8 @@ export function registerIpcHandlers(
   supervisor: AgentSupervisor,
   conversations: ConversationStore,
   voice: VoiceSidecar,
-  /** Called after settings are written, so global hotkeys can re-register. */
-  onSettingsSaved: () => void = () => {}
+  /** Called after settings are written, so hotkeys and the tray can follow. */
+  onSettingsSaved: (settings: AppSettings) => void = () => {}
 ): void {
   ipcMain.handle(IpcChannel.getAppInfo, (): AppInfo => {
     return {
@@ -217,6 +218,17 @@ export function registerIpcHandlers(
     return guard(() => voice.loadKokoro())
   })
 
+  ipcMain.handle(IpcChannel.sttStatus, async (): Promise<SttStatus> => {
+    // A sidecar that is down means "not installed" for the UI's purposes:
+    // nothing can be transcribed either way, and the dialog's job is to say
+    // voice input cannot work, not to explain why.
+    return voice.sttStatus().catch(() => ({ loaded: false, installed: false }) satisfies SttStatus)
+  })
+
+  ipcMain.handle(IpcChannel.loadSttModel, async (): Promise<MutationResult> => {
+    return guard(() => voice.loadStt())
+  })
+
   ipcMain.handle(IpcChannel.getSettings, (): Promise<AppSettings> => store.readSettings())
 
   ipcMain.handle(IpcChannel.saveSettings, async (_e, settings: AppSettings) => {
@@ -224,7 +236,7 @@ export function registerIpcHandlers(
       const parsed = appSettingsSchema.parse(settings)
       await store.writeSettings(parsed)
       supervisor.setOptions({ maxConcurrent: parsed.maxConcurrentAgents })
-      onSettingsSaved()
+      onSettingsSaved(parsed)
     })
   })
 }
@@ -247,6 +259,14 @@ export function broadcastPermissionRequest(request: PermissionRequest): void {
 
 export function broadcastPermissionResolved(requestId: string): void {
   broadcast(IpcChannel.permissionResolved, requestId)
+}
+
+export function broadcastHotkeyFailures(failures: HotkeyFailure[]): void {
+  broadcast(IpcChannel.hotkeyFailures, failures)
+}
+
+export function broadcastSettingsChanged(settings: AppSettings): void {
+  broadcast(IpcChannel.settingsChanged, settings)
 }
 
 function broadcast(channel: string, payload: unknown): void {

@@ -4,10 +4,12 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import {
   broadcastAgentsChanged,
+  broadcastHotkeyFailures,
   broadcastPermissionRequest,
   broadcastPermissionResolved,
   broadcastRuntime,
   broadcastTranscript,
+  broadcastSettingsChanged,
   broadcastTranscriptCleared,
   registerIpcHandlers
 } from './ipc'
@@ -158,8 +160,13 @@ async function toggleVoiceInput(): Promise<void> {
   const settings = await store.readSettings()
   const enabled = !settings.voiceInputEnabled
 
-  await store.writeSettings({ ...settings, voiceInputEnabled: enabled })
+  const next = { ...settings, voiceInputEnabled: enabled }
+  await store.writeSettings(next)
   tray.setVoiceEnabled(enabled)
+
+  // The settings dialog may be open on the old value. Without this it would
+  // show the wrong state and write it straight back on the next save.
+  broadcastSettingsChanged(next)
   await refreshHotkeys()
 }
 
@@ -225,6 +232,7 @@ const controller = new VoiceController({
 async function refreshHotkeys(): Promise<void> {
   const [settings, loaded] = await Promise.all([store.readSettings(), store.list()])
   hotkeyFailures = hotkeys.apply(bindingsFor(settings, loaded.agents))
+  broadcastHotkeyFailures(hotkeyFailures)
 
   for (const failure of hotkeyFailures) {
     console.warn(`Hotkey ${failure.accelerator} could not be registered: ${failure.reason}`)
@@ -320,8 +328,13 @@ app.whenReady().then(async () => {
   supervisor.setOptions({ maxConcurrent: settings.maxConcurrentAgents })
 
   voice.start()
-  registerIpcHandlers(store, supervisor, conversations, voice, () => void refreshHotkeys())
+  registerIpcHandlers(store, supervisor, conversations, voice, (saved) => {
+    tray.setVoiceEnabled(saved.voiceInputEnabled)
+    void refreshHotkeys()
+  })
   createWindow()
+
+  ipcMain.handle(IpcChannel.getHotkeyFailures, () => hotkeyFailures)
 
   ipcMain.on(IpcChannel.selectAgent, (_event, agentId: string | null) => {
     selectedAgentId = agentId

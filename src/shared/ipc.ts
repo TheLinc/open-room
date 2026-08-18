@@ -6,8 +6,9 @@ import type {
   TranscriptEntry
 } from './agent-runtime'
 import type { Conversation, ConversationPage } from './conversation'
+import type { HotkeyFailure } from './hotkeys'
 import type { AppSettings } from './settings'
-import type { KokoroStatus, SystemVoice } from './voice-rpc'
+import type { KokoroStatus, SttStatus, SystemVoice } from './voice-rpc'
 
 /**
  * The IPC contract between main, preload, and renderer.
@@ -88,8 +89,16 @@ export const IpcChannel = {
   kokoroStatus: 'voice:kokoro-status',
   loadKokoro: 'voice:kokoro-load',
 
+  sttStatus: 'voice:stt-status',
+  loadSttModel: 'voice:stt-load',
+  /** main → renderer, bindings that could not be registered. */
+  hotkeyFailures: 'voice:hotkey-failures',
+  getHotkeyFailures: 'voice:hotkey-failures-get',
+
   getSettings: 'settings:get',
   saveSettings: 'settings:save',
+  /** main → renderer, settings changed somewhere other than the dialog. */
+  settingsChanged: 'settings:changed',
 
   /** main → overlay, the whole overlay state on every change. */
   overlayState: 'overlay:state',
@@ -182,6 +191,25 @@ export type OpenRoomApi = {
   /** Downloads the neural weights. Resolves when the model is usable. */
   loadKokoro: () => Promise<MutationResult>
 
+  sttStatus: () => Promise<SttStatus>
+  /** Downloads and loads the speech model. Resolves when it is usable. */
+  loadSttModel: () => Promise<MutationResult>
+  /**
+   * The current failures.
+   *
+   * Registration happens at launch, before any window has finished loading,
+   * and `webContents.send` before that point is dropped — so the broadcast
+   * alone would leave a freshly mounted renderer believing everything bound.
+   */
+  getHotkeyFailures: () => Promise<HotkeyFailure[]>
+  onHotkeyFailures: (listener: (failures: HotkeyFailure[]) => void) => () => void
+
   getSettings: () => Promise<AppSettings>
   saveSettings: (settings: AppSettings) => Promise<MutationResult>
+  /**
+   * Fires when settings change outside the dialog — the tray's voice toggle
+   * is the one that exists today. Without it an open dialog goes stale and
+   * the next save writes the value back.
+   */
+  onSettingsChanged: (listener: (settings: AppSettings) => void) => () => void
 }

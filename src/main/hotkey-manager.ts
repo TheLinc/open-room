@@ -1,6 +1,10 @@
 import { globalShortcut } from 'electron'
 import type { Agent } from '@shared/agent'
 import type { AppSettings } from '@shared/settings'
+import type { HotkeyBinding, HotkeyFailure } from '@shared/hotkeys'
+
+// Re-exported so main-side callers keep importing them from here.
+export type { HotkeyBinding, HotkeyFailure }
 
 /**
  * Owns every global shortcut in the app.
@@ -11,14 +15,6 @@ import type { AppSettings } from '@shared/settings'
  * a user cannot tell apart from a broken feature — so failures are returned
  * for the UI to show against the field that owns them.
  */
-
-export type HotkeyBinding = {
-  accelerator: string
-  /** null is the global binding, which targets the selected agent. */
-  agentId: string | null
-}
-
-export type HotkeyFailure = HotkeyBinding & { reason: string }
 
 /** Registered only for the life of a capture — see `registerEscape`. */
 const ESCAPE = 'Escape'

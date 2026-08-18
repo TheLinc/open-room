@@ -6,7 +6,9 @@ import { useConversations } from '@/hooks/use-conversations'
 import { AgentSidebar } from '@/components/agent-sidebar'
 import { AgentChat } from '@/components/agent-chat'
 import { AgentEditor } from '@/components/agent-editor'
+import { SettingsDialog } from '@/components/settings-dialog'
 import { Button } from '@/components/ui/button'
+import type { HotkeyFailure } from '@shared/hotkeys'
 
 function App(): React.JSX.Element {
   const { agents, errors, loading, refresh } = useAgents()
@@ -14,6 +16,19 @@ function App(): React.JSX.Element {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [editorOpen, setEditorOpen] = useState(false)
   const [editingNew, setEditingNew] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+
+  // Held here rather than in the dialog: the same failures belong against the
+  // per-agent field in the editor, and both need them whether or not the
+  // dialog has ever been opened.
+  const [hotkeyFailures, setHotkeyFailures] = useState<HotkeyFailure[]>([])
+  useEffect(() => {
+    // Asked for as well as subscribed to: bindings are registered at launch,
+    // before this window finished loading, so the broadcast that carried them
+    // was dropped.
+    void window.openRoom.getHotkeyFailures().then(setHotkeyFailures)
+  }, [])
+  useEffect(() => window.openRoom.onHotkeyFailures(setHotkeyFailures), [])
 
   // Derived during render rather than synced in an effect. The list changes
   // underneath us whenever the agents directory is edited outside the app, so
@@ -57,6 +72,7 @@ function App(): React.JSX.Element {
         runtimeFor={sessions.runtimeFor}
         onSelect={setSelectedId}
         onCreate={openNew}
+        onOpenSettings={() => setSettingsOpen(true)}
       />
 
       <main className="flex min-w-0 flex-1 flex-col">
@@ -104,6 +120,15 @@ function App(): React.JSX.Element {
           setSelectedId(null)
           void refresh()
         }}
+        hotkeyFailure={
+          hotkeyFailures.find((failure) => failure.agentId === selected?.config.id) ?? null
+        }
+      />
+
+      <SettingsDialog
+        open={settingsOpen}
+        onOpenChange={setSettingsOpen}
+        hotkeyFailures={hotkeyFailures}
       />
     </div>
   )
