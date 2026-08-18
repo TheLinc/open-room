@@ -1,6 +1,16 @@
 @import 'tailwindcss';
 
 /*
+ * Tailwind's automatic source detection is rooted at the Vite root, which is
+ * `src/renderer` — so nothing in `src/overlay` is scanned and its classes
+ * silently do not generate. The failure is invisible: utilities that happen to
+ * be used by the main window still appear, so the overlay renders half-styled
+ * rather than unstyled, which looks like a design mistake instead of a build
+ * one.
+ */
+@source "./**/*.{ts,tsx}";
+
+/*
  * The window itself is transparent — only the bubble paints. Anything that
  * gives the body a background turns the whole always-on-top rectangle into a
  * visible box sitting over the user's work.
@@ -18,4 +28,20 @@ body {
   user-select: none;
   -webkit-user-select: none;
   cursor: default;
+}
+
+/*
+ * The bubble's surface.
+ *
+ * Fully opaque rather than translucent: `backdrop-filter` has nothing
+ * dependable to sample inside a transparent, layered window, so a translucent
+ * fill reads as "the text is floating on your desktop" rather than as a
+ * surface. The shadow is what separates it from whatever is behind.
+ */
+.or-surface {
+  background: #101722;
+  border: 1px solid oklch(1 0 0 / 12%);
+  box-shadow:
+    0 10px 30px oklch(0 0 0 / 55%),
+    0 2px 8px oklch(0 0 0 / 40%);
 }
