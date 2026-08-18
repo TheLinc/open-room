@@ -88,3 +88,36 @@ export function isOverlayEvent(value: unknown): value is OverlayEvent {
 
   return event.type !== 'failed' || typeof event.message === 'string'
 }
+
+/**
+ * The overlay's interactive region, in window-relative CSS pixels.
+ *
+ * Main hit-tests the real cursor against this rather than relying on the
+ * document's own pointer events. A click-through, non-focusable, always-on-top
+ * window receives no mouse messages on Windows — `setIgnoreMouseEvents(true,
+ * { forward: true })` does not deliver them here — so `:hover`, `mouseenter`
+ * and `mouseleave` never fire inside it. Every hover affordance in the overlay
+ * depends on this instead.
+ */
+export type OverlayHitBox = {
+  x: number
+  y: number
+  width: number
+  height: number
+  /**
+   * Whether clicks should land on it.
+   *
+   * True only for the HUD. A transient voice bubble you can click by accident
+   * while reaching for what is underneath is a bug, so the pill reports its
+   * box for hover and stays click-through.
+   */
+  interactive: boolean
+}
+
+export const EMPTY_HIT_BOX: OverlayHitBox = {
+  x: 0,
+  y: 0,
+  width: 0,
+  height: 0,
+  interactive: false
+}

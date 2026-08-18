@@ -120,6 +120,20 @@ export class AgentSupervisor {
     return [...this.runtimes.values()]
   }
 
+  /**
+   * Agents waiting on a permission decision.
+   *
+   * An agent blocked on a prompt still reports `ready`, so its runtime state
+   * cannot distinguish it from one with nothing to do. The HUD needs that
+   * difference — with the main window closed, this is the only way a stalled
+   * agent is visible at all.
+   */
+  blockedAgentIds(): Set<string> {
+    const ids = new Set<string>()
+    for (const pending of this.pendingPermissions.values()) ids.add(pending.agentId)
+    return ids
+  }
+
   get runningCount(): number {
     return this.sessions.size
   }

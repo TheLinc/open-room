@@ -1,8 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Endpointer, type EndpointerVerdict } from '@shared/endpointer'
 import { encodePcm } from '@shared/pcm'
-import { HIDDEN_OVERLAY, type OverlayEvent, type OverlayState } from '@shared/voice-input'
+import {
+  HIDDEN_OVERLAY,
+  type OverlayEvent,
+  type OverlayState,
+  type PipEntry
+} from '@shared/voice-input'
 import { Capture } from './capture'
+import { Hud } from './components/hud'
 import { Pill } from './components/pill'
 
 /**
@@ -24,6 +30,7 @@ const REPORTED: Partial<Record<EndpointerVerdict, OverlayEvent>> = {
 
 export default function App(): React.JSX.Element | null {
   const [state, setState] = useState<OverlayState>(HIDDEN_OVERLAY)
+  const [pips, setPips] = useState<PipEntry[]>([])
 
   /**
    * Current microphone level, 0–1.
@@ -36,6 +43,7 @@ export default function App(): React.JSX.Element | null {
   const readLevel = useCallback(() => level.current, [])
 
   useEffect(() => window.overlay.onState(setState), [])
+  useEffect(() => window.overlay.onPips(setPips), [])
 
   useEffect(() => {
     const capture = new Capture()
@@ -108,11 +116,17 @@ export default function App(): React.JSX.Element | null {
     }
   }, [])
 
-  if (state.phase === 'hidden') return null
+  // A voice interaction always wins the space. The HUD is ambient and the
+  // pill is a live conversation — stacking them would put two competing
+  // things under the same glance.
+  const body =
+    state.phase !== 'hidden' ? (
+      <Pill state={state} level={readLevel} onHoverChange={window.overlay.reportHover} />
+    ) : pips.length > 0 ? (
+      <Hud pips={pips} />
+    ) : null
 
-  return (
-    <div className="flex h-full items-end justify-center pb-3">
-      <Pill state={state} level={readLevel} />
-    </div>
-  )
+  if (!body) return null
+
+  return <div className="flex h-full items-end justify-center pb-3">{body}</div>
 }

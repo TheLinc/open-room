@@ -22,7 +22,8 @@ import { OverlayWindow } from './overlay-window'
 import { HotkeyManager, bindingsFor, type HotkeyFailure } from './hotkey-manager'
 import { VoiceController } from './voice-controller'
 import { IpcChannel } from '@shared/ipc'
-import { isOverlayEvent } from '@shared/voice-input'
+import { pipsFor } from '@shared/pips'
+import { isOverlayEvent, type OverlayHitBox } from '@shared/voice-input'
 
 // OPEN_ROOM_HOME relocates the config root. Useful for testing against a
 // throwaway directory, and for anyone who keeps dotfiles somewhere else.
@@ -41,10 +42,19 @@ const speech = new SpeechBus(new VoiceSink(voice, new NotificationSink(), store)
 
 const supervisor = new AgentSupervisor(
   {
-    onRuntime: broadcastRuntime,
+    onRuntime: (runtime) => {
+      broadcastRuntime(runtime)
+      void pushHud()
+    },
     onTranscript: broadcastTranscript,
-    onPermissionRequest: broadcastPermissionRequest,
-    onPermissionResolved: broadcastPermissionResolved,
+    onPermissionRequest: (request) => {
+      broadcastPermissionRequest(request)
+      void pushHud()
+    },
+    onPermissionResolved: (requestId) => {
+      broadcastPermissionResolved(requestId)
+      void pushHud()
+    },
     onTranscriptCleared: broadcastTranscriptCleared
   },
   conversations,
@@ -72,6 +82,28 @@ let selectedAgentId: string | null = null
 
 /** Bindings that could not be registered. Surfaced in the settings dialog. */
 let hotkeyFailures: HotkeyFailure[] = []
+
+/** The main window, so the HUD can raise it and know whether to show at all. */
+let mainWindow: BrowserWindow | null = null
+
+/**
+ * Pushes the working HUD.
+ *
+ * Nothing is shown while the main window is focused: the sidebar already says
+ * which agents are working, and a second copy floating over it is noise. The
+ * HUD exists for the case the sidebar cannot cover — the window closed to the
+ * tray, or behind whatever the user is actually doing.
+ */
+async function pushHud(): Promise<void> {
+  const focused = mainWindow !== null && !mainWindow.isDestroyed() && mainWindow.isFocused()
+  if (focused) {
+    overlay.sendPips([])
+    return
+  }
+
+  const { agents } = await store.list()
+  overlay.sendPips(pipsFor(agents, supervisor.allRuntimes(), supervisor.blockedAgentIds()))
+}
 
 const hotkeys = new HotkeyManager((agentId) => void controller.onTrigger(agentId))
 
@@ -130,7 +162,7 @@ async function refreshHotkeys(): Promise<void> {
 }
 
 function createWindow(): void {
-  const mainWindow = new BrowserWindow({
+  mainWindow = new BrowserWindow({
     width: 1280,
     height: 840,
     minWidth: 980,
@@ -150,7 +182,22 @@ function createWindow(): void {
   })
 
   mainWindow.on('ready-to-show', () => {
-    mainWindow.show()
+    mainWindow?.show()
+  })
+
+  // Focus, not just visibility: a window sitting behind a full-screen editor
+  // is exactly as useful as a closed one for noticing a blocked agent.
+  const onWindowVisibilityChange = (): void => void pushHud()
+  mainWindow.on('focus', onWindowVisibilityChange)
+  mainWindow.on('blur', onWindowVisibilityChange)
+  mainWindow.on('show', onWindowVisibilityChange)
+  mainWindow.on('hide', onWindowVisibilityChange)
+  mainWindow.on('minimize', onWindowVisibilityChange)
+  mainWindow.on('restore', onWindowVisibilityChange)
+
+  mainWindow.on('closed', () => {
+    mainWindow = null
+    void pushHud()
   })
 
   // External links open in the user's browser, never in an app window.
@@ -185,8 +232,8 @@ app.whenReady().then(async () => {
   })
 
   overlay.create()
-  ipcMain.on(IpcChannel.overlaySetInteractive, (_event, interactive: boolean) => {
-    overlay.setInteractive(interactive)
+  ipcMain.on(IpcChannel.overlayHitBox, (_event, box: OverlayHitBox) => {
+    overlay.setHitBox(box)
   })
 
   ipcMain.on(IpcChannel.overlayAudio, (_event, pcm: string) => {
@@ -201,6 +248,16 @@ app.whenReady().then(async () => {
 
   ipcMain.on(IpcChannel.overlayHover, (_event, hovered: boolean) => {
     controller.setHovered(hovered)
+  })
+
+  // Clicking a pip is a request to *see* that agent, so the window comes
+  // forward with it selected — a raised window on the wrong agent would mean
+  // hunting for the one that just asked for something.
+  ipcMain.on(IpcChannel.overlaySelectAgent, (_event, agentId: string) => {
+    if (!mainWindow || mainWindow.isDestroyed()) createWindow()
+    mainWindow?.show()
+    mainWindow?.focus()
+    mainWindow?.webContents.send(IpcChannel.focusAgent, agentId)
   })
 
   /**
@@ -222,6 +279,7 @@ app.whenReady().then(async () => {
   )
 
   await refreshHotkeys()
+  await pushHud()
 
   // Warm the speech model so the first utterance is not waiting on it. Only
   // when voice input is on: this pulls 147 MB of weights into the sidecar,

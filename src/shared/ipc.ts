@@ -93,8 +93,10 @@ export const IpcChannel = {
 
   /** main → overlay, the whole overlay state on every change. */
   overlayState: 'overlay:state',
-  /** overlay → main, accept clicks while the pointer is over the bubble. */
-  overlaySetInteractive: 'overlay:set-interactive',
+  /** overlay → main, where its interactive region is and whether it takes clicks. */
+  overlayHitBox: 'overlay:hit-box',
+  /** main → overlay, whether the real cursor is inside that region. */
+  overlayPointer: 'overlay:pointer',
   /** main → overlay, open the microphone. */
   overlayStartCapture: 'overlay:start-capture',
   /** main → overlay, flush the audio and send it back. */
@@ -106,7 +108,13 @@ export const IpcChannel = {
   /** overlay → main, what the endpointer observed. */
   overlayEvent: 'overlay:event',
   /** overlay → main, pointer entered or left the bubble; pauses dismissal. */
-  overlayHover: 'overlay:hover'
+  overlayHover: 'overlay:hover',
+  /** main → overlay, one pip per working or blocked agent. */
+  overlayPips: 'overlay:pips',
+  /** overlay → main, raise the main window on this agent. */
+  overlaySelectAgent: 'overlay:select-agent',
+  /** main → renderer, select this agent, from a clicked pip. */
+  focusAgent: 'app:focus-agent'
 } as const
 
 export type IpcChannelName = (typeof IpcChannel)[keyof typeof IpcChannel]
@@ -131,6 +139,8 @@ export type OpenRoomApi = {
    * knows who it is addressing. Null when there is nothing to select.
    */
   selectAgent: (agentId: string | null) => void
+  /** Fires when a pip in the overlay HUD is clicked. */
+  onFocusAgent: (listener: (agentId: string) => void) => () => void
 
   /** Starts the agent's session if needed, then queues the prompt. */
   sendPrompt: (agentId: string, text: string) => Promise<MutationResult>

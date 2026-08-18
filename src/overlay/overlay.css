@@ -125,6 +125,60 @@ body {
   animation: or-halo 2100ms ease-in-out infinite alternate;
 }
 
+/*
+ * The HUD's pips.
+ *
+ * State is carried by rhythm rather than colour: colour already means "which
+ * agent", and at 9px a hue change reads as a different agent rather than a
+ * different state. A blocked agent breathes roughly three times faster and
+ * grows a ring, which is legible out of the corner of an eye.
+ */
+@keyframes or-breathe {
+  from {
+    opacity: 0.38;
+    transform: scale(0.82);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes or-ring {
+  from {
+    transform: scale(0.7);
+    opacity: 0.7;
+  }
+  to {
+    transform: scale(1.7);
+    opacity: 0;
+  }
+}
+
+.or-pip {
+  position: relative;
+  display: block;
+  height: 9px;
+  width: 9px;
+  flex: none;
+  border-radius: 9999px;
+  animation: or-breathe 1700ms ease-in-out infinite alternate;
+}
+
+.or-pip-attn {
+  animation-duration: 620ms;
+}
+
+.or-pip-attn::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: 9999px;
+  border: 1.2px solid var(--or-pip-color);
+  opacity: 0.55;
+  animation: or-ring 1100ms ease-out infinite;
+}
+
 /* The glyph slot holds one value at a time; changes cross-fade rather than
    morph — indistinguishable at 11px and vastly simpler. */
 .or-glyph {
@@ -145,8 +199,22 @@ body {
 
   .or-arc,
   .or-blip,
-  .or-emit {
+  .or-emit,
+  .or-pip-attn::after {
     animation: none;
+  }
+
+  /*
+   * The pips keep breathing, slowly. Like the waveform bars, they are the
+   * information rather than the decoration — a still dot cannot be told from
+   * a stale one, and "which agents are working" is the HUD's only message.
+   */
+  .or-pip {
+    animation-duration: 3400ms;
+  }
+
+  .or-pip-attn {
+    animation-duration: 1500ms;
   }
 
   .or-arc {

@@ -48,6 +48,9 @@ const openRoom: OpenRoomApi = {
     ipcRenderer.send(IpcChannel.selectAgent, agentId)
   },
 
+  onFocusAgent: (listener: (agentId: string) => void): (() => void) =>
+    subscribe(IpcChannel.focusAgent, (payload) => listener(payload as string)),
+
   sendPrompt: (agentId: string, text: string): Promise<MutationResult> =>
     ipcRenderer.invoke(IpcChannel.sendPrompt, agentId, text),
 

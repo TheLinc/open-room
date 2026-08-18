@@ -34,6 +34,10 @@ function App(): React.JSX.Element {
     window.openRoom.selectAgent(effectiveId)
   }, [effectiveId])
 
+  // A pip in the overlay HUD was clicked. It raises this window, and this
+  // puts the agent it named on screen.
+  useEffect(() => window.openRoom.onFocusAgent(setSelectedId), [])
+
   const openNew = (): void => {
     setEditingNew(true)
     setEditorOpen(true)

@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { IpcChannel } from '@shared/ipc'
-import type { OverlayEvent, OverlayState } from '@shared/voice-input'
+import type { OverlayEvent, OverlayHitBox, OverlayState, PipEntry } from '@shared/voice-input'
 
 /**
  * The overlay's bridge, deliberately far smaller than the main renderer's.
@@ -27,14 +27,38 @@ const overlay = {
   },
 
   /**
-   * Asks main to accept clicks while the pointer is over the bubble.
+   * Reports where the interactive content is and whether it takes clicks.
    *
-   * The window is click-through by default with mouse-move forwarded, which is
-   * what lets hover work at all; this is how the HUD becomes clickable without
-   * the voice states ever being clickable.
+   * This window receives no mouse messages of its own, so main hit-tests the
+   * real cursor against this box and answers on `onPointer`. It is also what
+   * decides when clicks stop passing through.
    */
-  setInteractive: (interactive: boolean): void => {
-    ipcRenderer.send(IpcChannel.overlaySetInteractive, interactive)
+  reportHitBox: (box: OverlayHitBox): void => {
+    ipcRenderer.send(IpcChannel.overlayHitBox, box)
+  },
+
+  /** Whether the cursor is inside the reported box. The overlay's only hover. */
+  onPointer: (listener: (inside: boolean) => void): (() => void) => {
+    const handler = (_event: unknown, inside: boolean): void => listener(inside)
+    ipcRenderer.on(IpcChannel.overlayPointer, handler)
+    return () => ipcRenderer.removeListener(IpcChannel.overlayPointer, handler)
+  },
+
+  /** Subscribes to the working HUD. Returns an unsubscribe function. */
+  onPips: (listener: (pips: PipEntry[]) => void): (() => void) => {
+    const handler = (_event: unknown, pips: PipEntry[]): void => listener(pips)
+    ipcRenderer.on(IpcChannel.overlayPips, handler)
+    return () => ipcRenderer.removeListener(IpcChannel.overlayPips, handler)
+  },
+
+  /** Raises the main window on this agent. */
+  selectAgent: (agentId: string): void => {
+    ipcRenderer.send(IpcChannel.overlaySelectAgent, agentId)
+  },
+
+  /** Pointer entered or left the bubble; pauses dismissal. */
+  reportHover: (hovered: boolean): void => {
+    ipcRenderer.send(IpcChannel.overlayHover, hovered)
   },
 
   /** Open the microphone. */

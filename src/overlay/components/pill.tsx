@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useEffect } from 'react'
 import type { OverlayState } from '@shared/voice-input'
+import { useHitBox } from '../use-hit-box'
 import { Waveform } from './waveform'
 import { Arcs, CircleGlyph, MicGlyph, Shimmer, TickGlyph } from './glyphs'
 
@@ -20,7 +21,10 @@ export function Pill({
   level: () => number
   onHoverChange?: (hovered: boolean) => void
 }): React.JSX.Element {
-  const [hovered, setHovered] = useState(false)
+  // Not clickable: a transient bubble you can hit by accident while reaching
+  // for what is underneath is a bug. The box is reported purely so main can
+  // tell us when the cursor is on it.
+  const { ref, hovered } = useHitBox(false)
   const color = state.agentColor || '#71717a'
   const dispatched = state.phase === 'dispatched'
 
@@ -44,13 +48,13 @@ export function Pill({
       <Arcs color={color} />
     ) : null
 
-  const setHover = (next: boolean): void => {
-    setHovered(next)
-    onHoverChange?.(next)
-  }
+  // Main pauses the dismissal timer while the pointer is here, so the bubble
+  // does not vanish out from under the expansion you reached for.
+  useEffect(() => onHoverChange?.(hovered), [hovered, onHoverChange])
 
   return (
     <div
+      ref={ref}
       className={[
         'or-surface or-enter flex flex-col gap-1.5 px-3.5 py-2 leading-normal',
         // Only the dispatched bubble has a second line, and only it needs a
@@ -70,8 +74,6 @@ export function Pill({
             } as React.CSSProperties)
           : undefined
       }
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
     >
       <div className="flex items-center gap-2.5" style={{ color }}>
         {glyph}
