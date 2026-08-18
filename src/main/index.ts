@@ -21,9 +21,10 @@ import { VoiceSink } from './voice-sink'
 import { OverlayWindow } from './overlay-window'
 import { HotkeyManager, bindingsFor, type HotkeyFailure } from './hotkey-manager'
 import { VoiceController } from './voice-controller'
+import { AppTray } from './tray'
 import { IpcChannel } from '@shared/ipc'
 import { pipsFor } from '@shared/pips'
-import { isOverlayEvent, type OverlayHitBox } from '@shared/voice-input'
+import { isOverlayEvent, type OverlayHitBox, type PipEntry } from '@shared/voice-input'
 
 // OPEN_ROOM_HOME relocates the config root. Useful for testing against a
 // throwaway directory, and for anyone who keeps dotfiles somewhere else.
@@ -87,6 +88,23 @@ let hotkeyFailures: HotkeyFailure[] = []
 let mainWindow: BrowserWindow | null = null
 
 /**
+ * Set only by an explicit quit.
+ *
+ * Closing the window hides it — the app is tray-resident, and a global hotkey
+ * whose point is working while backgrounded cannot depend on a window being
+ * open. This is what tells the close handler that this time it is for real.
+ */
+let quitting = false
+
+const tray = new AppTray()
+
+/** The last computed HUD entries, so the tray can be updated without re-reading disk. */
+let lastPips: PipEntry[] = []
+
+/** Whether a voice capture is open, which the tray icon has to show. */
+let capturing = false
+
+/**
  * Pushes the working HUD.
  *
  * Nothing is shown while the main window is focused: the sidebar already says
@@ -95,20 +113,72 @@ let mainWindow: BrowserWindow | null = null
  * tray, or behind whatever the user is actually doing.
  */
 async function pushHud(): Promise<void> {
+  const { agents } = await store.list()
+  lastPips = pipsFor(agents, supervisor.allRuntimes(), supervisor.blockedAgentIds())
+
   const focused = mainWindow !== null && !mainWindow.isDestroyed() && mainWindow.isFocused()
-  if (focused) {
-    overlay.sendPips([])
+  overlay.sendPips(focused ? [] : lastPips)
+  syncTray()
+}
+
+/**
+ * The tray reflects what is true, not what is visible.
+ *
+ * Unlike the HUD it keeps reporting while the main window is focused: an icon
+ * that flicked to idle because you looked at the app would be worse than no
+ * icon. Listening outranks everything — an invisible app with an open
+ * microphone is the one state that must always be legible.
+ */
+function syncTray(): void {
+  tray.setState(
+    capturing
+      ? 'listening'
+      : lastPips.some((pip) => pip.state === 'needs-attention')
+        ? 'attention'
+        : lastPips.length > 0
+          ? 'working'
+          : 'idle'
+  )
+}
+
+/** Brings the window back, recreating it if it was destroyed rather than hidden. */
+function showMainWindow(): void {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    createWindow()
     return
   }
 
-  const { agents } = await store.list()
-  overlay.sendPips(pipsFor(agents, supervisor.allRuntimes(), supervisor.blockedAgentIds()))
+  if (mainWindow.isMinimized()) mainWindow.restore()
+  mainWindow.show()
+  mainWindow.focus()
+}
+
+/** The tray's voice toggle. The settings dialog is the other way in. */
+async function toggleVoiceInput(): Promise<void> {
+  const settings = await store.readSettings()
+  const enabled = !settings.voiceInputEnabled
+
+  await store.writeSettings({ ...settings, voiceInputEnabled: enabled })
+  tray.setVoiceEnabled(enabled)
+  await refreshHotkeys()
 }
 
 const hotkeys = new HotkeyManager((agentId) => void controller.onTrigger(agentId))
 
 const controller = new VoiceController({
-  overlay,
+  // Wrapped so the tray learns about a capture. Everything else about the
+  // overlay is the window's own business.
+  overlay: {
+    send: (state) => {
+      overlay.send(state)
+
+      const open = state.phase === 'listening' || state.phase === 'transcribing'
+      if (open === capturing) return
+      capturing = open
+      syncTray()
+    },
+    hide: () => overlay.hide()
+  },
   sidecar: voice,
   supervisor,
   readSettings: () => store.readSettings(),
@@ -195,6 +265,15 @@ function createWindow(): void {
   mainWindow.on('minimize', onWindowVisibilityChange)
   mainWindow.on('restore', onWindowVisibilityChange)
 
+  // Closing hides. Quitting is an explicit act, from the tray or the OS —
+  // otherwise the first instinct everyone has with a window (close it) would
+  // silently kill every running agent.
+  mainWindow.on('close', (event) => {
+    if (quitting) return
+    event.preventDefault()
+    mainWindow?.hide()
+  })
+
   mainWindow.on('closed', () => {
     mainWindow = null
     void pushHud()
@@ -212,6 +291,23 @@ function createWindow(): void {
     mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
   }
 }
+
+/**
+ * A tray-resident app is invisible, so the obvious thing to do when you want
+ * it is launch it again.
+ *
+ * Without this that starts a second process which fails to register any global
+ * hotkey (the first one holds them), adds a second tray icon, and runs its own
+ * agents against the same files. Focusing what is already running is the only
+ * sane response.
+ */
+if (!app.requestSingleInstanceLock()) {
+  app.quit()
+}
+
+app.on('second-instance', () => {
+  showMainWindow()
+})
 
 app.whenReady().then(async () => {
   electronApp.setAppUserModelId('com.openroom.app')
@@ -278,6 +374,16 @@ app.whenReady().then(async () => {
     contents ? allowMicrophone(contents, permission) : false
   )
 
+  tray.create({
+    show: showMainWindow,
+    toggleVoice: () => void toggleVoiceInput(),
+    quit: () => {
+      quitting = true
+      app.quit()
+    }
+  })
+  tray.setVoiceEnabled(settings.voiceInputEnabled)
+
   await refreshHotkeys()
   await pushHud()
 
@@ -309,15 +415,21 @@ app.whenReady().then(async () => {
     }, 60_000)
   }
 
-  app.on('activate', function () {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
-  })
+  // macOS: clicking the dock icon. The window is usually hidden rather than
+  // destroyed now, so this shows it instead of building a second one.
+  app.on('activate', showMainWindow)
 })
 
 app.on('before-quit', async (event) => {
+  // Whatever asked for this — the tray, Cmd+Q, a shutdown — the window may now
+  // close for real.
+  quitting = true
+
   store.stopWatching()
   hotkeys.dispose()
   controller.dispose()
+  overlay.destroy()
+  tray.destroy()
   voice.stop()
   if (idleReaper) clearInterval(idleReaper)
 
@@ -330,8 +442,6 @@ app.on('before-quit', async (event) => {
   }
 })
 
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit()
-  }
-})
+// There is no `window-all-closed` handler, deliberately. Open Room is
+// tray-resident: closing the last window must leave the app running, with its
+// agents alive and its push-to-talk hotkey still bound.
