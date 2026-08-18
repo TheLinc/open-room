@@ -4,9 +4,10 @@ import { findEntry, formatBytes, totalBytes } from '@shared/model-catalog'
 import type { HotkeyFailure } from '@shared/hotkeys'
 import type { SttStatus } from '@shared/voice-rpc'
 import { useSettings } from '@/hooks/use-settings'
+import { explainAccelerator } from '@shared/accelerator'
+import { HotkeyInput } from '@/components/hotkey-input'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Progress } from '@/components/ui/progress'
 import { Slider } from '@/components/ui/slider'
@@ -28,15 +29,6 @@ export function SettingsDialog({
   const [stt, setStt] = useState<SttStatus | null>(null)
   const [downloading, setDownloading] = useState(false)
   const [downloadError, setDownloadError] = useState<string | null>(null)
-
-  /**
-   * The shortcut is held locally until committed.
-   *
-   * Saving per keystroke would re-register on every character and report
-   * "Invalid accelerator" for every prefix of a valid one, while writing that
-   * garbage to disk on the way through.
-   */
-  const [hotkeyDraft, setHotkeyDraft] = useState<string | null>(null)
 
   // Re-read on open: the model can be installed from elsewhere, and a stale
   // "not installed" would keep the switch disabled for no reason.
@@ -69,13 +61,6 @@ export function SettingsDialog({
     setDownloading(false)
     setStt(await window.openRoom.sttStatus())
     if (!result.ok) setDownloadError(result.message)
-  }
-
-  const commitHotkey = (): void => {
-    if (hotkeyDraft === null || !settings) return
-    const next = hotkeyDraft.trim()
-    setHotkeyDraft(null)
-    if (next !== settings.pushToTalkHotkey) void save({ ...settings, pushToTalkHotkey: next })
   }
 
   return (
@@ -154,21 +139,22 @@ export function SettingsDialog({
 
               <div className="space-y-2">
                 <Label htmlFor="ptt">Push-to-talk shortcut</Label>
-                <Input
+                <HotkeyInput
                   id="ptt"
-                  value={hotkeyDraft ?? settings.pushToTalkHotkey}
-                  onChange={(event) => setHotkeyDraft(event.target.value)}
-                  onBlur={commitHotkey}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter') event.currentTarget.blur()
-                  }}
+                  value={settings.pushToTalkHotkey}
+                  onChange={(accelerator) =>
+                    void save({ ...settings, pushToTalkHotkey: accelerator })
+                  }
                 />
-                {globalFailure ? (
+                {explainAccelerator(settings.pushToTalkHotkey) ? (
+                  <p className="text-xs text-destructive">
+                    {explainAccelerator(settings.pushToTalkHotkey)}
+                  </p>
+                ) : globalFailure ? (
                   <p className="text-xs text-destructive">{globalFailure.reason}</p>
                 ) : (
                   <p className="text-xs text-muted-foreground">
-                    Electron accelerator form, e.g. <code>CommandOrControl+Shift+Space</code>. Press
-                    once to start, again to send; Esc discards.
+                    Press once to start talking, again to send. Esc discards.
                   </p>
                 )}
               </div>

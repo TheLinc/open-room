@@ -12,6 +12,8 @@ import {
 } from '@shared/agent'
 import { checkAgentName } from '@shared/phonetics'
 import type { HotkeyFailure } from '@shared/hotkeys'
+import { explainAccelerator } from '@shared/accelerator'
+import { HotkeyInput } from '@/components/hotkey-input'
 import type { KokoroStatus, SystemVoice } from '@shared/voice-rpc'
 import { DEFAULT_KOKORO_VOICE, KOKORO_VOICES } from '@shared/kokoro-voices'
 import {
@@ -145,6 +147,7 @@ export function AgentEditor({
   }, [open, defaults, form])
 
   const watchedName = form.watch('name')
+  const watchedHotkey = form.watch('hotkey')
   const ttsEnabled = form.watch('ttsEnabled')
   const notificationsEnabled = form.watch('notificationsEnabled')
   const voiceProvider = form.watch('voiceProvider')
@@ -669,20 +672,30 @@ export function AgentEditor({
 
                   <Field>
                     <FieldLabel htmlFor="hotkey">Push-to-talk shortcut</FieldLabel>
-                    <Input
-                      id="hotkey"
-                      placeholder="CommandOrControl+Alt+1"
-                      {...form.register('hotkey')}
+                    <Controller
+                      control={form.control}
+                      name="hotkey"
+                      render={({ field }) => (
+                        <HotkeyInput
+                          id="hotkey"
+                          value={field.value ?? ''}
+                          onChange={field.onChange}
+                          placeholder="Click, then press a shortcut for this agent"
+                        />
+                      )}
                     />
-                    {hotkeyFailure ? (
+                    {explainAccelerator(watchedHotkey ?? '') ? (
+                      <FieldDescription className="text-destructive">
+                        {explainAccelerator(watchedHotkey ?? '')}
+                      </FieldDescription>
+                    ) : hotkeyFailure ? (
                       <FieldDescription className="text-destructive">
                         {hotkeyFailure.reason}
                       </FieldDescription>
                     ) : (
                       <FieldDescription>
-                        Optional. Talks to this agent directly, whichever agent is selected.
-                        Electron accelerator form, e.g. <code>Alt+Shift+A</code>. Leave empty to use
-                        the global shortcut.
+                        Optional. Talks to this agent directly, whichever one is selected. Leave
+                        empty to use the global shortcut.
                       </FieldDescription>
                     )}
                   </Field>

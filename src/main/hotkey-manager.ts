@@ -1,6 +1,7 @@
 import { globalShortcut } from 'electron'
 import type { Agent } from '@shared/agent'
 import type { AppSettings } from '@shared/settings'
+import { explainAccelerator, isBindableAccelerator } from '@shared/accelerator'
 import type { HotkeyBinding, HotkeyFailure } from '@shared/hotkeys'
 
 // Re-exported so main-side callers keep importing them from here.
@@ -63,6 +64,17 @@ export class HotkeyManager {
     const failures: HotkeyFailure[] = []
 
     for (const binding of bindings) {
+      // Checked before registering, not just in the UI. Config files are
+      // hand-editable, and Electron will happily bind a bare letter — which
+      // then swallows that key in every application on the machine.
+      if (!isBindableAccelerator(binding.accelerator)) {
+        failures.push({
+          ...binding,
+          reason: explainAccelerator(binding.accelerator) ?? 'Not a shortcut this app can register'
+        })
+        continue
+      }
+
       let ok = false
 
       try {

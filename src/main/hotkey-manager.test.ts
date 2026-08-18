@@ -92,11 +92,13 @@ describe('HotkeyManager', () => {
     expect(failures[0].reason).toMatch(/another application/i)
   })
 
-  it('reports an unparseable accelerator, which a user typed', () => {
-    invalid = ['NotAKey']
+  it('reports an accelerator Electron itself cannot parse', () => {
+    // Well-formed enough to pass our own check, so this covers the throw path
+    // rather than the pre-check that now sits in front of it.
+    invalid = ['Alt+NotAKey']
     const manager = new HotkeyManager(vi.fn())
 
-    const failures = manager.apply([{ accelerator: 'NotAKey', agentId: null }])
+    const failures = manager.apply([{ accelerator: 'Alt+NotAKey', agentId: null }])
 
     expect(failures).toHaveLength(1)
     expect(failures[0].reason).toMatch(/invalid accelerator/i)
@@ -132,6 +134,29 @@ describe('HotkeyManager', () => {
     registered.get('Alt+G')?.()
 
     expect(onTrigger).toHaveBeenCalledWith(null)
+  })
+
+  it('refuses a bare letter rather than taking that key from every other app', () => {
+    // Exactly what a plain text field used to produce: the modifiers type
+    // nothing and only the letter is stored.
+    const manager = new HotkeyManager(vi.fn())
+
+    const failures = manager.apply([{ accelerator: 'a', agentId: 'derek' }])
+
+    expect(failures).toHaveLength(1)
+    expect(failures[0].reason).toMatch(/modifier/i)
+    expect(registered.has('a')).toBe(false)
+  })
+
+  it('still registers the valid bindings alongside a refused one', () => {
+    const manager = new HotkeyManager(vi.fn())
+
+    manager.apply([
+      { accelerator: 'a', agentId: 'derek' },
+      { accelerator: 'Alt+B', agentId: 'scout' }
+    ])
+
+    expect(registered.has('Alt+B')).toBe(true)
   })
 
   it('releases bindings that are no longer wanted when re-applied', () => {
