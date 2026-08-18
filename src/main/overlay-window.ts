@@ -36,6 +36,16 @@ export class OverlayWindow {
    */
   private lastState: OverlayState = HIDDEN_OVERLAY
 
+  /**
+   * Whether the document has finished loading.
+   *
+   * `webContents.send` before that point is dropped silently. State survives
+   * it via `lastState`, but a capture signal has no such backstop — losing one
+   * would leave the pill on screen with the microphone closed.
+   */
+  private loaded = false
+  private queued: string[] = []
+
   create(): void {
     // Deliberately the primary display rather than whichever screen holds the
     // cursor: the overlay should appear in one predictable place.
@@ -77,12 +87,17 @@ export class OverlayWindow {
     this.window.setIgnoreMouseEvents(true, { forward: true })
 
     this.window.webContents.on('did-finish-load', () => {
+      this.loaded = true
       this.window?.webContents.send(IpcChannel.overlayState, this.lastState)
+      for (const channel of this.queued.splice(0)) {
+        this.window?.webContents.send(channel)
+      }
     })
 
     // A dead overlay means voice input silently stops working, with no window
     // left to say so. Rebuild it rather than losing the feature.
     this.window.webContents.on('render-process-gone', () => {
+      this.loaded = false
       this.window?.destroy()
       this.window = null
       this.create()
@@ -108,6 +123,27 @@ export class OverlayWindow {
       // focus from whatever the user is actually working in.
       this.window.showInactive()
     }
+  }
+
+  /** Open the microphone. */
+  startCapture(): void {
+    this.signal(IpcChannel.overlayStartCapture)
+  }
+
+  /** Flush what has been collected; the audio comes back on `overlayAudio`. */
+  stopCapture(): void {
+    this.signal(IpcChannel.overlayStopCapture)
+  }
+
+  /** Close the microphone and throw the audio away. */
+  discardCapture(): void {
+    this.signal(IpcChannel.overlayDiscardCapture)
+  }
+
+  private signal(channel: string): void {
+    if (!this.window || this.window.isDestroyed()) return
+    if (this.loaded) this.window.webContents.send(channel)
+    else this.queued.push(channel)
   }
 
   /**

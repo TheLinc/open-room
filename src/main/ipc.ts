@@ -26,7 +26,9 @@ export function registerIpcHandlers(
   store: ConfigStore,
   supervisor: AgentSupervisor,
   conversations: ConversationStore,
-  voice: VoiceSidecar
+  voice: VoiceSidecar,
+  /** Called after settings are written, so global hotkeys can re-register. */
+  onSettingsSaved: () => void = () => {}
 ): void {
   ipcMain.handle(IpcChannel.getAppInfo, (): AppInfo => {
     return {
@@ -222,6 +224,7 @@ export function registerIpcHandlers(
       const parsed = appSettingsSchema.parse(settings)
       await store.writeSettings(parsed)
       supervisor.setOptions({ maxConcurrent: parsed.maxConcurrentAgents })
+      onSettingsSaved()
     })
   })
 }

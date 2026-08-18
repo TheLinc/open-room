@@ -44,6 +44,10 @@ const openRoom: OpenRoomApi = {
   onAgentsChanged: (listener: () => void): (() => void) =>
     subscribe(IpcChannel.agentsChanged, () => listener()),
 
+  selectAgent: (agentId: string | null): void => {
+    ipcRenderer.send(IpcChannel.selectAgent, agentId)
+  },
+
   sendPrompt: (agentId: string, text: string): Promise<MutationResult> =>
     ipcRenderer.invoke(IpcChannel.sendPrompt, agentId, text),
 

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Plus } from 'lucide-react'
 import { useAgents } from '@/hooks/use-agents'
 import { useSessions } from '@/hooks/use-sessions'
@@ -25,6 +25,14 @@ function App(): React.JSX.Element {
     selectedRuntime,
     selected?.config.persistSession ?? false
   )
+
+  // The global push-to-talk hotkey addresses "the selected agent", and main
+  // has no other way to know which that is. Reports the *effective* selection,
+  // including the fallback above, so the overlay names what is on screen.
+  const effectiveId = selected?.config.id ?? null
+  useEffect(() => {
+    window.openRoom.selectAgent(effectiveId)
+  }, [effectiveId])
 
   const openNew = (): void => {
     setEditingNew(true)

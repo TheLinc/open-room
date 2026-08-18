@@ -24,7 +24,9 @@ import { WavPlayer } from './player'
 
 const player = new WavPlayer()
 
-const models = new ModelManager()
+// The root must match what `sttModelRoot()` resolves, or the manager
+// downloads to one directory while the loader looks in another.
+const models = new ModelManager(process.env.OPEN_ROOM_MODELS || undefined)
 
 /**
  * The only speech-to-text model this phase wires up.
@@ -121,7 +123,15 @@ async function handle(request: VoiceRequest): Promise<unknown> {
     }
 
     case 'transcribe': {
-      const { transcribe } = await sttModule()
+      const { isSttLoaded, loadStt, transcribe } = await sttModule()
+
+      // Installed is not loaded. Nothing loads the model on the capture path,
+      // so after every restart the first utterance would arrive at a pipeline
+      // that does not exist yet. Loading a downloaded tiny model takes well
+      // under a second; downloading one here would not, which is why an
+      // absent model is refused before the microphone ever opens.
+      if (!isSttLoaded()) await loadStt(STT_MODEL_ID)
+
       // Samples arrive base64-encoded: a JSON array of tens of thousands of
       // floats would dwarf the audio it describes.
       const buffer = Buffer.from(request.params.pcm, 'base64')

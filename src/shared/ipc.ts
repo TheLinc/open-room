@@ -56,6 +56,8 @@ export const IpcChannel = {
   pickWorkspace: 'agents:pick-workspace',
   /** main → renderer, fired when the agents directory changes on disk. */
   agentsChanged: 'agents:changed',
+  /** renderer → main, which agent the window has selected. */
+  selectAgent: 'agents:select',
 
   sendPrompt: 'session:send',
   interruptAgent: 'session:interrupt',
@@ -124,6 +126,11 @@ export type OpenRoomApi = {
   pickWorkspace: () => Promise<string | null>
   /** Subscribes to on-disk changes. Returns an unsubscribe function. */
   onAgentsChanged: (listener: () => void) => () => void
+  /**
+   * Tells main which agent is on screen, so the global push-to-talk hotkey
+   * knows who it is addressing. Null when there is nothing to select.
+   */
+  selectAgent: (agentId: string | null) => void
 
   /** Starts the agent's session if needed, then queues the prompt. */
   sendPrompt: (agentId: string, text: string) => Promise<MutationResult>
