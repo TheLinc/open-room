@@ -744,31 +744,35 @@ export function AgentEditor({
             </p>
           )}
 
-          <DialogFooter className="border-t pt-4 sm:justify-between">
-            <div className="px-2">
-              {isNew ? (
-                <span />
-              ) : (
-                <Button
-                  type="button"
-                  variant={confirmingDelete ? 'destructive' : 'ghost'}
-                  onClick={() => (confirmingDelete ? handleDelete() : setConfirmingDelete(true))}
-                  onBlur={() => setConfirmingDelete(false)}
-                >
-                  <Trash2 />
-                  {confirmingDelete ? 'Click again to delete' : 'Delete'}
-                </Button>
-              )}
+          {/* Two direct children, deliberately: `sm:justify-between` is what
+              pushes Delete away from Cancel and Save, and it has nothing to
+              space apart if both are wrapped in one element. `mx-0` undoes the
+              footer's own `-mx-4`, which exists to cancel the dialog's
+              horizontal padding — with that padding now zero it would instead
+              hang the band a clear 16px past each edge, to be clipped. */}
+          <DialogFooter className="mx-0 border-t px-2 pt-4 sm:justify-between">
+            {isNew ? (
+              <span />
+            ) : (
+              <Button
+                type="button"
+                variant={confirmingDelete ? 'destructive' : 'ghost'}
+                onClick={() => (confirmingDelete ? handleDelete() : setConfirmingDelete(true))}
+                onBlur={() => setConfirmingDelete(false)}
+              >
+                <Trash2 />
+                {confirmingDelete ? 'Click again to delete' : 'Delete'}
+              </Button>
+            )}
 
-              <div className="flex gap-2">
-                <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-                  Cancel
-                </Button>
-                <Button type="submit" disabled={form.formState.isSubmitting}>
-                  {form.formState.isSubmitting && <Loader2 className="animate-spin" />}
-                  {isNew ? 'Create agent' : 'Save changes'}
-                </Button>
-              </div>
+            <div className="flex gap-2">
+              <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={form.formState.isSubmitting}>
+                {form.formState.isSubmitting && <Loader2 className="animate-spin" />}
+                {isNew ? 'Create agent' : 'Save changes'}
+              </Button>
             </div>
           </DialogFooter>
         </form>
