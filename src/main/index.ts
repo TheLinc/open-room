@@ -5,6 +5,7 @@ import icon from '../../resources/icon.png?asset'
 import {
   broadcastAgentsChanged,
   broadcastHotkeyFailures,
+  broadcastMicrophoneLevel,
   broadcastMicrophones,
   broadcastPermissionRequest,
   broadcastPermissionResolved,
@@ -26,6 +27,7 @@ import { HotkeyManager, bindingsFor, type HotkeyFailure } from './hotkey-manager
 import { VoiceController } from './voice-controller'
 import { WakeController } from './wake-controller'
 import { wakeAction } from './wake-refresh'
+import { MicrophoneTest } from './microphone-test'
 import { AppTray } from './tray'
 import { IpcChannel } from '@shared/ipc'
 import { pipsFor } from '@shared/pips'
@@ -293,6 +295,13 @@ async function refreshWake(): Promise<void> {
   wake.start()
 }
 
+/** The settings microphone test; see `MicrophoneTest` for why it self-stops. */
+const micTest = new MicrophoneTest({
+  startMeter: () => overlay.startMeter(),
+  stopMeter: () => overlay.stopMeter(),
+  onLevel: broadcastMicrophoneLevel
+})
+
 /**
  * Re-registers every global shortcut.
  *
@@ -444,6 +453,18 @@ app.whenReady().then(async () => {
   })
 
   ipcMain.handle(IpcChannel.listMicrophones, () => microphones)
+
+  // The settings microphone test. This is the one path that opens the
+  // microphone without voice input being enabled, so it is bounded at both
+  // ends: the user presses a button to start it, and it stops on its own if
+  // they wander off with the dialog open.
+  ipcMain.on(IpcChannel.setMicrophoneTest, (_event, testing: boolean) => {
+    micTest.set(testing)
+  })
+
+  ipcMain.on(IpcChannel.overlayLevel, (_event, rms: number) => {
+    micTest.level(rms)
+  })
 
   // Clicking a pip is a request to *see* that agent, so the window comes
   // forward with it selected — a raised window on the wrong agent would mean

@@ -7,6 +7,7 @@ import type { SttStatus } from '@shared/voice-rpc'
 import { useSettings } from '@/hooks/use-settings'
 import { explainAccelerator } from '@shared/accelerator'
 import { HotkeyInput } from '@/components/hotkey-input'
+import { MicMeter } from '@/components/mic-meter'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
@@ -96,8 +97,8 @@ export function SettingsDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       {/* DialogContent is a grid and does not clip by default. */}
-      <DialogContent className="flex max-h-[80vh] flex-col overflow-hidden sm:max-w-lg">
-        <DialogHeader>
+      <DialogContent className="flex max-h-[80vh] flex-col overflow-hidden sm:max-w-lg px-0">
+        <DialogHeader className="px-2">
           <DialogTitle>Settings</DialogTitle>
         </DialogHeader>
 
@@ -106,7 +107,7 @@ export function SettingsDialog({
         ) : (
           // Plain overflow div, not ScrollArea — see CLAUDE.md's gotcha about
           // ScrollArea inside a flex-sized parent.
-          <div className="min-h-0 flex-1 space-y-8 overflow-x-hidden overflow-y-auto pr-1">
+          <div className="min-h-0 flex-1 space-y-8 overflow-x-hidden overflow-y-auto px-2">
             <section className="space-y-4">
               <h3 className="text-sm font-medium">Agents</h3>
 
@@ -216,6 +217,7 @@ export function SettingsDialog({
                     ? 'The system default is often not the one you talk into.'
                     : 'Whatever this machine is set to use for input.'}
                 </p>
+                <MicMeter />
               </div>
 
               <div className="space-y-2">

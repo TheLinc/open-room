@@ -94,6 +94,19 @@ const overlay = {
     return () => ipcRenderer.removeListener(IpcChannel.overlaySetMicrophone, handler)
   },
 
+  /** Open the microphone purely to report its level to the settings meter. */
+  onStartMeter: (listener: () => void): (() => void) =>
+    onSignal(IpcChannel.overlayStartMeter, listener),
+
+  /** Close the metering stream. */
+  onStopMeter: (listener: () => void): (() => void) =>
+    onSignal(IpcChannel.overlayStopMeter, listener),
+
+  /** One RMS reading from the metering stream. */
+  reportLevel: (rms: number): void => {
+    ipcRenderer.send(IpcChannel.overlayLevel, rms)
+  },
+
   /** Someone started talking over the app. */
   reportBargeIn: (): void => {
     ipcRenderer.send(IpcChannel.overlayBargeIn)

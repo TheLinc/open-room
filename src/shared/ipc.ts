@@ -128,6 +128,16 @@ export const IpcChannel = {
   overlayMicrophones: 'overlay:microphones',
   /** main → overlay, which device to listen on. Empty is the system default. */
   overlaySetMicrophone: 'overlay:set-microphone',
+  /** main → overlay, open the microphone purely to report its level. */
+  overlayStartMeter: 'overlay:start-meter',
+  /** main → overlay, close the metering stream. */
+  overlayStopMeter: 'overlay:stop-meter',
+  /** overlay → main, one RMS reading from the metering stream. */
+  overlayLevel: 'overlay:level',
+  /** renderer → main, start or stop the microphone test in settings. */
+  setMicrophoneTest: 'voice:set-microphone-test',
+  /** main → renderer, a level to draw, or null once the test has stopped. */
+  microphoneLevel: 'voice:microphone-level',
   /** renderer → main, the cached device list for the settings picker. */
   listMicrophones: 'voice:list-microphones',
   /** main → renderer, the list changed — a headset appeared or vanished. */
@@ -218,6 +228,19 @@ export type OpenRoomApi = {
    * and devices come and go while it is open.
    */
   onMicrophonesChanged: (listener: (devices: MicrophoneDevice[]) => void) => () => void
+  /**
+   * Opens or closes the microphone for the settings meter.
+   *
+   * Explicit rather than implicit: this is the only thing in the app that
+   * opens the microphone without the user having enabled voice input, so it
+   * happens when they press a button and not when a dialog appears.
+   */
+  setMicrophoneTest: (testing: boolean) => void
+  /**
+   * Fires with each level while the test runs, and once with null when it
+   * stops — including when main stops it on the timeout rather than the user.
+   */
+  onMicrophoneLevel: (listener: (rms: number | null) => void) => () => void
   sttStatus: () => Promise<SttStatus>
   /** Downloads and loads the speech model. Resolves when it is usable. */
   loadSttModel: () => Promise<MutationResult>

@@ -130,6 +130,13 @@ const openRoom: OpenRoomApi = {
   onMicrophonesChanged: (listener: (devices: MicrophoneDevice[]) => void): (() => void) =>
     subscribe(IpcChannel.microphonesChanged, (payload) => listener(payload as MicrophoneDevice[])),
 
+  setMicrophoneTest: (testing: boolean): void => {
+    ipcRenderer.send(IpcChannel.setMicrophoneTest, testing)
+  },
+
+  onMicrophoneLevel: (listener: (rms: number | null) => void): (() => void) =>
+    subscribe(IpcChannel.microphoneLevel, (payload) => listener(payload as number | null)),
+
   sttStatus: (): Promise<SttStatus> => ipcRenderer.invoke(IpcChannel.sttStatus),
 
   loadSttModel: (): Promise<MutationResult> => ipcRenderer.invoke(IpcChannel.loadSttModel),

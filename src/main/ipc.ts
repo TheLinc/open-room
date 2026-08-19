@@ -270,6 +270,11 @@ export function broadcastMicrophones(devices: MicrophoneDevice[]): void {
   broadcast(IpcChannel.microphonesChanged, devices)
 }
 
+/** One reading for the settings meter, or null once the test has stopped. */
+export function broadcastMicrophoneLevel(rms: number | null): void {
+  broadcast(IpcChannel.microphoneLevel, rms)
+}
+
 export function broadcastSettingsChanged(settings: AppSettings): void {
   broadcast(IpcChannel.settingsChanged, settings)
 }

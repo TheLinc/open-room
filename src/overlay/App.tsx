@@ -8,6 +8,7 @@ import {
   type PipEntry
 } from '@shared/voice-input'
 import { Capture } from './capture'
+import { Meter } from './meter'
 import { WakeListener } from './wake-listener'
 import { Hud } from './components/hud'
 import { Pill } from './components/pill'
@@ -176,6 +177,29 @@ export default function App(): React.JSX.Element | null {
       offStart()
       offStop()
       offMute()
+    }
+  }, [])
+
+  /**
+   * The settings microphone test.
+   *
+   * Independent of both captures above, and the only path that opens the
+   * microphone without voice input being enabled — which is why it runs only
+   * between an explicit start and stop from main.
+   */
+  useEffect(() => {
+    const meter = new Meter(
+      (rms) => window.overlay.reportLevel(rms),
+      (message) => window.overlay.reportEvent({ type: 'failed', message })
+    )
+
+    const offStart = window.overlay.onStartMeter(() => void meter.start())
+    const offStop = window.overlay.onStopMeter(() => meter.stop())
+
+    return () => {
+      meter.stop()
+      offStart()
+      offStop()
     }
   }, [])
 

@@ -216,6 +216,15 @@ export class OverlayWindow {
     this.signal(IpcChannel.overlayStopWake)
   }
 
+  /** Open the microphone purely to report its level to the settings meter. */
+  startMeter(): void {
+    this.signal(IpcChannel.overlayStartMeter)
+  }
+
+  stopMeter(): void {
+    this.signal(IpcChannel.overlayStopMeter)
+  }
+
   /** Which input device captures should open. Empty is the system default. */
   setMicrophone(deviceId: string): void {
     this.lastMicrophoneId = deviceId
