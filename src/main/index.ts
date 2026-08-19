@@ -25,6 +25,7 @@ import { OverlayWindow } from './overlay-window'
 import { HotkeyManager, bindingsFor, type HotkeyFailure } from './hotkey-manager'
 import { VoiceController } from './voice-controller'
 import { WakeController } from './wake-controller'
+import { wakeAction } from './wake-refresh'
 import { AppTray } from './tray'
 import { IpcChannel } from '@shared/ipc'
 import { pipsFor } from '@shared/pips'
@@ -255,6 +256,9 @@ const wake = new WakeController({
 // flight when this fires.
 speech.onSpeakingChange = (speaking) => wake.setSpeaking(speaking)
 
+/** The device the wake listener's current stream was opened on. */
+let lastMicrophoneId: string | null = null
+
 /**
  * Starts or stops always-on listening to match the settings.
  *
@@ -263,17 +267,30 @@ speech.onSpeakingChange = (speaking) => wake.setSpeaking(speaking)
  */
 async function refreshWake(): Promise<void> {
   const settings = await store.readSettings()
-  overlay.setMicrophone(settings.microphoneId)
-  const ready =
-    settings.wakeWordEnabled && ((await voice.sttStatus().catch(() => null))?.installed ?? false)
 
-  if (ready === wake.isListening) return
-  if (ready) {
-    await voice.loadVad().catch((error) => console.warn('Could not load the VAD model:', error))
-    wake.start()
-  } else {
+  const deviceChanged = lastMicrophoneId !== null && settings.microphoneId !== lastMicrophoneId
+  lastMicrophoneId = settings.microphoneId
+  overlay.setMicrophone(settings.microphoneId)
+
+  const action = wakeAction({
+    enabled: settings.wakeWordEnabled,
+    modelInstalled: (await voice.sttStatus().catch(() => null))?.installed ?? false,
+    listening: wake.isListening,
+    deviceChanged
+  })
+
+  if (action === 'none') return
+  if (action === 'stop') {
     wake.stop()
+    return
   }
+
+  // A restart is a stop and a start: the overlay applies a new device id to
+  // the next stream it opens, never to one already running.
+  if (action === 'restart') wake.stop()
+
+  await voice.loadVad().catch((error) => console.warn('Could not load the VAD model:', error))
+  wake.start()
 }
 
 /**
