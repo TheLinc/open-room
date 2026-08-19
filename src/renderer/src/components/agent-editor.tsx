@@ -199,8 +199,8 @@ export function AgentEditor({
       {/* `overflow-hidden` matters: DialogContent is a grid by default with no
           clipping, so without it the tab content paints past the rounded
           container instead of being confined to the scroll area below. */}
-      <DialogContent className="flex max-h-[85vh] flex-col gap-0 overflow-hidden sm:max-w-2xl">
-        <DialogHeader>
+      <DialogContent className="flex max-h-[85vh] h-full flex-col gap-0 overflow-hidden sm:max-w-2xl px-0">
+        <DialogHeader className="px-2">
           <DialogTitle>{isNew ? 'New agent' : `Edit ${agent.config.name}`}</DialogTitle>
           <DialogDescription>
             {isNew
@@ -209,15 +209,17 @@ export function AgentEditor({
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={form.handleSubmit(onSubmit)} className="flex min-h-0 flex-1 flex-col">
+        <form onSubmit={form.handleSubmit(onSubmit)} className="flex min-h-0 flex-1 flex-col mt-2">
           <Tabs defaultValue="general" className="flex min-h-0 flex-1 flex-col">
-            <TabsList className="w-full justify-start">
-              <TabsTrigger value="general">General</TabsTrigger>
-              <TabsTrigger value="permissions">Permissions</TabsTrigger>
-              <TabsTrigger value="context">Context</TabsTrigger>
-              <TabsTrigger value="voice">Voice</TabsTrigger>
-              <TabsTrigger value="advanced">Advanced</TabsTrigger>
-            </TabsList>
+            <div className="px-2">
+              <TabsList className="w-full justify-start px-2">
+                <TabsTrigger value="general">General</TabsTrigger>
+                <TabsTrigger value="permissions">Permissions</TabsTrigger>
+                <TabsTrigger value="context">Context</TabsTrigger>
+                <TabsTrigger value="voice">Voice</TabsTrigger>
+                <TabsTrigger value="advanced">Advanced</TabsTrigger>
+              </TabsList>
+            </div>
 
             {/* Native overflow rather than ScrollArea: Radix's viewport sizes
                 itself with a percentage height, which does not resolve against
@@ -226,8 +228,8 @@ export function AgentEditor({
                 the dependable form. */}
             {/* No negative margin here: pairing `-mx-1` with `px-1` makes this
                 wider than its parent and produces a stray horizontal scrollbar. */}
-            <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-1">
-              <div className="py-4">
+            <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-2">
+              <div className="py-2">
                 <TabsContent value="general" className="mt-0 flex flex-col gap-5">
                   <Field>
                     <FieldLabel htmlFor="name">Name</FieldLabel>
@@ -743,28 +745,30 @@ export function AgentEditor({
           )}
 
           <DialogFooter className="border-t pt-4 sm:justify-between">
-            {isNew ? (
-              <span />
-            ) : (
-              <Button
-                type="button"
-                variant={confirmingDelete ? 'destructive' : 'ghost'}
-                onClick={() => (confirmingDelete ? handleDelete() : setConfirmingDelete(true))}
-                onBlur={() => setConfirmingDelete(false)}
-              >
-                <Trash2 />
-                {confirmingDelete ? 'Click again to delete' : 'Delete'}
-              </Button>
-            )}
+            <div className="px-2">
+              {isNew ? (
+                <span />
+              ) : (
+                <Button
+                  type="button"
+                  variant={confirmingDelete ? 'destructive' : 'ghost'}
+                  onClick={() => (confirmingDelete ? handleDelete() : setConfirmingDelete(true))}
+                  onBlur={() => setConfirmingDelete(false)}
+                >
+                  <Trash2 />
+                  {confirmingDelete ? 'Click again to delete' : 'Delete'}
+                </Button>
+              )}
 
-            <div className="flex gap-2">
-              <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-                Cancel
-              </Button>
-              <Button type="submit" disabled={form.formState.isSubmitting}>
-                {form.formState.isSubmitting && <Loader2 className="animate-spin" />}
-                {isNew ? 'Create agent' : 'Save changes'}
-              </Button>
+              <div className="flex gap-2">
+                <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={form.formState.isSubmitting}>
+                  {form.formState.isSubmitting && <Loader2 className="animate-spin" />}
+                  {isNew ? 'Create agent' : 'Save changes'}
+                </Button>
+              </div>
             </div>
           </DialogFooter>
         </form>
