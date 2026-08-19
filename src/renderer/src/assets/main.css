@@ -115,6 +115,15 @@
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
+
+  /*
+   * A shade stronger than `--border`, which is what shadcn's ScrollArea thumb
+   * uses. That component's bar is a hover affordance inside a known box; this
+   * one is the only handle on a surface that is always scrollable, and at 10%
+   * white on near-black it is genuinely hard to find.
+   */
+  --scrollbar-thumb: oklch(1 0 0 / 18%);
+  --scrollbar-thumb-hover: oklch(1 0 0 / 30%);
 }
 
 @layer base {
@@ -126,5 +135,54 @@
   }
   html {
     @apply font-sans;
+
+    /*
+     * The palette lives in CSS variables, which Chromium cannot see when it
+     * decides how to paint the parts it owns — so without this it renders
+     * light scrollbars and light form controls on a black page. It also
+     * covers every scroll container the rules below do not reach, including
+     * ones inside shadow trees.
+     */
+    color-scheme: dark;
+  }
+
+  /*
+   * Scrollbars, matched to the app rather than the platform.
+   *
+   * Deliberately the same shape as shadcn's `ScrollArea` bar — a transparent
+   * track and a rounded thumb in the border colour — so the handful of places
+   * that use that component and the many that just overflow do not look like
+   * two different applications.
+   *
+   * `scrollbar-width` and `scrollbar-color` are pointedly not set: from
+   * Chromium 121 they take precedence and switch these pseudo-elements off
+   * entirely, so mixing the two approaches silently loses this one.
+   */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background-color: var(--scrollbar-thumb);
+    border-radius: 9999px;
+
+    /* A transparent border clipped to the padding box is what insets the
+       thumb from the edge, standing in for shadcn's `p-px` on the track. */
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: var(--scrollbar-thumb-hover);
+  }
+
+  /* Where two scrollbars meet; otherwise a small light square. */
+  ::-webkit-scrollbar-corner {
+    background: transparent;
   }
 }
