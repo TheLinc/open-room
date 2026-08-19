@@ -107,7 +107,14 @@ export class OverlayWindow {
         preload: join(__dirname, '../preload/overlay.js'),
         contextIsolation: true,
         nodeIntegration: false,
-        sandbox: false
+        sandbox: false,
+        // Wake listening runs on this window's render clock, and this window
+        // is hidden almost all the time. Chromium stops requestAnimationFrame
+        // outright for a hidden window and throttles timers to roughly 1 Hz —
+        // measured here as 0 frames and 2 ticks per 2 seconds, against 331 and
+        // 125 when this is false. Without it the always-on listener starts,
+        // polls until the first hide, and is silently dead thereafter.
+        backgroundThrottling: false
       }
     })
 
