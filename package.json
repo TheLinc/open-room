@@ -1,11 +1,12 @@
 {
   "name": "open-room",
+  "productName": "Open Room",
   "version": "0.1.0",
   "description": "Run multiple named Claude Code agents concurrently, addressed by voice or chat",
   "main": "./out/main/index.js",
   "license": "MIT",
   "author": "Lincoln Laylor",
-  "homepage": "https://github.com/lincolnlaylor/open-room",
+  "homepage": "https://openroom.dev",
   "scripts": {
     "format": "prettier --write .",
     "lint": "eslint --cache .",

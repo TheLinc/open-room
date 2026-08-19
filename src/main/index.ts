@@ -423,7 +423,10 @@ app.on('second-instance', () => {
 })
 
 app.whenReady().then(async () => {
-  electronApp.setAppUserModelId('com.openroom.app')
+  // Must match `appId` in electron-builder.yml: Windows only attributes a
+  // toast to the app when this matches the AUMID on its Start Menu shortcut,
+  // which the installer takes from that field. See the note there.
+  electronApp.setAppUserModelId('dev.openroom.app')
 
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)

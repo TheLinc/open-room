@@ -1,5 +1,12 @@
-appId: com.electron.app
-productName: scaffold-test
+# Reverse-DNS of the domain the project owns, openroom.dev.
+#
+# On Windows this is also the AppUserModelID that the NSIS installer stamps
+# into the Start Menu shortcut, and a toast is only attributed to the app when
+# the AUMID the running process sets matches it. So this has to stay in step
+# with `setAppUserModelId` in src/main/index.ts — notifications are how agents
+# report back by default, and a mismatch silences them with no error anywhere.
+appId: dev.openroom.app
+productName: Open Room
 directories:
   buildResources: build
 files:
@@ -12,7 +19,7 @@ files:
 asarUnpack:
   - resources/**
 win:
-  executableName: scaffold-test
+  executableName: open-room
 nsis:
   artifactName: ${name}-${version}-setup.${ext}
   shortcutName: ${productName}
@@ -33,7 +40,7 @@ linux:
     - AppImage
     - snap
     - deb
-  maintainer: electronjs.org
+  maintainer: Lincoln Laylor
   category: Utility
 appImage:
   artifactName: ${name}-${version}.${ext}
