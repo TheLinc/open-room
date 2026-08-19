@@ -53,8 +53,9 @@ export function AgentSidebar({
 }: Props): React.JSX.Element {
   return (
     <aside className="flex w-64 shrink-0 flex-col border-r border-border bg-card">
-      <div className="flex items-center justify-between px-4 py-3">
-        <h1 className="text-sm font-semibold tracking-tight">Open Room</h1>
+      {/* No heading here: the app name sits directly above in the title bar,
+          and stacking the two put "Open Room" on screen twice. */}
+      <div className="flex items-center justify-end px-3 py-2">
         <div className="flex items-center gap-0.5">
           <Button size="icon-sm" variant="ghost" onClick={onCreate} aria-label="New agent">
             <Plus />

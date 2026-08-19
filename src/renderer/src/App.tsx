@@ -7,6 +7,7 @@ import { AgentSidebar } from '@/components/agent-sidebar'
 import { AgentChat } from '@/components/agent-chat'
 import { AgentEditor } from '@/components/agent-editor'
 import { SettingsDialog } from '@/components/settings-dialog'
+import { TitleBar } from '@/components/title-bar'
 import { useSettings } from '@/hooks/use-settings'
 import { Button } from '@/components/ui/button'
 import type { HotkeyFailure } from '@shared/hotkeys'
@@ -66,50 +67,56 @@ function App(): React.JSX.Element {
   }
 
   return (
-    <div className="flex h-screen bg-background text-foreground">
-      <AgentSidebar
-        agents={agents}
-        errors={errors}
-        selectedId={selected?.config.id ?? null}
-        runtimeFor={sessions.runtimeFor}
-        onSelect={setSelectedId}
-        onCreate={openNew}
-        onOpenSettings={() => setSettingsOpen(true)}
-      />
+    <div className="flex h-screen flex-col bg-background text-foreground">
+      <TitleBar />
 
-      <main className="flex min-w-0 flex-1 flex-col">
-        {selected ? (
-          <AgentChat
-            key={selected.config.id}
-            agent={selected}
-            runtime={selectedRuntime}
-            entries={sessions.entriesFor(selected.config.id)}
-            truncated={sessions.truncatedFor(selected.config.id)}
-            permissions={sessions.permissionsFor(selected.config.id)}
-            conversations={conversations}
-            onEdit={openEdit}
-          />
-        ) : (
-          <div className="flex flex-1 flex-col items-center justify-center gap-4 p-8 text-center">
-            <div className="flex flex-col gap-1">
-              <h2 className="text-lg font-semibold tracking-tight">
-                {loading ? 'Loading agents…' : 'No agents yet'}
-              </h2>
+      {/* `min-h-0` so the row can shrink below its content and let the panes
+          scroll, rather than pushing the window taller than the screen. */}
+      <div className="flex min-h-0 flex-1 border-t border-border">
+        <AgentSidebar
+          agents={agents}
+          errors={errors}
+          selectedId={selected?.config.id ?? null}
+          runtimeFor={sessions.runtimeFor}
+          onSelect={setSelectedId}
+          onCreate={openNew}
+          onOpenSettings={() => setSettingsOpen(true)}
+        />
+
+        <main className="flex min-w-0 flex-1 flex-col">
+          {selected ? (
+            <AgentChat
+              key={selected.config.id}
+              agent={selected}
+              runtime={selectedRuntime}
+              entries={sessions.entriesFor(selected.config.id)}
+              truncated={sessions.truncatedFor(selected.config.id)}
+              permissions={sessions.permissionsFor(selected.config.id)}
+              conversations={conversations}
+              onEdit={openEdit}
+            />
+          ) : (
+            <div className="flex flex-1 flex-col items-center justify-center gap-4 p-8 text-center">
+              <div className="flex flex-col gap-1">
+                <h2 className="text-lg font-semibold tracking-tight">
+                  {loading ? 'Loading agents…' : 'No agents yet'}
+                </h2>
+                {!loading && (
+                  <p className="max-w-sm text-sm text-muted-foreground">
+                    An agent is a named Claude Code session with its own model, tools, and role.
+                    Create one and give it a folder to work in.
+                  </p>
+                )}
+              </div>
               {!loading && (
-                <p className="max-w-sm text-sm text-muted-foreground">
-                  An agent is a named Claude Code session with its own model, tools, and role.
-                  Create one and give it a folder to work in.
-                </p>
+                <Button onClick={openNew}>
+                  <Plus /> New agent
+                </Button>
               )}
             </div>
-            {!loading && (
-              <Button onClick={openNew}>
-                <Plus /> New agent
-              </Button>
-            )}
-          </div>
-        )}
-      </main>
+          )}
+        </main>
+      </div>
 
       <AgentEditor
         key={editingNew ? 'new' : (selected?.config.id ?? 'none')}

@@ -318,6 +318,14 @@ async function refreshHotkeys(): Promise<void> {
   }
 }
 
+/**
+ * The app-drawn title bar's height, shared with the renderer's `TitleBar`.
+ *
+ * Windows draws the caption buttons into a band of exactly this height, so a
+ * disagreement between the two leaves the buttons overhanging the strip.
+ */
+const TITLE_BAR_HEIGHT = 40
+
 function createWindow(): void {
   mainWindow = new BrowserWindow({
     width: 1280,
@@ -327,6 +335,24 @@ function createWindow(): void {
     show: false,
     autoHideMenuBar: true,
     backgroundColor: '#0a0a0a',
+    // The OS caption bar cannot be coloured: Windows paints it in the user's
+    // accent colour, and a pale grey the moment the window loses focus. The
+    // app draws its own strip instead (`TitleBar`) and keeps the native
+    // buttons, tinted to match — which is what `titleBarOverlay` controls.
+    // Its height has to agree with that component's, or the buttons sit
+    // proud of the strip they are drawn on.
+    titleBarStyle: 'hidden',
+    ...(process.platform === 'win32'
+      ? {
+          titleBarOverlay: {
+            color: '#0a0a0a',
+            symbolColor: '#fafafa',
+            height: TITLE_BAR_HEIGHT
+          }
+        }
+      : // macOS has no overlay API; the traffic lights are positioned into
+        // the strip instead, and TitleBar reserves the room they need.
+        { trafficLightPosition: { x: 12, y: (TITLE_BAR_HEIGHT - 16) / 2 } }),
     ...(process.platform === 'linux' ? { icon } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
