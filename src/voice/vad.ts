@@ -75,15 +75,51 @@ export function unloadVad(): void {
 }
 
 /**
- * The fraction of a segment that is speech, 0–1.
+ * The shortest run of speech worth waking Whisper for.
+ *
+ * A wake phrase is short — "Hey Derek" is around 650 ms of voiced audio — and
+ * 250 ms is comfortably under any real word while being far more than the
+ * stray frame a door or a keystroke produces.
+ */
+export const MIN_SPEECH_MS = 250
+
+/** How much audio one Silero frame covers, in milliseconds. */
+export function frameMs(): number {
+  return (VAD_FRAME / 16000) * 1000
+}
+
+/**
+ * Whether this many speech frames is enough, given the segment they came from.
+ *
+ * Deliberately a count and not a proportion. The segmenter pads every
+ * utterance by design — 500 ms of pre-roll so the onset survives, 700 ms of
+ * hang before it closes, and whatever silence has accumulated since the last
+ * idle flush — so a ratio scores the same phrase differently depending on how
+ * quiet the room was beforehand. Measured against the real model, "Hey Derek"
+ * scored 0.435 alone and 0.174 in the segment the app actually cut, which put
+ * it under a 0.25 ratio bar and dropped it. How much speech there was does not
+ * depend on what surrounds it.
+ *
+ * `total` is accepted so an empty segment can be rejected outright rather than
+ * relying on a frame count that would be zero anyway.
+ */
+export function acceptsSpeech(speechFrames: number, total: number, minMs = MIN_SPEECH_MS): boolean {
+  if (total <= 0) return false
+  return speechFrames * frameMs() >= minMs
+}
+
+/**
+ * How many frames of a segment Silero judged to be speech, and how many there were.
  *
  * State is threaded frame to frame and reset per segment, which is how Silero
  * is meant to be driven — it is recurrent, and feeding it independent frames
  * throws away the context that makes it better than an amplitude gate.
  */
-export async function speechRatio(samples: Float32Array): Promise<number> {
+export async function speechFrames(
+  samples: Float32Array
+): Promise<{ speech: number; total: number }> {
   if (!session) throw new Error('No voice-activity model is loaded.')
-  if (samples.length < VAD_FRAME) return 0
+  if (samples.length < VAD_FRAME) return { speech: 0, total: 0 }
 
   const ort = await import('onnxruntime-node')
   let state = new ort.Tensor('float32', new Float32Array(2 * 128), [...STATE_SHAPE])
@@ -105,17 +141,18 @@ export async function speechRatio(samples: Float32Array): Promise<number> {
     frames += 1
   }
 
-  return frames === 0 ? 0 : speech / frames
+  return { speech, total: frames }
 }
 
 /**
  * Whether a segment is worth transcribing.
  *
- * The ratio rather than any single frame: speech has pauses in it, and a lone
- * frame crossing the threshold is what a door closing looks like. A quarter of
- * the segment sounding like speech is a low bar deliberately — this gate
- * exists to reject rooms, not to decide what was said.
+ * A run of speech rather than any single frame: a lone frame crossing the
+ * threshold is what a door closing looks like. A quarter of a second is a low
+ * bar deliberately — this gate exists to reject rooms, not to decide what was
+ * said.
  */
-export async function isSpeech(samples: Float32Array, minRatio = 0.25): Promise<boolean> {
-  return (await speechRatio(samples)) >= minRatio
+export async function isSpeech(samples: Float32Array, minMs = MIN_SPEECH_MS): Promise<boolean> {
+  const { speech, total } = await speechFrames(samples)
+  return acceptsSpeech(speech, total, minMs)
 }
