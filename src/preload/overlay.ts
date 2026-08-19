@@ -61,6 +61,31 @@ const overlay = {
     ipcRenderer.send(IpcChannel.overlayHover, hovered)
   },
 
+  /** Begin always-on wake listening. */
+  onStartWake: (listener: () => void): (() => void) =>
+    onSignal(IpcChannel.overlayStartWake, listener),
+
+  /** End it and close the microphone. */
+  onStopWake: (listener: () => void): (() => void) =>
+    onSignal(IpcChannel.overlayStopWake, listener),
+
+  /** Suppress segments while the app is speaking, without closing the mic. */
+  onMuteWake: (listener: (muted: boolean) => void): (() => void) => {
+    const handler = (_event: unknown, muted: boolean): void => listener(muted)
+    ipcRenderer.on(IpcChannel.overlayMuteWake, handler)
+    return () => ipcRenderer.removeListener(IpcChannel.overlayMuteWake, handler)
+  },
+
+  /** Someone started talking over the app. */
+  reportBargeIn: (): void => {
+    ipcRenderer.send(IpcChannel.overlayBargeIn)
+  },
+
+  /** One segment the gate accepted. */
+  reportWakeSegment: (pcm: string): void => {
+    ipcRenderer.send(IpcChannel.overlayWakeSegment, pcm)
+  },
+
   /** Open the microphone. */
   onStartCapture: (listener: () => void): (() => void) =>
     onSignal(IpcChannel.overlayStartCapture, listener),

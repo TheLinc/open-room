@@ -4,7 +4,9 @@ import {
   decodeMessages,
   encodeMessage,
   type KokoroStatus,
+  type ListenResult,
   type SttStatus,
+  type VadStatus,
   type SystemVoice,
   type VoiceRequest,
   type VoiceResponse
@@ -187,6 +189,29 @@ export class VoiceSidecar {
    */
   async loadStt(): Promise<void> {
     await this.request((id) => ({ id, method: 'loadStt' }))
+  }
+
+  async vadStatus(): Promise<VadStatus> {
+    const result = await this.request((id) => ({ id, method: 'vadStatus' }))
+    return (result ?? { loaded: false, installed: false }) as VadStatus
+  }
+
+  /** Downloads the 2 MB model if it is missing, then loads it. */
+  async loadVad(): Promise<void> {
+    await this.request((id) => ({ id, method: 'loadVad' }))
+  }
+
+  /**
+   * One always-on listening segment. Gated by VAD in the sidecar, so most
+   * calls return `{ speech: false }` without Whisper ever running.
+   */
+  async listen(samples: Float32Array): Promise<ListenResult> {
+    const result = await this.request((id) => ({
+      id,
+      method: 'listen',
+      params: { pcm: encodePcm(samples) }
+    }))
+    return (result ?? { speech: false }) as ListenResult
   }
 
   async transcribe(samples: Float32Array): Promise<string> {

@@ -33,7 +33,9 @@ export function AgentDetail({ agent, onEdit }: Props): React.JSX.Element {
           <div>
             <h2 className="text-lg font-semibold tracking-tight">{config.name}</h2>
             <p className="text-xs text-muted-foreground">
-              Say “Hey {config.name}” once voice input is enabled
+              {config.hotkey
+                ? `Press ${config.hotkey} to talk to ${config.name}`
+                : 'Talks on the global push-to-talk shortcut'}
             </p>
           </div>
         </div>

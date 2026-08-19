@@ -190,6 +190,21 @@ export class OverlayWindow {
     this.signal(IpcChannel.overlayDiscardCapture)
   }
 
+  /** Begin always-on wake listening. */
+  startWake(): void {
+    this.signal(IpcChannel.overlayStartWake)
+  }
+
+  stopWake(): void {
+    this.signal(IpcChannel.overlayStopWake)
+  }
+
+  /** Suppress wake segments while the app is speaking. */
+  muteWake(muted: boolean): void {
+    if (!this.window || this.window.isDestroyed() || !this.loaded) return
+    this.window.webContents.send(IpcChannel.overlayMuteWake, muted)
+  }
+
   private signal(channel: string): void {
     if (!this.window || this.window.isDestroyed()) return
     if (this.loaded) this.window.webContents.send(channel)

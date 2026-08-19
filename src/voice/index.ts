@@ -37,6 +37,20 @@ const models = new ModelManager(process.env.OPEN_ROOM_MODELS || undefined)
  */
 const STT_MODEL_ID = 'whisper-tiny-en'
 
+/** The only voice-activity model, and the gate that makes listening affordable. */
+const VAD_MODEL_ID = 'silero-vad'
+
+/**
+ * Samples arrive base64-encoded: a JSON array of tens of thousands of floats
+ * would dwarf the audio it describes.
+ */
+function decodeSamples(pcm: string): Float32Array {
+  const buffer = Buffer.from(pcm, 'base64')
+  return new Float32Array(
+    buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength)
+  )
+}
+
 /**
  * The neural stack is imported on demand.
  *
@@ -45,6 +59,7 @@ const STT_MODEL_ID = 'whisper-tiny-en'
  * voices never needs.
  */
 const kokoroModule = (): Promise<typeof import('./kokoro')> => import('./kokoro')
+const vadModule = (): Promise<typeof import('./vad')> => import('./vad')
 
 /** Speech-to-text is loaded the same way, and only when voice input is used. */
 const sttModule = (): Promise<typeof import('./stt')> => import('./stt')
@@ -52,6 +67,8 @@ const sttModule = (): Promise<typeof import('./stt')> => import('./stt')
 /** Last reported weight-download progress, so status can be polled. */
 let kokoroProgress: number | undefined
 let kokoroError: string | undefined
+let vadProgress: number | undefined
+let vadError: string | undefined
 let sttProgress: number | undefined
 let sttError: string | undefined
 
@@ -122,6 +139,56 @@ async function handle(request: VoiceRequest): Promise<unknown> {
       return { loaded: true }
     }
 
+    case 'vadStatus': {
+      const { isVadLoaded } = await vadModule()
+      const entry = findEntry(VAD_MODEL_ID)
+      const installed = entry ? await models.isInstalled(entry) : false
+      return { loaded: isVadLoaded(), installed, progress: vadProgress, error: vadError }
+    }
+
+    case 'loadVad': {
+      vadError = undefined
+      try {
+        const entry = findEntry(VAD_MODEL_ID)
+        if (!entry) throw new Error(`Unknown model: ${VAD_MODEL_ID}`)
+
+        if (!(await models.isInstalled(entry))) {
+          await models.download(VAD_MODEL_ID, (p) => {
+            vadProgress = (p.receivedBytes / p.totalBytes) * 0.9
+          })
+        }
+
+        const { loadVad } = await vadModule()
+        await loadVad(VAD_MODEL_ID)
+        vadProgress = 1
+      } catch (error) {
+        vadError = error instanceof Error ? error.message : String(error)
+        throw error
+      }
+      return { loaded: true }
+    }
+
+    /**
+     * One always-on listening segment: gate first, transcribe only if it
+     * passes.
+     *
+     * Both steps happen here so a rejected segment never crosses a process
+     * boundary twice — and most segments are rejected, which is the entire
+     * reason the gate exists.
+     */
+    case 'listen': {
+      const samples = decodeSamples(request.params.pcm)
+
+      const { isVadLoaded, loadVad, isSpeech } = await vadModule()
+      if (!isVadLoaded()) await loadVad(VAD_MODEL_ID)
+      if (!(await isSpeech(samples))) return { speech: false }
+
+      const { isSttLoaded, loadStt, transcribe } = await sttModule()
+      if (!isSttLoaded()) await loadStt(STT_MODEL_ID)
+
+      return { speech: true, text: await transcribe(samples) }
+    }
+
     case 'transcribe': {
       const { isSttLoaded, loadStt, transcribe } = await sttModule()
 
@@ -132,12 +199,7 @@ async function handle(request: VoiceRequest): Promise<unknown> {
       // absent model is refused before the microphone ever opens.
       if (!isSttLoaded()) await loadStt(STT_MODEL_ID)
 
-      // Samples arrive base64-encoded: a JSON array of tens of thousands of
-      // floats would dwarf the audio it describes.
-      const buffer = Buffer.from(request.params.pcm, 'base64')
-      const samples = new Float32Array(
-        buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength)
-      )
+      const samples = decodeSamples(request.params.pcm)
       return { text: await transcribe(samples) }
     }
 

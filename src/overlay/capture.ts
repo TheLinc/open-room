@@ -73,15 +73,45 @@ export class Capture {
 
   /** Flushes the collected samples and tears the graph down. */
   stop(): Promise<Float32Array> {
+    return this.collect(true)
+  }
+
+  /**
+   * Flushes without stopping, for always-on listening.
+   *
+   * The microphone stays open and the next segment starts accumulating
+   * immediately — closing and reopening it between segments would drop the
+   * beginning of whatever came next, and would flicker the OS microphone
+   * indicator on and off all day.
+   */
+  flush(): Promise<Float32Array> {
+    return this.collect(false)
+  }
+
+  /**
+   * Throws away everything but a tail of pre-roll.
+   *
+   * Silence is discarded rather than transcribed, but not all of it: the
+   * moment before someone starts talking contains the onset of the first
+   * word, and cutting exactly at the threshold clips it.
+   */
+  discardBuffered(keepMs = 500): void {
+    this.node?.port.postMessage({
+      type: 'drop',
+      keepSamples: Math.round((keepMs / 1000) * 16_000)
+    })
+  }
+
+  private collect(teardown: boolean): Promise<Float32Array> {
     const node = this.node
     if (!node) return Promise.resolve(new Float32Array(0))
 
     return new Promise((resolve) => {
       this.pending = (samples) => {
-        this.teardown()
+        if (teardown) this.teardown()
         resolve(samples)
       }
-      node.port.postMessage('flush')
+      node.port.postMessage({ type: 'flush' })
     })
   }
 

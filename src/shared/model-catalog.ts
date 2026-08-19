@@ -12,7 +12,7 @@
  */
 import { MODEL_HASHES } from './model-hashes'
 
-export type ModelKind = 'voice' | 'stt'
+export type ModelKind = 'voice' | 'stt' | 'vad'
 
 export type ModelFile = {
   /**
@@ -71,6 +71,12 @@ const WHISPER_FILES = [
   'preprocessor_config.json'
 ] as const
 
+/** One file whose size and checksum come from the generated record. */
+function recordedFile(id: string, name: string, url: string): ModelFile {
+  const recorded = MODEL_HASHES[`${id}/${name}`]
+  return { name, url, sha256: recorded?.sha256 ?? '', sizeBytes: recorded?.sizeBytes ?? 0 }
+}
+
 /** Sizes and checksums come from the generated record, not from here. */
 function whisperFiles(id: string, base: string): ModelFile[] {
   return WHISPER_FILES.map((name) => {
@@ -117,6 +123,22 @@ export const CATALOG: CatalogEntry[] = [
     attribution: 'Whisper — OpenAI; ONNX conversion by onnx-community',
     homepage: 'https://huggingface.co/onnx-community/whisper-base.en',
     files: whisperFiles('whisper-base-en', BASE)
+  },
+  {
+    id: 'silero-vad',
+    kind: 'vad',
+    label: 'Silero VAD',
+    description: 'Decides which sounds are speech, so Whisper only runs on the ones that are.',
+    license: 'MIT',
+    attribution: 'Silero VAD — Silero Team; ONNX conversion by onnx-community',
+    homepage: 'https://huggingface.co/onnx-community/silero-vad',
+    files: [
+      recordedFile(
+        'silero-vad',
+        'silero_vad.onnx',
+        'https://huggingface.co/onnx-community/silero-vad/resolve/main/onnx/model.onnx'
+      )
+    ]
   }
 ]
 

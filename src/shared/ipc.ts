@@ -114,6 +114,15 @@ export const IpcChannel = {
   overlayDiscardCapture: 'overlay:discard-capture',
   /** overlay → main, the finished capture as base64 PCM. */
   overlayAudio: 'overlay:audio',
+  /** main → overlay, begin or end always-on wake listening. */
+  overlayStartWake: 'overlay:start-wake',
+  overlayStopWake: 'overlay:stop-wake',
+  /** main → overlay, suppress segments while the app is speaking. */
+  overlayMuteWake: 'overlay:mute-wake',
+  /** overlay → main, one segment the gate accepted, as base64 PCM. */
+  overlayWakeSegment: 'overlay:wake-segment',
+  /** overlay → main, someone started talking over the app. */
+  overlayBargeIn: 'overlay:barge-in',
   /** overlay → main, what the endpointer observed. */
   overlayEvent: 'overlay:event',
   /** overlay → main, pointer entered or left the bubble; pauses dismissal. */

@@ -7,6 +7,7 @@ import { AgentSidebar } from '@/components/agent-sidebar'
 import { AgentChat } from '@/components/agent-chat'
 import { AgentEditor } from '@/components/agent-editor'
 import { SettingsDialog } from '@/components/settings-dialog'
+import { useSettings } from '@/hooks/use-settings'
 import { Button } from '@/components/ui/button'
 import type { HotkeyFailure } from '@shared/hotkeys'
 
@@ -21,6 +22,7 @@ function App(): React.JSX.Element {
   // Held here rather than in the dialog: the same failures belong against the
   // per-agent field in the editor, and both need them whether or not the
   // dialog has ever been opened.
+  const { settings } = useSettings()
   const [hotkeyFailures, setHotkeyFailures] = useState<HotkeyFailure[]>([])
   useEffect(() => {
     // Asked for as well as subscribed to: bindings are registered at launch,
@@ -123,6 +125,7 @@ function App(): React.JSX.Element {
         hotkeyFailure={
           hotkeyFailures.find((failure) => failure.agentId === selected?.config.id) ?? null
         }
+        voiceInputEnabled={settings?.voiceInputEnabled ?? true}
       />
 
       <SettingsDialog

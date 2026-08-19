@@ -16,6 +16,10 @@
 export type ModelHash = { sha256: string; sizeBytes: number }
 
 export const MODEL_HASHES: Record<string, ModelHash> = {
+  'silero-vad/silero_vad.onnx': {
+    sha256: 'a4a068cd6cf1ea8355b84327595838ca748ec29a25bc91fc82e6c299ccdc5808',
+    sizeBytes: 2243022
+  },
   'whisper-base-en/config.json': {
     sha256: 'c8a0de5ed8a083565a4319db29d0c210fda35b4d6076c2d711cae53ae00f3cb1',
     sizeBytes: 2197

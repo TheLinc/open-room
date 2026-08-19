@@ -32,6 +32,8 @@ export type SpeechSink = {
 
 type Playing = {
   utterance: Utterance
+  /** Exactly what the sink was given, prefix and all. */
+  text: string
   controller: AbortController
 }
 
@@ -49,6 +51,27 @@ export class SpeechBus {
   get isSpeaking(): boolean {
     return this.playing !== null
   }
+
+  /**
+   * What is being said right now, or null.
+   *
+   * Wake listening compares transcripts against this: playback leaks into the
+   * microphone on any machine without perfect echo cancellation, and an agent
+   * answering its own voice is both a loop and a way for a spoken line to run
+   * a command.
+   */
+  get speakingText(): string | null {
+    return this.playing?.text ?? null
+  }
+
+  /**
+   * Notified when playback starts and stops.
+   *
+   * Wake listening is suppressed for the duration, which is the cheaper of
+   * the two self-trigger defences — the echo check exists for the audio
+   * already in flight when this fires.
+   */
+  onSpeakingChange: ((speaking: boolean) => void) | null = null
 
   enqueue(utterance: Utterance): void {
     if (utterance.priority === 'progress') {
@@ -86,11 +109,12 @@ export class SpeechBus {
     if (!utterance) return
 
     const controller = new AbortController()
-    this.playing = { utterance, controller }
-
     const text = this.withSpeaker(utterance)
+    this.playing = { utterance, text, controller }
+
     this.lastSpeakerId = utterance.agentId
     this.lastSpokeAt = this.now()
+    this.onSpeakingChange?.(true)
 
     void this.sink
       .speak(text, { signal: controller.signal, utterance })
@@ -100,6 +124,7 @@ export class SpeechBus {
       })
       .finally(() => {
         this.playing = null
+        this.onSpeakingChange?.(false)
         this.pump()
       })
   }

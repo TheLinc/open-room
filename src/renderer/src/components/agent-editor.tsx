@@ -110,6 +110,8 @@ type Props = {
   onDeleted: () => void
   /** This agent's binding, if it could not be registered. */
   hotkeyFailure?: HotkeyFailure | null
+  /** False when voice input is off, so this field cannot do anything yet. */
+  voiceInputEnabled?: boolean
 }
 
 export function AgentEditor({
@@ -119,7 +121,8 @@ export function AgentEditor({
   onOpenChange,
   onSaved,
   onDeleted,
-  hotkeyFailure
+  hotkeyFailure,
+  voiceInputEnabled = true
 }: Props): React.JSX.Element {
   const isNew = agent === undefined
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -230,8 +233,8 @@ export function AgentEditor({
                     <FieldLabel htmlFor="name">Name</FieldLabel>
                     <Input id="name" placeholder="Atlas" {...form.register('name')} />
                     <FieldDescription>
-                      This is the wake word. Say “Hey {watchedName?.trim() || 'Atlas'}” to address
-                      it.
+                      What you call this agent. It will also be its wake word once wake words ship;
+                      for now, address it with a push-to-talk shortcut.
                     </FieldDescription>
                     <FieldError errors={[form.formState.errors.name]} />
                     {nameWarnings.map((warning) => (
@@ -684,7 +687,12 @@ export function AgentEditor({
                         />
                       )}
                     />
-                    {explainAccelerator(watchedHotkey ?? '') ? (
+                    {!voiceInputEnabled ? (
+                      <FieldDescription className="text-amber-500">
+                        Voice input is off, so this shortcut will not do anything yet. Turn it on in
+                        Settings.
+                      </FieldDescription>
+                    ) : explainAccelerator(watchedHotkey ?? '') ? (
                       <FieldDescription className="text-destructive">
                         {explainAccelerator(watchedHotkey ?? '')}
                       </FieldDescription>

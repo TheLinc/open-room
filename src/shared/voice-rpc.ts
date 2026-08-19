@@ -19,6 +19,13 @@ export type VoiceRequest =
   | { id: number; method: 'loadKokoro' }
   | { id: number; method: 'sttStatus' }
   | { id: number; method: 'loadStt' }
+  | { id: number; method: 'vadStatus' }
+  | { id: number; method: 'loadVad' }
+  | {
+      id: number
+      method: 'listen'
+      params: { pcm: string }
+    }
   | {
       id: number
       method: 'transcribe'
@@ -33,6 +40,28 @@ export type VoiceResponse =
 export type KokoroStatus = {
   loaded: boolean
   /** 0–1 while the weights are downloading. */
+  progress?: number
+  error?: string
+}
+
+/**
+ * The result of one always-on listening segment.
+ *
+ * VAD and transcription happen in a single call so a rejected segment never
+ * crosses a process boundary twice. Most segments are rejected — that is the
+ * point of the gate — and the audio is already here.
+ */
+export type ListenResult = {
+  /** Whether Silero thought this was speech at all. */
+  speech: boolean
+  /** Present only when it was; the empty string when Whisper heard nothing. */
+  text?: string
+}
+
+/** Whether a downloadable model is present and usable. */
+export type VadStatus = {
+  loaded: boolean
+  installed: boolean
   progress?: number
   error?: string
 }

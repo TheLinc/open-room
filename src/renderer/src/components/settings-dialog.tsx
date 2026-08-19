@@ -137,6 +137,25 @@ export function SettingsDialog({
                 />
               </div>
 
+              <div className="flex items-start justify-between gap-4">
+                <div className="space-y-1">
+                  <Label htmlFor="wake-word">Wake words</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Keeps the microphone open and listens for “Hey {'{agent}'}”. Unlike push-to-talk
+                    this is an open channel: anyone within earshot, or a video playing nearby, can
+                    address an agent.
+                  </p>
+                </div>
+                <Switch
+                  id="wake-word"
+                  checked={settings.wakeWordEnabled}
+                  disabled={!installed || !settings.voiceInputEnabled}
+                  onCheckedChange={(checked) =>
+                    void save({ ...settings, wakeWordEnabled: checked })
+                  }
+                />
+              </div>
+
               <div className="space-y-2">
                 <Label htmlFor="ptt">Push-to-talk shortcut</Label>
                 <HotkeyInput

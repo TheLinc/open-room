@@ -20,6 +20,13 @@
 declare abstract class AudioWorkletProcessor {
   readonly port: MessagePort
 }
+
+/** What the document can ask of this processor. */
+type WorkletCommand =
+  /** Hand over everything collected and start again empty. */
+  | { type: 'flush' }
+  /** Throw away everything but the last `keepSamples`, as pre-roll. */
+  | { type: 'drop'; keepSamples?: number }
 declare function registerProcessor(name: string, constructor: new () => AudioWorkletProcessor): void
 
 /**
@@ -38,21 +45,48 @@ class PcmCollector extends AudioWorkletProcessor {
 
   constructor() {
     super()
-    this.port.onmessage = (event: MessageEvent): void => {
-      if (event.data !== 'flush') return
+    this.port.onmessage = (event: MessageEvent<WorkletCommand>): void => {
+      const command = event.data
 
-      const merged = new Float32Array(this.length)
-      let offset = 0
-      for (const chunk of this.chunks) {
-        merged.set(chunk, offset)
-        offset += chunk.length
+      if (command.type === 'drop') {
+        // Everything but a tail of pre-roll. Always-on listening throws away
+        // most of what it hears, but the moment before someone starts talking
+        // holds the beginning of the first word — cutting there clips it.
+        this.keepTail(command.keepSamples ?? 0)
+        return
       }
 
-      this.chunks = []
-      this.length = 0
+      const merged = this.take()
       // Transferred rather than copied: a 30 s capture is 1.9 MB, and
       // structured-cloning it would duplicate that on the document's heap.
       this.port.postMessage(merged, [merged.buffer])
+    }
+  }
+
+  /** Everything collected so far, emptying the buffer. */
+  private take(): Float32Array {
+    const merged = new Float32Array(this.length)
+    let offset = 0
+    for (const chunk of this.chunks) {
+      merged.set(chunk, offset)
+      offset += chunk.length
+    }
+
+    this.chunks = []
+    this.length = 0
+    return merged
+  }
+
+  /** Discards all but the most recent `samples`. */
+  private keepTail(samples: number): void {
+    if (samples <= 0) {
+      this.chunks = []
+      this.length = 0
+      return
+    }
+
+    while (this.length - (this.chunks[0]?.length ?? 0) >= samples && this.chunks.length > 1) {
+      this.length -= this.chunks.shift()!.length
     }
   }
 

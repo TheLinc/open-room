@@ -23,9 +23,11 @@ import { VoiceSink } from './voice-sink'
 import { OverlayWindow } from './overlay-window'
 import { HotkeyManager, bindingsFor, type HotkeyFailure } from './hotkey-manager'
 import { VoiceController } from './voice-controller'
+import { WakeController } from './wake-controller'
 import { AppTray } from './tray'
 import { IpcChannel } from '@shared/ipc'
 import { pipsFor } from '@shared/pips'
+import { decodePcm } from '@shared/pcm'
 import { isOverlayEvent, type OverlayHitBox, type PipEntry } from '@shared/voice-input'
 
 // OPEN_ROOM_HOME relocates the config root. Useful for testing against a
@@ -223,6 +225,42 @@ const controller = new VoiceController({
   unregisterEscape: () => hotkeys.unregisterEscape()
 })
 
+const wake = new WakeController({
+  overlay,
+  sidecar: voice,
+  supervisor,
+  listAgents: async () => (await store.list()).agents,
+  nowSpeaking: () => speech.speakingText,
+  // A bare "hey <name>" is an address with nothing to do yet, so it opens a
+  // capture — the same one the hotkey opens — rather than sending nothing.
+  startCapture: (agentId) => void controller.onTrigger(agentId)
+})
+
+// Suppressing the listener while the app speaks is the cheaper of the two
+// runtime self-trigger defences; the echo check covers what is already in
+// flight when this fires.
+speech.onSpeakingChange = (speaking) => wake.setSpeaking(speaking)
+
+/**
+ * Starts or stops always-on listening to match the settings.
+ *
+ * Gated on the speech model as well as the flag: wake words with nothing to
+ * transcribe would hold the microphone open for no reason at all.
+ */
+async function refreshWake(): Promise<void> {
+  const settings = await store.readSettings()
+  const ready =
+    settings.wakeWordEnabled && ((await voice.sttStatus().catch(() => null))?.installed ?? false)
+
+  if (ready === wake.isListening) return
+  if (ready) {
+    await voice.loadVad().catch((error) => console.warn('Could not load the VAD model:', error))
+    wake.start()
+  } else {
+    wake.stop()
+  }
+}
+
 /**
  * Re-registers every global shortcut.
  *
@@ -331,6 +369,7 @@ app.whenReady().then(async () => {
   registerIpcHandlers(store, supervisor, conversations, voice, (saved) => {
     tray.setVoiceEnabled(saved.voiceInputEnabled)
     void refreshHotkeys()
+    void refreshWake()
   })
   createWindow()
 
@@ -358,6 +397,14 @@ app.whenReady().then(async () => {
   ipcMain.on(IpcChannel.overlayHover, (_event, hovered: boolean) => {
     controller.setHovered(hovered)
   })
+
+  ipcMain.on(IpcChannel.overlayWakeSegment, (_event, pcm: string) => {
+    void wake.onSegment(decodePcm(pcm))
+  })
+
+  // Talking over an agent stops it, and abandons whatever was queued behind
+  // it — those lines were written for a moment that has passed.
+  ipcMain.on(IpcChannel.overlayBargeIn, () => speech.bargeIn())
 
   // Clicking a pip is a request to *see* that agent, so the window comes
   // forward with it selected — a raised window on the wrong agent would mean
@@ -398,6 +445,7 @@ app.whenReady().then(async () => {
   tray.setVoiceEnabled(settings.voiceInputEnabled)
 
   await refreshHotkeys()
+  await refreshWake()
   await pushHud()
 
   // Warm the speech model so the first utterance is not waiting on it. Only
@@ -441,6 +489,7 @@ app.on('before-quit', async (event) => {
   store.stopWatching()
   hotkeys.dispose()
   controller.dispose()
+  wake.dispose()
   overlay.destroy()
   tray.destroy()
   voice.stop()

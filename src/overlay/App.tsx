@@ -8,6 +8,7 @@ import {
   type PipEntry
 } from '@shared/voice-input'
 import { Capture } from './capture'
+import { WakeListener } from './wake-listener'
 import { Hud } from './components/hud'
 import { Pill } from './components/pill'
 
@@ -113,6 +114,32 @@ export default function App(): React.JSX.Element | null {
       offStart()
       offStop()
       offDiscard()
+    }
+  }, [])
+
+  /**
+   * Always-on listening, when wake words are enabled.
+   *
+   * Independent of the push-to-talk capture above: the microphone stays open
+   * for as long as wake words are on, and this only ever emits the slices the
+   * gate accepted. Almost nothing leaves this renderer.
+   */
+  useEffect(() => {
+    const listener = new WakeListener(
+      (samples) => window.overlay.reportWakeSegment(encodePcm(samples)),
+      (message) => window.overlay.reportEvent({ type: 'failed', message }),
+      () => window.overlay.reportBargeIn()
+    )
+
+    const offStart = window.overlay.onStartWake(() => void listener.start())
+    const offStop = window.overlay.onStopWake(() => listener.stop())
+    const offMute = window.overlay.onMuteWake((muted) => listener.setMuted(muted))
+
+    return () => {
+      listener.stop()
+      offStart()
+      offStop()
+      offMute()
     }
   }, [])
 
