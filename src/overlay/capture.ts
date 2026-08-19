@@ -18,6 +18,14 @@ import pcmWorkletUrl from './pcm-worklet.ts?worker&url'
  * trained on 16 kHz mono, and the sidecar's protocol expects exactly that.
  */
 export class Capture {
+  /**
+   * The device every capture opens, shared by push-to-talk and wake listening.
+   *
+   * Static because there is one microphone selection per machine, and the two
+   * consumers must not disagree about which one it is.
+   */
+  static deviceId = ''
+
   private context: AudioContext | null = null
   private stream: MediaStream | null = null
   private node: AudioWorkletNode | null = null
@@ -31,14 +39,7 @@ export class Capture {
     // not leave an orphaned stream holding the microphone open.
     this.teardown()
 
-    this.stream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        channelCount: 1,
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true
-      }
-    })
+    this.stream = await this.openStream()
 
     const context = new AudioContext({ sampleRate: 16_000 })
     this.context = context
@@ -62,6 +63,38 @@ export class Capture {
 
     source.connect(this.analyser)
     source.connect(this.node)
+  }
+
+  /**
+   * Opens the chosen device, falling back to the default if it is gone.
+   *
+   * `exact` rather than `ideal`, which is counter-intuitive: Chromium treats
+   * an `ideal` deviceId as a soft preference and quietly keeps using the
+   * system default, so a selected microphone appears to be ignored. `exact`
+   * genuinely selects — and throws `OverconstrainedError` when the device has
+   * been unplugged, which is what the fallback is for. Degrade, never fail.
+   */
+  private async openStream(): Promise<MediaStream> {
+    const shared: MediaTrackConstraints = {
+      channelCount: 1,
+      echoCancellation: true,
+      noiseSuppression: true,
+      autoGainControl: true
+    }
+
+    if (Capture.deviceId) {
+      try {
+        return await navigator.mediaDevices.getUserMedia({
+          audio: { ...shared, deviceId: { exact: Capture.deviceId } }
+        })
+      } catch (error) {
+        // A denial is not a missing device, and must not be swallowed here —
+        // the caller turns it into something the user can act on.
+        if (error instanceof Error && error.name === 'NotAllowedError') throw error
+      }
+    }
+
+    return navigator.mediaDevices.getUserMedia({ audio: shared })
   }
 
   /** Current input level, 0–1, for the waveform and the endpointer. */

@@ -11,6 +11,7 @@ import type { Conversation, ConversationPage } from '@shared/conversation'
 import type { AppSettings } from '@shared/settings'
 import type { KokoroStatus, SttStatus, SystemVoice } from '@shared/voice-rpc'
 import type { HotkeyFailure } from '@shared/hotkeys'
+import type { MicrophoneDevice } from '@shared/voice-input'
 import {
   IpcChannel,
   type AgentsSnapshot,
@@ -122,6 +123,12 @@ const openRoom: OpenRoomApi = {
   kokoroStatus: (): Promise<KokoroStatus> => ipcRenderer.invoke(IpcChannel.kokoroStatus),
 
   loadKokoro: (): Promise<MutationResult> => ipcRenderer.invoke(IpcChannel.loadKokoro),
+
+  listMicrophones: (): Promise<MicrophoneDevice[]> =>
+    ipcRenderer.invoke(IpcChannel.listMicrophones),
+
+  onMicrophonesChanged: (listener: (devices: MicrophoneDevice[]) => void): (() => void) =>
+    subscribe(IpcChannel.microphonesChanged, (payload) => listener(payload as MicrophoneDevice[])),
 
   sttStatus: (): Promise<SttStatus> => ipcRenderer.invoke(IpcChannel.sttStatus),
 

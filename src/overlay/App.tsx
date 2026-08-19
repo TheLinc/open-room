@@ -118,6 +118,42 @@ export default function App(): React.JSX.Element | null {
   }, [])
 
   /**
+   * Which input device to open, and what devices there are.
+   *
+   * Enumeration happens here because only this window holds microphone
+   * permission — Chromium withholds device labels from a page that does not,
+   * so the settings dialog would otherwise show three blank entries.
+   */
+  useEffect(() => {
+    const report = async (): Promise<void> => {
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices()
+        window.overlay.reportMicrophones(
+          devices
+            .filter((device) => device.kind === 'audioinput')
+            .map((device) => ({ deviceId: device.deviceId, label: device.label }))
+        )
+      } catch {
+        // Enumeration is a convenience; failing it must not stop listening.
+      }
+    }
+
+    void report()
+
+    // Headsets appear and vanish, and a list that goes stale is worse than
+    // no list — it offers a device that is no longer there.
+    navigator.mediaDevices.addEventListener('devicechange', report)
+    const offSet = window.overlay.onSetMicrophone((deviceId) => {
+      Capture.deviceId = deviceId
+    })
+
+    return () => {
+      navigator.mediaDevices.removeEventListener('devicechange', report)
+      offSet()
+    }
+  }, [])
+
+  /**
    * Always-on listening, when wake words are enabled.
    *
    * Independent of the push-to-talk capture above: the microphone stays open

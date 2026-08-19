@@ -8,6 +8,7 @@ import type {
 import type { Conversation, ConversationPage } from './conversation'
 import type { HotkeyFailure } from './hotkeys'
 import type { AppSettings } from './settings'
+import type { MicrophoneDevice } from './voice-input'
 import type { KokoroStatus, SttStatus, SystemVoice } from './voice-rpc'
 
 /**
@@ -123,6 +124,14 @@ export const IpcChannel = {
   overlayWakeSegment: 'overlay:wake-segment',
   /** overlay → main, someone started talking over the app. */
   overlayBargeIn: 'overlay:barge-in',
+  /** overlay → main, the input devices it can see. */
+  overlayMicrophones: 'overlay:microphones',
+  /** main → overlay, which device to listen on. Empty is the system default. */
+  overlaySetMicrophone: 'overlay:set-microphone',
+  /** renderer → main, the cached device list for the settings picker. */
+  listMicrophones: 'voice:list-microphones',
+  /** main → renderer, the list changed — a headset appeared or vanished. */
+  microphonesChanged: 'voice:microphones-changed',
   /** overlay → main, what the endpointer observed. */
   overlayEvent: 'overlay:event',
   /** overlay → main, pointer entered or left the bubble; pauses dismissal. */
@@ -200,6 +209,15 @@ export type OpenRoomApi = {
   /** Downloads the neural weights. Resolves when the model is usable. */
   loadKokoro: () => Promise<MutationResult>
 
+  /** Input devices, as the overlay sees them. Empty until it has enumerated. */
+  listMicrophones: () => Promise<MicrophoneDevice[]>
+  /**
+   * Fires when the device list changes.
+   *
+   * The overlay enumerates, so the list can arrive after the dialog opened —
+   * and devices come and go while it is open.
+   */
+  onMicrophonesChanged: (listener: (devices: MicrophoneDevice[]) => void) => () => void
   sttStatus: () => Promise<SttStatus>
   /** Downloads and loads the speech model. Resolves when it is usable. */
   loadSttModel: () => Promise<MutationResult>

@@ -121,3 +121,15 @@ export const EMPTY_HIT_BOX: OverlayHitBox = {
   height: 0,
   interactive: false
 }
+
+/**
+ * An input device the overlay can see.
+ *
+ * Enumerated in the overlay rather than the main window because only the
+ * overlay holds microphone permission, and Chromium withholds device labels
+ * from a page that does not.
+ */
+export type MicrophoneDevice = {
+  deviceId: string
+  label: string
+}

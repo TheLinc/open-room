@@ -1,6 +1,12 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { IpcChannel } from '@shared/ipc'
-import type { OverlayEvent, OverlayHitBox, OverlayState, PipEntry } from '@shared/voice-input'
+import type {
+  MicrophoneDevice,
+  OverlayEvent,
+  OverlayHitBox,
+  OverlayState,
+  PipEntry
+} from '@shared/voice-input'
 
 /**
  * The overlay's bridge, deliberately far smaller than the main renderer's.
@@ -74,6 +80,18 @@ const overlay = {
     const handler = (_event: unknown, muted: boolean): void => listener(muted)
     ipcRenderer.on(IpcChannel.overlayMuteWake, handler)
     return () => ipcRenderer.removeListener(IpcChannel.overlayMuteWake, handler)
+  },
+
+  /** The input devices this window can see. */
+  reportMicrophones: (devices: MicrophoneDevice[]): void => {
+    ipcRenderer.send(IpcChannel.overlayMicrophones, devices)
+  },
+
+  /** Which device to listen on. Empty is the system default. */
+  onSetMicrophone: (listener: (deviceId: string) => void): (() => void) => {
+    const handler = (_event: unknown, deviceId: string): void => listener(deviceId)
+    ipcRenderer.on(IpcChannel.overlaySetMicrophone, handler)
+    return () => ipcRenderer.removeListener(IpcChannel.overlaySetMicrophone, handler)
   },
 
   /** Someone started talking over the app. */

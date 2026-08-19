@@ -7,6 +7,7 @@ import type {
   TranscriptEntry
 } from '@shared/agent-runtime'
 import type { HotkeyFailure } from '@shared/hotkeys'
+import type { MicrophoneDevice } from '@shared/voice-input'
 import { appSettingsSchema, type AppSettings } from '@shared/settings'
 import { IpcChannel, type AgentsSnapshot, type AppInfo, type MutationResult } from '@shared/ipc'
 import { ConfigStore } from './config-store'
@@ -263,6 +264,10 @@ export function broadcastPermissionResolved(requestId: string): void {
 
 export function broadcastHotkeyFailures(failures: HotkeyFailure[]): void {
   broadcast(IpcChannel.hotkeyFailures, failures)
+}
+
+export function broadcastMicrophones(devices: MicrophoneDevice[]): void {
+  broadcast(IpcChannel.microphonesChanged, devices)
 }
 
 export function broadcastSettingsChanged(settings: AppSettings): void {

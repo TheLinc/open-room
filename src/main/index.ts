@@ -5,6 +5,7 @@ import icon from '../../resources/icon.png?asset'
 import {
   broadcastAgentsChanged,
   broadcastHotkeyFailures,
+  broadcastMicrophones,
   broadcastPermissionRequest,
   broadcastPermissionResolved,
   broadcastRuntime,
@@ -28,7 +29,12 @@ import { AppTray } from './tray'
 import { IpcChannel } from '@shared/ipc'
 import { pipsFor } from '@shared/pips'
 import { decodePcm } from '@shared/pcm'
-import { isOverlayEvent, type OverlayHitBox, type PipEntry } from '@shared/voice-input'
+import {
+  isOverlayEvent,
+  type MicrophoneDevice,
+  type OverlayHitBox,
+  type PipEntry
+} from '@shared/voice-input'
 
 // OPEN_ROOM_HOME relocates the config root. Useful for testing against a
 // throwaway directory, and for anyone who keeps dotfiles somewhere else.
@@ -107,6 +113,14 @@ let lastPips: PipEntry[] = []
 
 /** Whether a voice capture is open, which the tray icon has to show. */
 let capturing = false
+
+/**
+ * Input devices, as the overlay last enumerated them.
+ *
+ * Cached here because the settings dialog lives in a window with no
+ * microphone permission, and so cannot enumerate labelled devices itself.
+ */
+let microphones: MicrophoneDevice[] = []
 
 /**
  * Pushes the working HUD.
@@ -249,6 +263,7 @@ speech.onSpeakingChange = (speaking) => wake.setSpeaking(speaking)
  */
 async function refreshWake(): Promise<void> {
   const settings = await store.readSettings()
+  overlay.setMicrophone(settings.microphoneId)
   const ready =
     settings.wakeWordEnabled && ((await voice.sttStatus().catch(() => null))?.installed ?? false)
 
@@ -405,6 +420,13 @@ app.whenReady().then(async () => {
   // Talking over an agent stops it, and abandons whatever was queued behind
   // it — those lines were written for a moment that has passed.
   ipcMain.on(IpcChannel.overlayBargeIn, () => speech.bargeIn())
+
+  ipcMain.on(IpcChannel.overlayMicrophones, (_event, devices: MicrophoneDevice[]) => {
+    microphones = devices
+    broadcastMicrophones(devices)
+  })
+
+  ipcMain.handle(IpcChannel.listMicrophones, () => microphones)
 
   // Clicking a pip is a request to *see* that agent, so the window comes
   // forward with it selected — a raised window on the wrong agent would mean

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Download, Loader2 } from 'lucide-react'
 import { findEntry, formatBytes, totalBytes } from '@shared/model-catalog'
 import type { HotkeyFailure } from '@shared/hotkeys'
+import type { MicrophoneDevice } from '@shared/voice-input'
 import type { SttStatus } from '@shared/voice-rpc'
 import { useSettings } from '@/hooks/use-settings'
 import { explainAccelerator } from '@shared/accelerator'
@@ -12,9 +13,31 @@ import { Label } from '@/components/ui/label'
 import { Progress } from '@/components/ui/progress'
 import { Slider } from '@/components/ui/slider'
 import { Switch } from '@/components/ui/switch'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from '@/components/ui/select'
 
 /** The only speech model Phase 5a wires up. */
 const STT_MODEL_ID = 'whisper-tiny-en'
+
+/** Radix Select cannot hold an empty string, and empty is "system default". */
+const SYSTEM_DEFAULT = '__default__'
+
+/**
+ * Chromium reports two aliases for the system default alongside the real
+ * devices. Listing them would offer "Default - Microphone (Webcam)" beside
+ * the same webcam again, which is three ways of saying two things.
+ */
+const ALIASES = new Set(['default', 'communications'])
+
+/** Windows appends a USB vendor:product pair that means nothing to a user. */
+function deviceLabel(label: string): string {
+  return label.replace(/\s*\([0-9a-f]{4}:[0-9a-f]{4}\)\s*$/i, '').trim()
+}
 
 export function SettingsDialog({
   open,
@@ -29,13 +52,20 @@ export function SettingsDialog({
   const [stt, setStt] = useState<SttStatus | null>(null)
   const [downloading, setDownloading] = useState(false)
   const [downloadError, setDownloadError] = useState<string | null>(null)
+  const [microphones, setMicrophones] = useState<MicrophoneDevice[]>([])
 
   // Re-read on open: the model can be installed from elsewhere, and a stale
-  // "not installed" would keep the switch disabled for no reason.
+  // "not installed" would keep the switch disabled for no reason. Devices
+  // change even more freely — headsets appear and vanish.
   useEffect(() => {
     if (!open) return
     void window.openRoom.sttStatus().then(setStt)
+    void window.openRoom.listMicrophones().then(setMicrophones)
   }, [open])
+
+  // Pushed as well as polled: the overlay enumerates, so the list can arrive
+  // after this opened, and devices come and go while it is open.
+  useEffect(() => window.openRoom.onMicrophonesChanged(setMicrophones), [])
 
   // Polled rather than pushed: the download runs in the sidecar, and a status
   // call is cheap next to fetching 154 MB.
@@ -154,6 +184,38 @@ export function SettingsDialog({
                     void save({ ...settings, wakeWordEnabled: checked })
                   }
                 />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="microphone">Microphone</Label>
+                <Select
+                  value={settings.microphoneId || SYSTEM_DEFAULT}
+                  onValueChange={(value) =>
+                    void save({
+                      ...settings,
+                      microphoneId: value === SYSTEM_DEFAULT ? '' : value
+                    })
+                  }
+                >
+                  <SelectTrigger id="microphone" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={SYSTEM_DEFAULT}>System default</SelectItem>
+                    {microphones
+                      .filter((device) => device.deviceId && !ALIASES.has(device.deviceId))
+                      .map((device) => (
+                        <SelectItem key={device.deviceId} value={device.deviceId}>
+                          {deviceLabel(device.label) || 'Unnamed input'}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  {microphones.length > 1
+                    ? 'The system default is often not the one you talk into.'
+                    : 'Whatever this machine is set to use for input.'}
+                </p>
               </div>
 
               <div className="space-y-2">

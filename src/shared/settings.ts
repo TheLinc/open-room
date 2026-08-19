@@ -43,7 +43,17 @@ export const appSettingsSchema = z.object({
    * control channel into a tool with shell and file-write access — anyone
    * within earshot, or a video playing nearby, can address an agent.
    */
-  wakeWordEnabled: z.boolean().default(false)
+  wakeWordEnabled: z.boolean().default(false),
+
+  /**
+   * Which input device to listen on. Empty means the system default.
+   *
+   * Machines routinely have three — a webcam, a headset, a desk microphone —
+   * and the system default is frequently not the one being spoken into. A
+   * stored id is matched with `ideal`, never `exact`, so a device that has
+   * been unplugged falls back rather than failing.
+   */
+  microphoneId: z.string().default('')
 })
 
 export type AppSettings = z.infer<typeof appSettingsSchema>
