@@ -78,9 +78,22 @@ export type RateLimitStatus = {
   /** Epoch seconds when the window resets. */
   resetsAt?: number
   rateLimitType?: string
-  /** 0–1 fraction of the window consumed. */
+  /**
+   * 0–1 fraction of the window consumed.
+   *
+   * Documented by the SDK but absent from the payloads actually observed, so
+   * it renders only when one genuinely arrives. Check a real message before
+   * relying on it.
+   */
   utilization?: number
   isUsingOverage?: boolean
+  /**
+   * Whether overflow can roll onto overage. `'rejected'` means it cannot, so
+   * reaching the window stops the agent rather than changing how it bills.
+   */
+  overageStatus?: string
+  /** Why overage is unavailable, e.g. `org_level_disabled_until`. */
+  overageDisabledReason?: string
 }
 
 export type AgentRuntime = {
@@ -150,34 +163,4 @@ export function emptyRuntime(agentId: string): AgentRuntime {
     rateLimit: null,
     lastActiveAt: Date.now()
   }
-}
-
-/** Human-readable quota line, or null when there is nothing worth saying. */
-export function describeRateLimit(limit: RateLimitStatus | null): string | null {
-  if (!limit || limit.status === 'allowed') return null
-
-  const window =
-    limit.rateLimitType === 'five_hour'
-      ? '5-hour limit'
-      : limit.rateLimitType?.startsWith('seven_day')
-        ? 'weekly limit'
-        : 'usage limit'
-
-  const resets = limit.resetsAt
-    ? ` · resets ${new Date(limit.resetsAt * 1000).toLocaleString(undefined, {
-        month: 'short',
-        day: 'numeric',
-        hour: 'numeric',
-        minute: '2-digit'
-      })}`
-    : ''
-
-  if (limit.status === 'rejected') {
-    return limit.isUsingOverage
-      ? `${window} reached — running on overage${resets}`
-      : `${window} reached${resets}`
-  }
-
-  const pct = limit.utilization ? ` (${Math.round(limit.utilization * 100)}%)` : ''
-  return `Approaching ${window}${pct}${resets}`
 }

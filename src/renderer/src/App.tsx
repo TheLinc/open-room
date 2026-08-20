@@ -7,6 +7,7 @@ import { AgentSidebar } from '@/components/agent-sidebar'
 import { AgentChat } from '@/components/agent-chat'
 import { AgentEditor } from '@/components/agent-editor'
 import { SettingsDialog } from '@/components/settings-dialog'
+import { QuotaBanner } from '@/components/quota-banner'
 import { TitleBar } from '@/components/title-bar'
 import { useSettings } from '@/hooks/use-settings'
 import { Button } from '@/components/ui/button'
@@ -69,6 +70,7 @@ function App(): React.JSX.Element {
   return (
     <div className="flex h-screen flex-col bg-background text-foreground">
       <TitleBar />
+      <QuotaBanner />
 
       {/* `min-h-0` so the row can shrink below its content and let the panes
           scroll, rather than pushing the window taller than the screen. */}

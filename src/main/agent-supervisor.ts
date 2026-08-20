@@ -14,6 +14,7 @@ import {
   type AgentRuntime,
   type PermissionDecision,
   type PermissionRequest,
+  type RateLimitStatus,
   type TranscriptEntry
 } from '@shared/agent-runtime'
 import {
@@ -22,6 +23,7 @@ import {
   describeAgentError,
   kindFromAssistantError
 } from './agent-errors'
+import { describeQuota } from '@shared/quota'
 import { PushableQueue } from './message-queue'
 import type { ConversationStore } from './conversation-store'
 import type { SpeechBus } from './speech-bus'
@@ -82,6 +84,14 @@ export type SupervisorEvents = {
    * pane is showing — switching conversations, or starting a new one.
    */
   onTranscriptCleared: (agentId: string) => void
+  /**
+   * Subscription quota, reported per agent but true of the whole account.
+   *
+   * Raised out of the runtime so main can hold one account-level value: every
+   * agent draws on the same login, and only the agent whose turn carried the
+   * event would otherwise know.
+   */
+  onQuota: (limit: RateLimitStatus) => void
 }
 
 type PendingPermission = {
@@ -422,16 +432,22 @@ export class AgentSupervisor {
     // Subscription quota, reported out-of-band from the turn. Surfaced on the
     // runtime so the UI can explain a stall instead of leaving it a mystery.
     if (message.type === 'rate_limit_event') {
-      const info = message.rate_limit_info
-      this.patch(id, {
-        rateLimit: {
-          status: info.status,
-          resetsAt: info.resetsAt,
-          rateLimitType: info.rateLimitType,
-          utilization: info.utilization,
-          isUsingOverage: info.isUsingOverage
-        }
-      })
+      const info = message.rate_limit_info as RateLimitStatus & {
+        overageStatus?: string
+        overageDisabledReason?: string
+      }
+      const limit: RateLimitStatus = {
+        status: info.status,
+        resetsAt: info.resetsAt,
+        rateLimitType: info.rateLimitType,
+        utilization: info.utilization,
+        isUsingOverage: info.isUsingOverage,
+        overageStatus: info.overageStatus,
+        overageDisabledReason: info.overageDisabledReason
+      }
+
+      this.patch(id, { rateLimit: limit })
+      this.events.onQuota(limit)
       return
     }
 
@@ -466,7 +482,10 @@ export class AgentSupervisor {
       })
 
       if (message.is_error && message.subtype !== 'success' && !wasInterrupted) {
-        this.fail(id, classifyThrownError(new Error(String(message.subtype))))
+        // The structured event is the reliable signal. Falling back to
+        // matching "rate limit" or "429" in prose worked only when the text
+        // happened to say so, and said nothing about when to retry.
+        this.fail(id, this.classifyFailure(id, String(message.subtype)))
         return
       }
 
@@ -571,6 +590,22 @@ export class AgentSupervisor {
 
     await Promise.all(stale.map((id) => this.stop(id)))
     return stale
+  }
+
+  /**
+   * Why a turn failed, preferring the quota event over the error text.
+   *
+   * `rate_limit_event` arrives out of band and carries both the reason and
+   * the reset time, so an agent stopped by quota can say when it is worth
+   * trying again instead of guessing from a string.
+   */
+  private classifyFailure(agentId: string, subtype: string): AgentRuntime['error'] {
+    const limit = this.runtimeFor(agentId).rateLimit
+    if (limit?.status === 'rejected') {
+      const error = describeAgentError('rate-limited', describeQuota(limit) ?? subtype)
+      return limit.resetsAt ? { ...error, retryAt: limit.resetsAt * 1000 } : error
+    }
+    return classifyThrownError(new Error(subtype))
   }
 
   private fail(agentId: string, error: AgentRuntime['error']): void {

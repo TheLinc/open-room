@@ -169,6 +169,17 @@ body {
   animation-duration: 620ms;
 }
 
+/*
+ * Paused is account quota, not a fault, so it reads as held rather than
+ * urgent: the same colour and the same breath, slowed and dimmed. It keeps
+ * breathing deliberately — a still dot cannot be told from a stale one, which
+ * is the same reason the reduced-motion block below never stops them either.
+ */
+.or-pip-paused {
+  animation-duration: 3200ms;
+  opacity: 0.5;
+}
+
 .or-pip-attn::after {
   content: '';
   position: absolute;
@@ -215,6 +226,11 @@ body {
 
   .or-pip-attn {
     animation-duration: 1500ms;
+  }
+
+  /* Still slower than a working pip, which is 3400ms here. */
+  .or-pip-paused {
+    animation-duration: 6000ms;
   }
 
   .or-arc {

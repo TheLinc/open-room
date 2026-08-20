@@ -37,7 +37,12 @@ export type PipEntry = {
   name: string
   /** Identity colour as hex. */
   color: string
-  state: 'working' | 'needs-attention'
+  /**
+   * `paused` is account quota, not an agent fault — distinct from
+   * `needs-attention` because the roster labels that one "needs permission",
+   * which would be a lie for a rate-limited agent.
+   */
+  state: 'working' | 'needs-attention' | 'paused'
 }
 
 const HOLD_BASE_MS = 1400

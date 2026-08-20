@@ -2,6 +2,7 @@ import { app, BrowserWindow, dialog, ipcMain } from 'electron'
 import { agentConfigSchema, slugifyAgentName, type Agent } from '@shared/agent'
 import type {
   AgentRuntime,
+  RateLimitStatus,
   PermissionDecision,
   PermissionRequest,
   TranscriptEntry
@@ -30,7 +31,12 @@ export function registerIpcHandlers(
   conversations: ConversationStore,
   voice: VoiceSidecar,
   /** Called after settings are written, so hotkeys and the tray can follow. */
-  onSettingsSaved: (settings: AppSettings) => void = () => {}
+  onSettingsSaved: (settings: AppSettings) => void = () => {},
+  /**
+   * Current account quota. Read on demand rather than captured, because a
+   * renderer can mount long after the event that last set it.
+   */
+  readQuota: () => RateLimitStatus | null = () => null
 ): void {
   ipcMain.handle(IpcChannel.getAppInfo, (): AppInfo => {
     return {
@@ -196,6 +202,8 @@ export function registerIpcHandlers(
       })
   )
 
+  ipcMain.handle(IpcChannel.getQuota, (): RateLimitStatus | null => readQuota())
+
   ipcMain.handle(IpcChannel.listVoices, async (): Promise<SystemVoice[]> => {
     return voice.listVoices().catch(() => [])
   })
@@ -244,6 +252,10 @@ export function registerIpcHandlers(
 
 export function broadcastRuntime(runtime: AgentRuntime): void {
   broadcast(IpcChannel.runtimeChanged, runtime)
+}
+
+export function broadcastQuota(limit: RateLimitStatus | null): void {
+  broadcast(IpcChannel.quotaChanged, limit)
 }
 
 export function broadcastTranscript(entry: TranscriptEntry): void {

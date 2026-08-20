@@ -1,4 +1,12 @@
-import { app, shell, BrowserWindow, ipcMain, session, systemPreferences } from 'electron'
+import {
+  app,
+  shell,
+  BrowserWindow,
+  ipcMain,
+  Notification,
+  session,
+  systemPreferences
+} from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
@@ -9,6 +17,7 @@ import {
   broadcastMicrophones,
   broadcastPermissionRequest,
   broadcastPermissionResolved,
+  broadcastQuota,
   broadcastRuntime,
   broadcastTranscript,
   broadcastSettingsChanged,
@@ -30,7 +39,9 @@ import { wakeAction } from './wake-refresh'
 import { MicrophoneTest } from './microphone-test'
 import { AppTray } from './tray'
 import { IpcChannel } from '@shared/ipc'
+import type { RateLimitStatus } from '@shared/agent-runtime'
 import { pipsFor } from '@shared/pips'
+import { describeQuota, quotaSeverity, shouldNotifyQuota } from '@shared/quota'
 import { decodePcm } from '@shared/pcm'
 import {
   isOverlayEvent,
@@ -87,6 +98,41 @@ async function primeSpeech(): Promise<void> {
   }
 }
 
+/**
+ * Subscription quota for the whole account.
+ *
+ * Reported per agent by the SDK but true of the login they all share, so it
+ * is held once here rather than read off whichever runtime happened to
+ * receive the last event.
+ */
+let accountQuota: RateLimitStatus | null = null
+
+/**
+ * Records quota and surfaces it where it can actually be seen.
+ *
+ * The banner alone is not enough: this app expects the main window to be
+ * hidden while agents work, so a stall that is only visible in a chat pane is
+ * a stall nobody finds. The notification fires on a step up and nothing else
+ * — the event itself arrives about once per turn.
+ */
+function onQuotaReported(limit: RateLimitStatus): void {
+  const previous = accountQuota
+  accountQuota = limit
+  broadcastQuota(limit)
+  void pushHud()
+
+  if (!shouldNotifyQuota(previous, limit)) return
+
+  const body = describeQuota(limit)
+  if (!body || !Notification.isSupported()) return
+
+  new Notification({
+    title: quotaSeverity(limit) === 'reached' ? 'Agents paused' : 'Approaching usage limit',
+    body,
+    urgency: 'critical'
+  }).show()
+}
+
 const supervisor = new AgentSupervisor(
   {
     onRuntime: (runtime) => {
@@ -102,7 +148,8 @@ const supervisor = new AgentSupervisor(
       broadcastPermissionResolved(requestId)
       void pushHud()
     },
-    onTranscriptCleared: broadcastTranscriptCleared
+    onTranscriptCleared: broadcastTranscriptCleared,
+    onQuota: onQuotaReported
   },
   conversations,
   speech
@@ -168,7 +215,12 @@ let microphones: MicrophoneDevice[] = []
  */
 async function pushHud(): Promise<void> {
   const { agents } = await store.list()
-  lastPips = pipsFor(agents, supervisor.allRuntimes(), supervisor.blockedAgentIds())
+  lastPips = pipsFor(
+    agents,
+    supervisor.allRuntimes(),
+    supervisor.blockedAgentIds(),
+    quotaSeverity(accountQuota) === 'reached'
+  )
 
   const focused = mainWindow !== null && !mainWindow.isDestroyed() && mainWindow.isFocused()
   overlay.sendPips(focused ? [] : lastPips)
@@ -469,11 +521,18 @@ app.whenReady().then(async () => {
   supervisor.setOptions({ maxConcurrent: settings.maxConcurrentAgents })
 
   voice.start()
-  registerIpcHandlers(store, supervisor, conversations, voice, (saved) => {
-    tray.setVoiceEnabled(saved.voiceInputEnabled)
-    void refreshHotkeys()
-    void refreshWake()
-  })
+  registerIpcHandlers(
+    store,
+    supervisor,
+    conversations,
+    voice,
+    (saved) => {
+      tray.setVoiceEnabled(saved.voiceInputEnabled)
+      void refreshHotkeys()
+      void refreshWake()
+    },
+    () => accountQuota
+  )
   createWindow()
 
   ipcMain.handle(IpcChannel.getHotkeyFailures, () => hotkeyFailures)

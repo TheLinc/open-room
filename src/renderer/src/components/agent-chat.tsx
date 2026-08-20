@@ -1,9 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { CircleAlert, Gauge, Loader2, Pencil, Send, Square, X } from 'lucide-react'
+import { CircleAlert, Loader2, Pencil, Send, Square, X } from 'lucide-react'
 import { MODELS, type Agent } from '@shared/agent'
 import { colorHexFor } from '@shared/agent-colors'
 import {
-  describeRateLimit,
   isTransient,
   type AgentRuntime,
   type PermissionRequest,
@@ -55,7 +54,6 @@ export function AgentChat({
 
   const color = colorHexFor(agent.config.color)
   const busy = runtime.state === 'working' || runtime.state === 'starting'
-  const quota = describeRateLimit(runtime.rateLimit)
   // Silent messages must be dropped before render, not inside the row: an
   // empty wrapper still reserves its contain-intrinsic-size placeholder.
   const visible = entries.filter(isRenderable)
@@ -173,13 +171,6 @@ export function AgentChat({
           </Button>
         </div>
       </header>
-
-      {quota && (
-        <div className="flex items-center gap-2 border-b border-amber-500/20 bg-amber-500/5 px-6 py-2 text-xs text-amber-500">
-          <Gauge className="size-3.5 shrink-0" />
-          <span>{quota}</span>
-        </div>
-      )}
 
       {runtime.error && (
         <div

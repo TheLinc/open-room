@@ -5,6 +5,7 @@ import type {
   AgentRuntime,
   PermissionDecision,
   PermissionRequest,
+  RateLimitStatus,
   TranscriptEntry
 } from '@shared/agent-runtime'
 import type { Conversation, ConversationPage } from '@shared/conversation'
@@ -112,6 +113,10 @@ const openRoom: OpenRoomApi = {
     ipcRenderer.invoke(IpcChannel.clearConversations, agentId),
 
   listVoices: (): Promise<SystemVoice[]> => ipcRenderer.invoke(IpcChannel.listVoices),
+
+  getQuota: (): Promise<RateLimitStatus | null> => ipcRenderer.invoke(IpcChannel.getQuota),
+  onQuotaChanged: (listener: (limit: RateLimitStatus | null) => void) =>
+    subscribe(IpcChannel.quotaChanged, (payload) => listener(payload as RateLimitStatus | null)),
 
   previewVoice: (
     voiceId: string,

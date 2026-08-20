@@ -83,3 +83,43 @@ describe('pipsFor', () => {
     expect(pipsFor(agents, [runtime('atlas', 'starting')], new Set())).toEqual([])
   })
 })
+
+describe('pipsFor under account quota', () => {
+  const agents = [agent('atlas', 'Atlas', 'cyan'), agent('scout', 'Scout', 'amber')]
+
+  it('shows an idle-but-ready agent as paused', () => {
+    // The failure this exists for: with the window hidden, an agent stalled
+    // on quota looks exactly like one with nothing to do.
+    const pips = pipsFor(agents, [runtime('atlas', 'ready')], new Set(), true)
+
+    expect(pips).toHaveLength(1)
+    expect(pips[0].state).toBe('paused')
+  })
+
+  it('leaves agents with no session alone', () => {
+    // Nothing was going to happen for these anyway, so pausing them would be
+    // noise rather than news.
+    const pips = pipsFor(agents, [runtime('atlas', 'idle')], new Set(), true)
+    expect(pips).toEqual([])
+  })
+
+  it('does not pause anything while quota is fine', () => {
+    const pips = pipsFor(agents, [runtime('atlas', 'ready')], new Set(), false)
+    expect(pips).toEqual([])
+  })
+
+  it('keeps a permission prompt ahead of a quota pause', () => {
+    // A permission is something the user can clear right now; quota is not.
+    const pips = pipsFor(
+      agents,
+      [runtime('atlas', 'working'), runtime('scout', 'working')],
+      new Set(['scout']),
+      true
+    )
+
+    expect(pips.map((p) => [p.agentId, p.state])).toEqual([
+      ['scout', 'needs-attention'],
+      ['atlas', 'paused']
+    ])
+  })
+})

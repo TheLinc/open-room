@@ -1,6 +1,7 @@
 import type { Agent } from './agent'
 import type {
   AgentRuntime,
+  RateLimitStatus,
   PermissionDecision,
   PermissionRequest,
   TranscriptEntry
@@ -86,6 +87,8 @@ export const IpcChannel = {
   clearConversations: 'conversation:clear-all',
 
   listVoices: 'voice:list',
+  quotaChanged: 'quota:changed',
+  getQuota: 'quota:get',
   previewVoice: 'voice:preview',
   kokoroStatus: 'voice:kokoro-status',
   loadKokoro: 'voice:kokoro-load',
@@ -208,6 +211,16 @@ export type OpenRoomApi = {
   renameConversation: (agentId: string, sessionId: string, title: string) => Promise<MutationResult>
   deleteConversation: (agentId: string, sessionId: string) => Promise<MutationResult>
   clearConversations: (agentId: string) => Promise<MutationResult>
+
+  /**
+   * Subscription quota for the account, not for one agent.
+   *
+   * Pulled on mount as well as pushed: the event that carries it arrives with
+   * an agent's turn, so a renderer that started afterwards would otherwise
+   * show nothing until the next turn ran.
+   */
+  getQuota: () => Promise<RateLimitStatus | null>
+  onQuotaChanged: (listener: (limit: RateLimitStatus | null) => void) => () => void
 
   listVoices: () => Promise<SystemVoice[]>
   previewVoice: (

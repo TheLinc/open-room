@@ -35,7 +35,11 @@ export function Roster({
               pip.state === 'needs-attention' ? 'text-red-400' : 'text-slate-400'
             ].join(' ')}
           >
-            {pip.state === 'needs-attention' ? 'needs permission' : 'working'}
+            {pip.state === 'needs-attention'
+              ? 'needs permission'
+              : pip.state === 'paused'
+                ? 'usage limit'
+                : 'working'}
           </span>
         </button>
       ))}
