@@ -88,8 +88,13 @@ async function handle(request: VoiceRequest): Promise<unknown> {
       return listSystemVoices()
 
     case 'kokoroStatus': {
-      const { isKokoroLoaded } = await kokoroModule()
-      return { loaded: isKokoroLoaded(), progress: kokoroProgress, error: kokoroError }
+      const { isKokoroLoaded, isKokoroInstalled } = await kokoroModule()
+      return {
+        loaded: isKokoroLoaded(),
+        installed: await isKokoroInstalled(),
+        progress: kokoroProgress,
+        error: kokoroError
+      }
     }
 
     case 'loadKokoro': {
@@ -104,7 +109,7 @@ async function handle(request: VoiceRequest): Promise<unknown> {
         kokoroError = error instanceof Error ? error.message : String(error)
         throw error
       }
-      return { loaded: true }
+      return { loaded: true, installed: true }
     }
 
     case 'sttStatus': {

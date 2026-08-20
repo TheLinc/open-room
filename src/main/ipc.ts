@@ -212,7 +212,7 @@ export function registerIpcHandlers(
   )
 
   ipcMain.handle(IpcChannel.kokoroStatus, async (): Promise<KokoroStatus> => {
-    return voice.kokoroStatus().catch(() => ({ loaded: false }))
+    return voice.kokoroStatus().catch(() => ({ loaded: false, installed: false }))
   })
 
   ipcMain.handle(IpcChannel.loadKokoro, async (): Promise<MutationResult> => {

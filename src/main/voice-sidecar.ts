@@ -40,6 +40,7 @@ export class VoiceSidecar {
   /**
    * `scriptPath` is injected rather than derived here so this class carries no
    * Electron import, which keeps the sidecar wiring testable outside the app.
+   *
    */
   constructor(private readonly scriptPath: string) {}
 
@@ -162,7 +163,7 @@ export class VoiceSidecar {
 
   async kokoroStatus(): Promise<KokoroStatus> {
     const result = await this.request((id) => ({ id, method: 'kokoroStatus' }))
-    return (result ?? { loaded: false }) as KokoroStatus
+    return (result ?? { loaded: false, installed: false }) as KokoroStatus
   }
 
   /** Downloads the weights if needed. Slow on first call; safe to repeat. */

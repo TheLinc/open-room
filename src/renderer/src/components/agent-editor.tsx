@@ -71,17 +71,39 @@ function useSystemVoices(enabled: boolean): SystemVoice[] {
   return voices
 }
 
-/** Tracks whether the neural weights are present, polling while they load. */
+/**
+ * Tracks whether the neural weights are present, polling while they load.
+ *
+ * `installed` and `loaded` are deliberately different questions. The weights
+ * live on disk once downloaded, but the sidecar starts empty every launch, so
+ * a model the user downloaded weeks ago still reports `loaded: false` until
+ * something asks for it. Offering a 163 MB download on the strength of
+ * `loaded` alone is what made the editor demand the same download on every
+ * restart, for every agent.
+ *
+ * So when the weights are installed but cold, this loads them rather than
+ * asking: it costs about a second, needs no network, and there is nothing for
+ * the user to usefully decide.
+ */
 function useKokoroStatus(enabled: boolean): KokoroStatus {
-  const [status, setStatus] = useState<KokoroStatus>({ loaded: false })
+  const [status, setStatus] = useState<KokoroStatus>({ loaded: false, installed: false })
 
   useEffect(() => {
     if (!enabled) return
     let cancelled = false
+    // Guards against a second load while the first is still in flight; the
+    // poll below would otherwise fire one per tick.
+    let warming = false
 
     const poll = async (): Promise<void> => {
       const next = await window.openRoom.kokoroStatus()
-      if (!cancelled) setStatus(next)
+      if (cancelled) return
+      setStatus(next)
+
+      if (next.installed && !next.loaded && !warming && next.progress === undefined) {
+        warming = true
+        void window.openRoom.loadKokoro()
+      }
     }
 
     void poll()
@@ -156,6 +178,16 @@ export function AgentEditor({
   const voiceProvider = form.watch('voiceProvider')
   const systemVoices = useSystemVoices(open && ttsEnabled && voiceProvider === 'system')
   const kokoro = useKokoroStatus(open && ttsEnabled && voiceProvider === 'kokoro')
+
+  /**
+   * Whether the voice controls can do anything yet.
+   *
+   * Gated on `installed` rather than `loaded`: an installed model warms in
+   * about a second and `speak` loads it on demand anyway, so disabling the
+   * controls while that happens would flicker them for no reason. Only a
+   * genuinely absent model leaves nothing to preview.
+   */
+  const voiceReady = voiceProvider !== 'kokoro' || kokoro.installed
   const persistSession = form.watch('persistSession')
 
   const nameWarnings = useMemo(
@@ -550,19 +582,22 @@ export function AgentEditor({
                         />
                         <FieldDescription>
                           {voiceProvider === 'kokoro'
-                            ? 'Sounds markedly more natural and is identical on Windows and macOS. Adds roughly a third of a second before each line.'
+                            ? 'Sounds markedly more natural and is identical on Windows and macOS. Adds roughly half a second before each line.'
                             : 'Uses the voices already installed on this machine. Fastest to start speaking.'}
                         </FieldDescription>
                       </Field>
 
-                      {voiceProvider === 'kokoro' && !kokoro.loaded && (
+                      {/* Shown only when the weights are genuinely absent.
+                          An installed-but-cold model warms itself, so the
+                          common case after a restart is no banner at all. */}
+                      {voiceProvider === 'kokoro' && !kokoro.installed && (
                         <div className="flex items-center justify-between gap-3 rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2.5 text-sm">
                           <span className="text-amber-500">
                             {kokoro.error
                               ? `Download failed: ${kokoro.error}`
                               : kokoro.progress !== undefined && kokoro.progress < 1
                                 ? `Downloading voice model… ${Math.round(kokoro.progress * 100)}%`
-                                : 'Voice model not downloaded yet (163 MB, one time).'}
+                                : 'Voice model not downloaded yet (163 MB, one time). Downloads once and is shared by every agent.'}
                           </span>
                           {kokoro.progress === undefined && (
                             <Button
@@ -587,7 +622,7 @@ export function AgentEditor({
                                 value={field.value || UNSET}
                                 onValueChange={(next) => field.onChange(next === UNSET ? '' : next)}
                               >
-                                <SelectTrigger>
+                                <SelectTrigger disabled={!voiceReady}>
                                   <SelectValue placeholder="Choose a voice" />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -619,7 +654,7 @@ export function AgentEditor({
                                 type="button"
                                 variant="outline"
                                 aria-label="Preview voice"
-                                disabled={voiceProvider === 'kokoro' && !kokoro.loaded}
+                                disabled={!voiceReady}
                                 onClick={() =>
                                   void window.openRoom.previewVoice(
                                     field.value,

@@ -1,3 +1,4 @@
+import { access } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { KokoroTTS } from 'kokoro-js'
@@ -44,6 +45,46 @@ env.cacheDir = process.env.OPEN_ROOM_MODELS || join(homedir(), '.open-room', 'mo
 
 export function isKokoroLoaded(): boolean {
   return instance !== null
+}
+
+/**
+ * The files `from_pretrained` needs, relative to the cache directory.
+ *
+ * transformers.js lays the cache out by repository id, and it re-downloads
+ * anything absent, so "installed" means the whole set is present.
+ */
+const CACHED_FILES = [
+  'config.json',
+  'tokenizer.json',
+  'tokenizer_config.json',
+  `onnx/model_${DTYPE}.onnx`
+].map((file) => join(MODEL_ID, file))
+
+/**
+ * Whether the weights are on disk, which is a different question from whether
+ * they are loaded.
+ *
+ * Loading is per process and the sidecar starts empty every launch, so
+ * `isKokoroLoaded` answers "is it ready right now" and says nothing about
+ * whether 163 MB has already been fetched. Reporting only the former is what
+ * made the editor offer to download a model the user already had, on every
+ * restart. `sttStatus` and `vadStatus` have always drawn this distinction;
+ * Kokoro is the odd one out because transformers.js downloads it rather than
+ * `ModelManager`, so there is no catalogue entry to ask.
+ */
+export async function isKokoroInstalled(): Promise<boolean> {
+  const root = env.cacheDir
+  if (!root) return false
+
+  const checks = await Promise.all(
+    CACHED_FILES.map((file) =>
+      access(join(root, file)).then(
+        () => true,
+        () => false
+      )
+    )
+  )
+  return checks.every(Boolean)
 }
 
 /**

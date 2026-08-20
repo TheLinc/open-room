@@ -38,7 +38,13 @@ export type VoiceResponse =
 
 /** Whether the neural model is present and usable. */
 export type KokoroStatus = {
+  /** Ready in this process right now. False after every sidecar restart. */
   loaded: boolean
+  /**
+   * Weights are on disk. Survives restarts, so this — not `loaded` — is what
+   * decides whether to offer a 163 MB download.
+   */
+  installed: boolean
   /** 0–1 while the weights are downloading. */
   progress?: number
   error?: string
