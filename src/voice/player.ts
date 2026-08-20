@@ -17,22 +17,32 @@ type Active = {
   stopped: boolean
 }
 
-function spawnPlayer(wavPath: string): ChildProcess {
-  if (process.platform === 'win32') {
-    // PlaySync blocks for the duration of the clip, which is what makes
-    // killing the process an immediate stop.
-    const script = `$p = New-Object System.Media.SoundPlayer '${wavPath.replace(/'/g, "''")}'
+/**
+ * The playback script, which must stay byte-identical between calls.
+ *
+ * Same reasoning as `SAPI_SCRIPT` in `synth.ts`: Windows scans every distinct
+ * PowerShell script buffer through AMSI and caches the verdict by content, so
+ * embedding the file path made every utterance a fresh scan. Measured to the
+ * moment PowerShell is ready to play — 697/695/697ms with the path inlined,
+ * against 153/157ms once it moved to the environment.
+ *
+ * PlaySync blocks for the duration of the clip, which is what makes killing
+ * the process an immediate stop.
+ */
+export const PLAY_SCRIPT = `$p = New-Object System.Media.SoundPlayer $env:OPEN_ROOM_WAV
 $p.PlaySync()`
 
+function spawnPlayer(wavPath: string): ChildProcess {
+  if (process.platform === 'win32') {
     return spawn(
       'powershell.exe',
       [
         '-NoProfile',
         '-NonInteractive',
         '-EncodedCommand',
-        Buffer.from(script, 'utf16le').toString('base64')
+        Buffer.from(PLAY_SCRIPT, 'utf16le').toString('base64')
       ],
-      { windowsHide: true }
+      { windowsHide: true, env: { ...process.env, OPEN_ROOM_WAV: wavPath } }
     )
   }
 

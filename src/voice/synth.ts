@@ -30,10 +30,13 @@ async function tempWav(): Promise<{ dir: string; file: string }> {
 function run(
   command: string,
   args: string[],
-  options: { input?: string } = {}
+  options: { input?: string; env?: NodeJS.ProcessEnv } = {}
 ): Promise<{ code: number; stdout: string; stderr: string }> {
   return new Promise((resolve) => {
-    const child = spawn(command, args, { windowsHide: true })
+    const child = spawn(command, args, {
+      windowsHide: true,
+      ...(options.env ? { env: options.env } : {})
+    })
     let stdout = ''
     let stderr = ''
 
@@ -56,9 +59,14 @@ function run(
  * into a PowerShell command line is a losing game — apostrophes, quotes and
  * newlines all break it. Encoding sidesteps escaping entirely.
  */
-function powershell(script: string): Promise<{ code: number; stdout: string; stderr: string }> {
+function powershell(
+  script: string,
+  env?: NodeJS.ProcessEnv
+): Promise<{ code: number; stdout: string; stderr: string }> {
   const encoded = Buffer.from(script, 'utf16le').toString('base64')
-  return run('powershell.exe', ['-NoProfile', '-NonInteractive', '-EncodedCommand', encoded])
+  return run('powershell.exe', ['-NoProfile', '-NonInteractive', '-EncodedCommand', encoded], {
+    env
+  })
 }
 
 export async function listSystemVoices(): Promise<SystemVoice[]> {
@@ -96,6 +104,55 @@ export async function listSystemVoices(): Promise<SystemVoice[]> {
 }
 
 /**
+ * The SAPI synthesis script, and it must stay byte-identical between calls.
+ *
+ * Windows hands every PowerShell script buffer to AMSI, which means Defender
+ * scans it before the first statement runs. The verdict is cached against the
+ * script's content, so a script that never varies is scanned once for the
+ * lifetime of the machine and every later run skips straight to executing.
+ *
+ * Measured here, spawning the same command 5 times: an unchanging script cost
+ * 688ms once and then 131/147/137/138ms, while a script differing by a single
+ * embedded path cost 708/705/688/677/674ms and never improved. PowerShell's
+ * own report of the time before our first statement tracks it exactly — 663ms
+ * against 108ms — so the cost is the scan, not the work.
+ *
+ * Interpolating the output path used to make this script unique on every
+ * utterance, which forfeited the cache permanently and put roughly 550ms in
+ * front of every single line an agent spoke. Everything that varies therefore
+ * travels in the environment instead, where AMSI does not look. Anything that
+ * appends a value to this string reintroduces the delay.
+ */
+export const SAPI_SCRIPT = `Add-Type -AssemblyName System.Speech
+$s = New-Object System.Speech.Synthesis.SpeechSynthesizer
+if ($env:OPEN_ROOM_VOICE) { try { $s.SelectVoice($env:OPEN_ROOM_VOICE) } catch {} }
+$s.Rate = [int]$env:OPEN_ROOM_RATE
+$s.SetOutputToWaveFile($env:OPEN_ROOM_WAV)
+$s.Speak([System.IO.File]::ReadAllText($env:OPEN_ROOM_TEXT, [System.Text.Encoding]::UTF8))
+$s.Dispose()`
+
+/**
+ * The per-utterance values `SAPI_SCRIPT` reads.
+ *
+ * SAPI rate is -10..10 with 0 natural. Our scale is inverted (higher =
+ * slower), so it is negated on the way in.
+ */
+export function sapiEnv(options: {
+  voiceId?: string
+  rate: number
+  file: string
+  textFile: string
+}): NodeJS.ProcessEnv {
+  return {
+    ...process.env,
+    OPEN_ROOM_VOICE: options.voiceId ?? '',
+    OPEN_ROOM_RATE: String(Math.round(Math.max(-10, Math.min(10, (1 - options.rate) * 10)))),
+    OPEN_ROOM_WAV: options.file,
+    OPEN_ROOM_TEXT: options.textFile
+  }
+}
+
+/**
  * `rate` follows Piper's convention: 1 is natural, higher is slower. Each
  * platform's own scale is mapped onto it so agent config means the same thing
  * everywhere.
@@ -119,24 +176,12 @@ export async function synthesize(
     }
 
     if (isWindows) {
-      // SAPI rate is -10..10 with 0 natural. Our scale is inverted (higher =
-      // slower), so it is negated on the way in.
-      const sapiRate = Math.round(Math.max(-10, Math.min(10, (1 - options.rate) * 10)))
       const textFile = join(dir, 'text.txt')
       await writeFile(textFile, text, 'utf8')
 
-      const selectVoice = options.voiceId
-        ? `try { $s.SelectVoice(${quotePs(options.voiceId)}) } catch {}`
-        : ''
-
       const { code, stderr } = await powershell(
-        `Add-Type -AssemblyName System.Speech
-         $s = New-Object System.Speech.Synthesis.SpeechSynthesizer
-         ${selectVoice}
-         $s.Rate = ${sapiRate}
-         $s.SetOutputToWaveFile(${quotePs(file)})
-         $s.Speak([System.IO.File]::ReadAllText(${quotePs(textFile)}, [System.Text.Encoding]::UTF8))
-         $s.Dispose()`
+        SAPI_SCRIPT,
+        sapiEnv({ ...options, file, textFile })
       )
 
       if (code !== 0) throw new Error(stderr.trim() || 'PowerShell synthesis failed')
@@ -157,9 +202,4 @@ export async function synthesize(
     await cleanup()
     throw error
   }
-}
-
-/** Single-quoted PowerShell literal; the only escape needed is a doubled quote. */
-function quotePs(value: string): string {
-  return `'${value.replace(/'/g, "''")}'`
 }
