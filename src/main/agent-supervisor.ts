@@ -32,7 +32,7 @@ import {
   VOICE_SERVER_NAME,
   type TurnSpeechState
 } from './speak-tool'
-import { condenseForSpeech, FALLBACK_MIN_TURN_MS } from './condense'
+import { condenseForSpeech, shouldSpeakFallback, speakableAsIs } from './condense'
 
 /**
  * Owns the lifecycle of every running agent.
@@ -471,7 +471,7 @@ export class AgentSupervisor {
       }
 
       if (message.subtype === 'success' && !wasInterrupted) {
-        void this.speakFallback(session, message.result, message.duration_ms)
+        void this.speakFallback(session, message.result)
       }
     }
   }
@@ -479,23 +479,27 @@ export class AgentSupervisor {
   /**
    * Says something when a turn finished but the agent never called `speak`.
    *
-   * Prevents silence after a long run. Gated three ways so it stays rare:
-   * the agent must have speech enabled, the turn must have been long enough
-   * that silence is genuinely confusing, and the agent must not have already
-   * spoken for itself.
+   * Every reply an agent leaves silent gets spoken for it, so finishing is
+   * always audible. An agent that called `speak` itself is left alone — its
+   * own line is better than a condensed one and arrives sooner.
    */
-  private async speakFallback(
-    session: Session,
-    finalText: string,
-    durationMs: number
-  ): Promise<void> {
-    const { config, name } = { config: session.agent.config, name: session.agent.config.name }
+  private async speakFallback(session: Session, finalText: string): Promise<void> {
+    const { config } = session.agent
+    const name = config.name
 
-    if (session.turnSpeech.spoke) return
-    if (!config.tts.enabled) return
-    if (durationMs < FALLBACK_MIN_TURN_MS) return
+    const speak = shouldSpeakFallback({
+      ttsEnabled: config.tts.enabled,
+      alreadySpoke: session.turnSpeech.spoke,
+      // The caller reaches here only for a successful, uninterrupted turn;
+      // both are restated so the rule reads completely in one place.
+      succeeded: true,
+      interrupted: false
+    })
+    if (!speak) return
 
-    const sentence = await condenseForSpeech(finalText)
+    // Asking the model costs 8-9s and cannot be made faster, so a reply that
+    // is already short and plain is spoken as written instead.
+    const sentence = speakableAsIs(finalText) ?? (await condenseForSpeech(finalText))
     if (!sentence) return
 
     this.speech.enqueue({
