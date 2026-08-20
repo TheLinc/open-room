@@ -41,8 +41,14 @@ export class VoiceSidecar {
    * `scriptPath` is injected rather than derived here so this class carries no
    * Electron import, which keeps the sidecar wiring testable outside the app.
    *
+   * `onStart` runs after every successful spawn, not just the first. Priming
+   * costs follow the process, so a sidecar that crashed and came back is as
+   * cold as one that has just launched.
    */
-  constructor(private readonly scriptPath: string) {}
+  constructor(
+    private readonly scriptPath: string,
+    private readonly onStart?: () => void
+  ) {}
 
   /** False while the sidecar is down, so callers can fall back. */
   get isAvailable(): boolean {
@@ -89,6 +95,9 @@ export class VoiceSidecar {
       console.error(`[voice] exited (${code}); restarting in ${RESTART_DELAY_MS}ms`)
       setTimeout(() => this.start(), RESTART_DELAY_MS)
     })
+
+    // Last, so anything it sends finds `child` in place and writable.
+    this.onStart?.()
   }
 
   stop(): void {
@@ -159,6 +168,16 @@ export class VoiceSidecar {
         provider: options.provider
       }
     }))
+  }
+
+  /**
+   * Runs each speech script once so the user's first sentence does not.
+   *
+   * Silent, and worth about 1.6s on a Windows launch. Fire and forget: a
+   * failed warm costs latency, never correctness.
+   */
+  async warm(): Promise<void> {
+    await this.request((id) => ({ id, method: 'warm' }))
   }
 
   async kokoroStatus(): Promise<KokoroStatus> {

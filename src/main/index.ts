@@ -51,8 +51,41 @@ const conversations = new ConversationStore()
 const voiceScript = app.isPackaged
   ? join(process.resourcesPath, 'app.asar', 'out', 'main', 'voice.js')
   : join(app.getAppPath(), 'out', 'main', 'voice.js')
-const voice = new VoiceSidecar(voiceScript)
+const voice = new VoiceSidecar(voiceScript, () => void primeSpeech())
 const speech = new SpeechBus(new VoiceSink(voice, new NotificationSink(), store))
+
+/**
+ * Primes the speech path so the first thing an agent says sounds prompt.
+ *
+ * Two separate costs, both paid once per sidecar process rather than once per
+ * app launch, which is why this hangs off the sidecar starting rather than
+ * off `whenReady`. Warming the scripts is silent and takes about 1.6s on
+ * Windows; loading Kokoro's weights takes about a second more and 163 MB, so
+ * it happens only when an agent actually asks for that engine.
+ *
+ * Gated on someone having TTS switched on at all, in the same spirit as the
+ * speech-model warming below: doing either for a user who never enables
+ * speech is pure waste.
+ */
+async function primeSpeech(): Promise<void> {
+  try {
+    const { agents } = await store.list()
+    const speaking = agents.map((agent) => agent.config.tts).filter((tts) => tts.enabled)
+    if (speaking.length === 0) return
+
+    await voice.warm()
+
+    if (speaking.some((tts) => tts.enabled && tts.voice.provider === 'kokoro')) {
+      const status = await voice.kokoroStatus()
+      // Installed only: a warm-up is no place to start a 163 MB download.
+      if (status.installed && !status.loaded) await voice.loadKokoro()
+    }
+  } catch (error) {
+    // Latency, never correctness — the first utterance simply pays what this
+    // would have paid.
+    console.warn('Could not warm the speech path:', error)
+  }
+}
 
 const supervisor = new AgentSupervisor(
   {

@@ -8,6 +8,7 @@ import { findEntry } from '@shared/model-catalog'
 import { listSystemVoices, synthesize } from './synth'
 import { ModelManager } from './model-manager'
 import { WavPlayer } from './player'
+import { warmSpeech } from './warm'
 
 /**
  * The voice sidecar.
@@ -86,6 +87,10 @@ async function handle(request: VoiceRequest): Promise<unknown> {
 
     case 'listVoices':
       return listSystemVoices()
+
+    case 'warm':
+      await warmSpeech(player)
+      return null
 
     case 'kokoroStatus': {
       const { isKokoroLoaded, isKokoroInstalled } = await kokoroModule()

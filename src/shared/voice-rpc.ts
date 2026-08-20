@@ -15,6 +15,7 @@ export type VoiceRequest =
     }
   | { id: number; method: 'stop' }
   | { id: number; method: 'ping' }
+  | { id: number; method: 'warm' }
   | { id: number; method: 'kokoroStatus' }
   | { id: number; method: 'loadKokoro' }
   | { id: number; method: 'sttStatus' }
