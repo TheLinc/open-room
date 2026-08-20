@@ -55,8 +55,10 @@ describe('matchWake', () => {
   })
 
   it('cannot be triggered by the app speaking', () => {
-    // The SpeechBus prefixes with a bare name, so its output can never form a
-    // valid wake phrase. This is the structural half of self-trigger defence.
+    // The structural half of self-trigger defence. The bus no longer prefixes
+    // anything, so its output carries no agent name at all — but a name can
+    // still reach the microphone by other routes (an agent reading one aloud,
+    // a person saying it nearby), and a bare name must never be a wake phrase.
     expect(matchWake('Atlas — the build is green', AGENTS)).toBeNull()
     expect(matchWake('Derek — I finished the migration', AGENTS)).toBeNull()
   })

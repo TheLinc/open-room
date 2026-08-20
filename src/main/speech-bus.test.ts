@@ -105,7 +105,7 @@ describe('SpeechBus ordering', () => {
     await end()
     await settle()
 
-    expect(spoken.map((s) => s.replace(/^\w+ — /, ''))).toEqual(['first', 'second'])
+    expect(spoken).toEqual(['first', 'second'])
   })
 
   it('takes higher priority ahead of lower regardless of arrival order', async () => {
@@ -252,32 +252,21 @@ describe('SpeechBus progress handling', () => {
   })
 })
 
-describe('SpeechBus speaker prefix', () => {
-  it('names the speaker on the first utterance', async () => {
+describe('SpeechBus spoken text', () => {
+  it('speaks the utterance verbatim, without naming the agent', async () => {
     const { sink, spoken } = makeSink()
     const bus = new SpeechBus(sink, now)
 
     bus.enqueue(utter('atlas', 'done', 'green'))
     await settle()
 
-    expect(spoken[0]).toBe('Atlas — green')
+    expect(spoken[0]).toBe('green')
   })
 
-  it('omits the name when the same agent speaks again quickly', async () => {
-    const { sink, spoken, end } = makeSink()
-    const bus = new SpeechBus(sink, now)
-
-    bus.enqueue(utter('atlas', 'done', 'one'))
-    await settle()
-    await end()
-    tick(5_000)
-    bus.enqueue(utter('atlas', 'done', 'two'))
-    await settle()
-
-    expect(spoken[1]).toBe('two')
-  })
-
-  it('names the speaker again on a change of agent', async () => {
+  it('does not name the agent even when the speaker changes', async () => {
+    // The bus used to announce a change of speaker. Identity is carried by
+    // the agent's own voice, and by the title on its notification; hearing
+    // the name read aloud before every line is what it cost.
     const { sink, spoken, end } = makeSink()
     const bus = new SpeechBus(sink, now)
 
@@ -287,10 +276,12 @@ describe('SpeechBus speaker prefix', () => {
     bus.enqueue(utter('juniper', 'done', 'two'))
     await settle()
 
-    expect(spoken[1]).toBe('Juniper — two')
+    expect(spoken).toEqual(['one', 'two'])
+    expect(spoken.join(' ')).not.toMatch(/Atlas|Juniper/)
   })
 
-  it('re-announces the same agent after the window lapses', async () => {
+  it('does not name the agent however long the gap', async () => {
+    // Guards the removal of the 30s re-announce window specifically.
     const { sink, spoken, end } = makeSink()
     const bus = new SpeechBus(sink, now)
 
@@ -301,19 +292,31 @@ describe('SpeechBus speaker prefix', () => {
     bus.enqueue(utter('atlas', 'done', 'two'))
     await settle()
 
-    expect(spoken[1]).toBe('Atlas — two')
+    expect(spoken[1]).toBe('two')
   })
 
   it('never produces a valid wake phrase', async () => {
-    // Wake requires a "hey" prefix; the bus emits a bare name. TTS output
-    // therefore cannot re-trigger an agent by construction.
+    // Previously a proof about the bare-name prefix. Now stronger: the bus
+    // emits no agent name at all, so speech cannot re-trigger an agent.
     const { sink, spoken } = makeSink()
     const bus = new SpeechBus(sink, now)
 
     bus.enqueue(utter('atlas', 'done', 'green'))
     await settle()
 
-    expect(spoken[0].toLowerCase()).not.toContain('hey atlas')
+    expect(spoken[0].toLowerCase()).not.toContain('atlas')
+  })
+
+  it('reports exactly what is playing, for the echo check', async () => {
+    // Wake listening compares transcripts against this string, so it has to
+    // match the audio rather than some pre-transform version of it.
+    const { sink } = makeSink()
+    const bus = new SpeechBus(sink, now)
+
+    bus.enqueue(utter('atlas', 'done', 'the build is green'))
+    await settle()
+
+    expect(bus.speakingText).toBe('the build is green')
   })
 })
 

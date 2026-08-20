@@ -30,9 +30,6 @@ export type Utterance = {
   queuedAt: number
 }
 
-/** Re-announce the speaker if this long has passed since they last spoke. */
-export const SPEAKER_PREFIX_WINDOW_MS = 30_000
-
 /**
  * How long a `progress` update stays worth saying.
  *

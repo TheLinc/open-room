@@ -3,7 +3,6 @@ import {
   compareUtterances,
   isExpired,
   PRIORITY_RANK,
-  SPEAKER_PREFIX_WINDOW_MS,
   type Utterance
 } from '@shared/speech'
 
@@ -32,7 +31,7 @@ export type SpeechSink = {
 
 type Playing = {
   utterance: Utterance
-  /** Exactly what the sink was given, prefix and all. */
+  /** Exactly what the sink was given, and so exactly what is audible. */
   text: string
   controller: AbortController
 }
@@ -40,8 +39,6 @@ type Playing = {
 export class SpeechBus {
   private queue: Utterance[] = []
   private playing: Playing | null = null
-  private lastSpeakerId: string | null = null
-  private lastSpokeAt = 0
 
   constructor(
     private readonly sink: SpeechSink,
@@ -109,11 +106,11 @@ export class SpeechBus {
     if (!utterance) return
 
     const controller = new AbortController()
-    const text = this.withSpeaker(utterance)
+    // Spoken verbatim. The bus deliberately adds nothing: an agent's identity
+    // is carried by its voice, and a notification carries it in the title.
+    const text = utterance.text
     this.playing = { utterance, text, controller }
 
-    this.lastSpeakerId = utterance.agentId
-    this.lastSpokeAt = this.now()
     this.onSpeakingChange?.(true)
 
     void this.sink
@@ -157,19 +154,5 @@ export class SpeechBus {
   private dropExpired(): void {
     const now = this.now()
     this.queue = this.queue.filter((utterance) => !isExpired(utterance, now))
-  }
-
-  /**
-   * Prefixes the agent's name when it is not obvious who is talking.
-   *
-   * The bare-name form is deliberate: the wake phrase requires a `hey`
-   * prefix, so speech output cannot form a valid wake phrase and re-trigger
-   * an agent.
-   */
-  private withSpeaker(utterance: Utterance): string {
-    const sameSpeaker = this.lastSpeakerId === utterance.agentId
-    const recent = this.now() - this.lastSpokeAt < SPEAKER_PREFIX_WINDOW_MS
-
-    return sameSpeaker && recent ? utterance.text : `${utterance.agentName} — ${utterance.text}`
   }
 }

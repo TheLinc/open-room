@@ -27,30 +27,27 @@ export class VoiceSink implements SpeechSink {
     private readonly store: ConfigStore
   ) {}
 
-  async speak(
-    prefixed: string,
-    options: { signal: AbortSignal; utterance: Utterance }
-  ): Promise<void> {
+  async speak(text: string, options: { signal: AbortSignal; utterance: Utterance }): Promise<void> {
     const { utterance, signal } = options
     const delivery = await this.deliveryFor(utterance.agentId)
 
     if (!delivery) {
       // The agent could not be read at all. Notify rather than drop it — a
       // message the user never receives is the outcome worth avoiding.
-      await this.notifications.speak(prefixed, options)
+      await this.notifications.speak(text, options)
       return
     }
 
     // Sent first so the durable record exists before the transient one, and
     // so it still lands if speech then fails.
     if (delivery.notifications) {
-      await this.notifications.speak(prefixed, options)
+      await this.notifications.speak(text, options)
     }
 
     if (!delivery.tts) return
 
     if (!this.sidecar.isAvailable) {
-      await this.notifyIfNotAlready(delivery, prefixed, options)
+      await this.notifyIfNotAlready(delivery, text, options)
       return
     }
 
@@ -65,7 +62,7 @@ export class VoiceSink implements SpeechSink {
       // The provider must be forwarded, not just read: without it the sidecar
       // falls back to system synthesis and an agent configured for a neural
       // voice silently speaks with the platform one instead.
-      await this.sidecar.speak(prefixed, {
+      await this.sidecar.speak(text, {
         provider: delivery.tts.provider,
         voiceId: delivery.tts.voiceId,
         rate: delivery.tts.rate
@@ -74,7 +71,7 @@ export class VoiceSink implements SpeechSink {
       // Speech failed. Fall back so the message still arrives — but never
       // after a deliberate interrupt, which would resurrect exactly what the
       // user just silenced.
-      if (!signal.aborted) await this.notifyIfNotAlready(delivery, prefixed, options)
+      if (!signal.aborted) await this.notifyIfNotAlready(delivery, text, options)
     } finally {
       signal.removeEventListener('abort', onAbort)
     }
@@ -91,10 +88,10 @@ export class VoiceSink implements SpeechSink {
    */
   private async notifyIfNotAlready(
     delivery: Delivery,
-    prefixed: string,
+    text: string,
     options: { signal: AbortSignal; utterance: Utterance }
   ): Promise<void> {
-    if (!delivery.notifications) await this.notifications.speak(prefixed, options)
+    if (!delivery.notifications) await this.notifications.speak(text, options)
   }
 
   /** Reads live config so an agent's settings apply without a restart. */

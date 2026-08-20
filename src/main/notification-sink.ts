@@ -15,10 +15,10 @@ import type { SpeechSink } from './speech-bus'
  * mid-sentence to interrupt.
  */
 export class NotificationSink implements SpeechSink {
-  // The bus's speaker-prefixed text is ignored here on purpose: the
-  // notification title already names the agent, so "Atlas — done" under a
-  // title of "Atlas" would say it twice.
-  async speak(_prefixed: string, { utterance }: { utterance: Utterance }): Promise<void> {
+  // The text the bus passes is ignored in favour of the utterance's own,
+  // which is the same string today. The title is where the agent is named —
+  // repeating it in the body would say it twice.
+  async speak(_text: string, { utterance }: { utterance: Utterance }): Promise<void> {
     if (!Notification.isSupported()) return
 
     new Notification({
