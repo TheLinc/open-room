@@ -13,5 +13,19 @@ import type { TranscriptEntry } from '@shared/agent-runtime'
  */
 export function isRenderable(entry: TranscriptEntry): boolean {
   const type = (entry.message as { type?: string } | null)?.type
-  return type !== 'system' && type !== 'stream_event'
+  return type !== undefined && !SILENT_TYPES.has(type)
 }
+
+/**
+ * Message types that never produce a row.
+ *
+ * `AgentSupervisor` appends every SDK message to the transcript before it
+ * dispatches on type, so anything the UI consumes as state rather than as
+ * content has to be excluded here too. `rate_limit_event` is the one that
+ * bit: the SDK emits it once per turn as a routine quota heartbeat, almost
+ * always with `status: 'allowed'`, and it was reaching the debug fallthrough
+ * in `TranscriptMessage` and rendering as a JSON dump in every chat. It is
+ * already surfaced properly on `AgentRuntime.rateLimit` as a banner, so the
+ * row was duplicating something that had a better home.
+ */
+const SILENT_TYPES = new Set(['system', 'stream_event', 'rate_limit_event'])

@@ -179,8 +179,16 @@ export const TranscriptMessage = memo(function TranscriptMessage({
   }
 
   // system/init and the long tail of status messages carry no user-facing
-  // content worth a row of their own.
-  if (message.type === 'system' || message.type === 'stream_event') return null
+  // content worth a row of their own. Kept in step with `isRenderable`, which
+  // is what actually keeps them out of the list — returning null here still
+  // leaves a sized placeholder behind.
+  if (
+    message.type === 'system' ||
+    message.type === 'stream_event' ||
+    message.type === 'rate_limit_event'
+  ) {
+    return null
+  }
 
   return (
     <details className="rounded border border-border/60 bg-muted/20 px-2 py-1.5">
