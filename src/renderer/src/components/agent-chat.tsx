@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { TranscriptMessage } from '@/components/transcript-message'
 import { isRenderable } from '@/lib/transcript'
+import { ContextMeter } from '@/components/context-meter'
 import { ConversationSwitcher } from '@/components/conversation-switcher'
 import { describeLastActive } from '@shared/conversation'
 import type { ConversationsApi } from '@/hooks/use-conversations'
@@ -147,7 +148,8 @@ export function AgentChat({
           </div>
         </div>
 
-        <div className="flex shrink-0 gap-2">
+        <div className="flex shrink-0 items-center gap-2">
+          <ContextMeter usage={runtime.contextUsage} />
           {runtime.state === 'working' && (
             <Button
               variant="outline"

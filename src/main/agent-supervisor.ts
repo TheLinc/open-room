@@ -23,6 +23,7 @@ import {
   kindFromAssistantError
 } from './agent-errors'
 import { describeQuota } from '@shared/quota'
+import { contextUsageFrom } from '@shared/context-usage'
 import { agentQueryOptions } from './agent-options'
 import { PushableQueue } from './message-queue'
 import type { ConversationStore } from './conversation-store'
@@ -452,7 +453,16 @@ export class AgentSupervisor {
           outputTokens: usage?.output_tokens ?? runtime.usage.outputTokens,
           cacheReadTokens: usage?.cache_read_input_tokens ?? runtime.usage.cacheReadTokens,
           numTurns: message.num_turns ?? runtime.usage.numTurns
-        }
+        },
+        // Derived here rather than in the renderer so the pane has nothing to
+        // recompute, and so the "which usage field" question is answered in
+        // one place. `usage` is per-request; `modelUsage` is cumulative.
+        contextUsage:
+          contextUsageFrom(
+            message.usage as Parameters<typeof contextUsageFrom>[0],
+            message.modelUsage as Parameters<typeof contextUsageFrom>[1],
+            session.agent.config.model
+          ) ?? runtime.contextUsage
       })
 
       if (message.is_error && message.subtype !== 'success' && !wasInterrupted) {

@@ -12,9 +12,22 @@ import type { TranscriptEntry } from '@shared/agent-runtime'
  * components, which is what React Fast Refresh requires.
  */
 export function isRenderable(entry: TranscriptEntry): boolean {
-  const type = (entry.message as { type?: string } | null)?.type
-  return type !== undefined && !SILENT_TYPES.has(type)
+  const message = entry.message as { type?: string; subtype?: string } | null
+  const type = message?.type
+  if (type === undefined) return false
+  if (type === 'system') return VISIBLE_SYSTEM_SUBTYPES.has(message?.subtype ?? '')
+  return !SILENT_TYPES.has(type)
 }
+
+/**
+ * System messages that do carry something worth a row.
+ *
+ * Compaction is the conversation losing its middle. It happens on its own
+ * once the window fills, and with everything of type `system` filtered out it
+ * happened invisibly — leaving an agent that had demonstrably forgotten
+ * things with nothing in the transcript to explain why.
+ */
+const VISIBLE_SYSTEM_SUBTYPES = new Set(['compact_boundary'])
 
 /**
  * Message types that never produce a row.

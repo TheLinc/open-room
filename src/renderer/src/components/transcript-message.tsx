@@ -1,7 +1,19 @@
 import { memo } from 'react'
-import { Brain, ChevronRight, CircleAlert, Terminal, Wrench } from 'lucide-react'
+import { Brain, ChevronRight, CircleAlert, Layers, Terminal, Wrench } from 'lucide-react'
 import type { TranscriptEntry } from '@shared/agent-runtime'
 import { cn } from '@/lib/utils'
+
+/** The half of `SDKCompactBoundaryMessage.compact_metadata` worth showing. */
+type CompactMetadata = {
+  trigger?: 'manual' | 'auto'
+  pre_tokens?: number
+  post_tokens?: number
+}
+
+/** Compaction figures are six digits; "152K" reads at a glance and "152,431" does not. */
+function formatTokens(tokens: number): string {
+  return tokens >= 1000 ? `${Math.round(tokens / 1000)}K` : String(tokens)
+}
 
 /**
  * Renders one SDK message.
@@ -182,6 +194,30 @@ export const TranscriptMessage = memo(function TranscriptMessage({
   // content worth a row of their own. Kept in step with `isRenderable`, which
   // is what actually keeps them out of the list — returning null here still
   // leaves a sized placeholder behind.
+  if (message.type === 'system' && message.subtype === 'compact_boundary') {
+    const meta = (message as { compact_metadata?: CompactMetadata }).compact_metadata
+    const before = meta?.pre_tokens
+    const after = meta?.post_tokens
+    const shrunk =
+      typeof before === 'number' && typeof after === 'number'
+        ? `${formatTokens(before)} → ${formatTokens(after)}`
+        : typeof before === 'number'
+          ? `was ${formatTokens(before)}`
+          : null
+
+    return (
+      <div className="flex items-center gap-3 py-1 text-xs text-muted-foreground">
+        <span className="h-px flex-1 bg-border" />
+        <span className="flex shrink-0 items-center gap-1.5">
+          <Layers className="size-3.5" />
+          {meta?.trigger === 'manual' ? 'Compacted' : 'Context compacted automatically'}
+          {shrunk ? ` · ${shrunk}` : ''}
+        </span>
+        <span className="h-px flex-1 bg-border" />
+      </div>
+    )
+  }
+
   if (
     message.type === 'system' ||
     message.type === 'stream_event' ||

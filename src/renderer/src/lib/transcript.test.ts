@@ -34,6 +34,28 @@ describe('isRenderable', () => {
     expect(isRenderable(entry({ type: 'stream_event' }))).toBe(false)
   })
 
+  it('keeps compaction boundaries, which are not silent status', () => {
+    // Compaction is the conversation losing its middle, and it happens on its
+    // own. Filtered out with the rest of `system`, an agent that had visibly
+    // forgotten things had nothing in the transcript explaining why.
+    expect(
+      isRenderable(
+        entry({
+          type: 'system',
+          subtype: 'compact_boundary',
+          compact_metadata: { trigger: 'auto', pre_tokens: 152431, post_tokens: 41022 }
+        })
+      )
+    ).toBe(true)
+  })
+
+  it('still drops system subtypes it does not know', () => {
+    // The allow-list is the point: a new status subtype must not start
+    // rendering as a JSON dump just because it appeared.
+    expect(isRenderable(entry({ type: 'system', subtype: 'something_new' }))).toBe(false)
+    expect(isRenderable(entry({ type: 'system' }))).toBe(false)
+  })
+
   it('drops anything with no type at all', () => {
     // Would otherwise reach the debug fallthrough row and dump raw JSON.
     expect(isRenderable(entry(null))).toBe(false)

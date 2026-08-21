@@ -1,3 +1,5 @@
+import type { ContextUsage } from './context-usage'
+
 /**
  * Runtime state for a running agent, shared across processes.
  *
@@ -112,6 +114,13 @@ export type AgentRuntime = {
   error: AgentError | null
   usage: AgentUsage
   rateLimit: RateLimitStatus | null
+  /**
+   * How full the active conversation's window is, from the last result.
+   *
+   * Null until a turn completes: it is derived from a result message, so a
+   * resumed conversation reports nothing until it is spoken to again.
+   */
+  contextUsage: ContextUsage | null
   /** Epoch ms of the last activity, for idle teardown. */
   lastActiveAt: number
 }
@@ -161,6 +170,7 @@ export function emptyRuntime(agentId: string): AgentRuntime {
     error: null,
     usage: { ...EMPTY_USAGE },
     rateLimit: null,
+    contextUsage: null,
     lastActiveAt: Date.now()
   }
 }
