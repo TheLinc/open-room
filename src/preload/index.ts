@@ -9,6 +9,7 @@ import type {
   TranscriptEntry
 } from '@shared/agent-runtime'
 import type { Conversation, ConversationPage } from '@shared/conversation'
+import type { SessionOverridePatch } from '@shared/session-overrides'
 import type { AppSettings } from '@shared/settings'
 import type { KokoroStatus, SttStatus, SystemVoice } from '@shared/voice-rpc'
 import type { HotkeyFailure } from '@shared/hotkeys'
@@ -59,6 +60,9 @@ const openRoom: OpenRoomApi = {
 
   interruptAgent: (agentId: string): Promise<MutationResult> =>
     ipcRenderer.invoke(IpcChannel.interruptAgent, agentId),
+
+  setOverrides: (agentId: string, patch: SessionOverridePatch): Promise<MutationResult> =>
+    ipcRenderer.invoke(IpcChannel.setOverrides, agentId, patch),
 
   stopAgent: (agentId: string): Promise<MutationResult> =>
     ipcRenderer.invoke(IpcChannel.stopAgent, agentId),

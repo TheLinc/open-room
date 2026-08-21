@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { CircleAlert, Loader2, Pencil, Send, Square, X } from 'lucide-react'
-import { MODELS, type Agent } from '@shared/agent'
+import type { Agent } from '@shared/agent'
 import { colorHexFor } from '@shared/agent-colors'
 import {
   isTransient,
@@ -14,6 +14,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { TranscriptMessage } from '@/components/transcript-message'
 import { isRenderable } from '@/lib/transcript'
 import { ContextMeter } from '@/components/context-meter'
+import { SessionControls } from '@/components/session-controls'
 import { ConversationSwitcher } from '@/components/conversation-switcher'
 import { describeLastActive } from '@shared/conversation'
 import type { ConversationsApi } from '@/hooks/use-conversations'
@@ -138,7 +139,6 @@ export function AgentChat({
             <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
               {busy && <Loader2 className="size-3 animate-spin" />}
               {STATE_LABEL[runtime.state]}
-              <span>· {MODELS.find((m) => m.id === agent.config.model)?.label}</span>
               {runtime.usage.numTurns > 0 && (
                 <span>
                   · {runtime.usage.numTurns} turns · ${runtime.usage.totalCostUsd.toFixed(4)}
@@ -150,6 +150,11 @@ export function AgentChat({
 
         <div className="flex shrink-0 items-center gap-2">
           <ContextMeter usage={runtime.contextUsage} />
+          <SessionControls
+            config={agent.config}
+            overrides={runtime.overrides}
+            onChange={(patch) => void window.openRoom.setOverrides(agent.config.id, patch)}
+          />
           {runtime.state === 'working' && (
             <Button
               variant="outline"

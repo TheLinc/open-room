@@ -112,3 +112,40 @@ describe('agentQueryOptions optional model settings', () => {
     })
   })
 })
+
+describe('session overrides', () => {
+  it('uses the config when there are none', () => {
+    const options = agentQueryOptions(agent({ effort: 'low' }), null, voiceServer, undefined)
+
+    expect(options.model).toBe('claude-sonnet-5')
+    expect(options.effort).toBe('low')
+    expect(options.permissionMode).toBe('default')
+  })
+
+  it('applies them at session start, not one turn late', () => {
+    // The control methods only exist once a session is live, so an override
+    // set before the first prompt would otherwise be silently ignored for
+    // exactly the turn the user set it for.
+    const options = agentQueryOptions(agent(), null, voiceServer, undefined, {
+      model: 'claude-opus-5',
+      effort: 'xhigh',
+      permissionMode: 'plan'
+    })
+
+    expect(options.model).toBe('claude-opus-5')
+    expect(options.effort).toBe('xhigh')
+    expect(options.permissionMode).toBe('plan')
+  })
+
+  it('overrides the config effort rather than merging with it', () => {
+    const options = agentQueryOptions(agent({ effort: 'max' }), null, voiceServer, undefined, {
+      effort: 'low'
+    })
+
+    expect(options.effort).toBe('low')
+  })
+
+  it('leaves effort off entirely when neither names one', () => {
+    expect('effort' in agentQueryOptions(agent(), null, voiceServer, undefined, {})).toBe(false)
+  })
+})

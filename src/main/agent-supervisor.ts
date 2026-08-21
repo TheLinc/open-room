@@ -25,6 +25,12 @@ import {
 import { describeQuota } from '@shared/quota'
 import { contextUsageFrom } from '@shared/context-usage'
 import { agentQueryOptions } from './agent-options'
+import {
+  effectiveSettings,
+  mergeOverrides,
+  overrideControlCalls,
+  type SessionOverridePatch
+} from '@shared/session-overrides'
 import { PushableQueue } from './message-queue'
 import type { ConversationStore } from './conversation-store'
 import type { SpeechBus } from './speech-bus'
@@ -264,7 +270,8 @@ export class AgentSupervisor {
       resumeSessionId,
       // In-process, so the spoken line never leaves the app.
       createSpeakServer(agent, this.speech, turnSpeech),
-      this.permissionHandler(agent.config.id)
+      this.permissionHandler(agent.config.id),
+      this.runtimeFor(agent.config.id).overrides
     )
   }
 
@@ -515,6 +522,38 @@ export class AgentSupervisor {
     })
   }
 
+  /**
+   * Changes model, effort or permission mode for the running session.
+   *
+   * Applied to a live session through the SDK's control methods, which exist
+   * only in streaming input mode. With no session yet it is still recorded,
+   * so the next one starts with it — otherwise setting "plan first" and then
+   * typing would plan on the *second* turn, which is the one case the control
+   * exists for.
+   */
+  async setOverrides(agentId: string, patch: SessionOverridePatch): Promise<void> {
+    const runtime = this.runtimeFor(agentId)
+    const previous = runtime.overrides
+    const next = mergeOverrides(previous, patch)
+
+    this.patch(agentId, { overrides: next })
+
+    const session = this.sessions.get(agentId)
+    if (!session) return
+
+    const config = session.agent.config
+    const calls = overrideControlCalls(
+      effectiveSettings(config, previous),
+      effectiveSettings(config, next)
+    )
+
+    for (const call of calls) {
+      if (call.kind === 'model') await session.query.setModel(call.model)
+      else if (call.kind === 'permissionMode') await session.query.setPermissionMode(call.mode)
+      else await session.query.applyFlagSettings({ effortLevel: call.effortLevel })
+    }
+  }
+
   async interrupt(agentId: string): Promise<void> {
     const session = this.sessions.get(agentId)
     if (!session) return
@@ -548,7 +587,10 @@ export class AgentSupervisor {
       // Teardown failures are already reflected in the runtime state.
     }
     this.sessions.delete(agentId)
-    this.patch(agentId, { state: 'idle' })
+    // Overrides belong to the session that carried them. Keeping them would
+    // mean an agent quietly starting its next conversation in plan mode
+    // because of something set days ago.
+    this.patch(agentId, { state: 'idle', overrides: {} })
   }
 
   private rejectPendingFor(agentId: string): void {

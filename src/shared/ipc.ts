@@ -7,6 +7,7 @@ import type {
   TranscriptEntry
 } from './agent-runtime'
 import type { Conversation, ConversationPage } from './conversation'
+import type { SessionOverridePatch } from './session-overrides'
 import type { HotkeyFailure } from './hotkeys'
 import type { AppSettings } from './settings'
 import type { MicrophoneDevice } from './voice-input'
@@ -64,6 +65,7 @@ export const IpcChannel = {
 
   sendPrompt: 'session:send',
   interruptAgent: 'session:interrupt',
+  setOverrides: 'session:set-overrides',
   stopAgent: 'session:stop',
   listRuntimes: 'session:runtimes',
   /** main → renderer, per-agent lifecycle and usage updates. */
@@ -186,6 +188,13 @@ export type OpenRoomApi = {
   sendPrompt: (agentId: string, text: string) => Promise<MutationResult>
   /** Stops the current turn, leaving the session alive. */
   interruptAgent: (agentId: string) => Promise<MutationResult>
+  /**
+   * Changes model, effort or permission mode for this session only.
+   *
+   * `null` clears a field back to the agent's config. Sticky until changed
+   * or until the session ends.
+   */
+  setOverrides: (agentId: string, patch: SessionOverridePatch) => Promise<MutationResult>
   /** Ends the session and tears down the subprocess. */
   stopAgent: (agentId: string) => Promise<MutationResult>
   listRuntimes: () => Promise<AgentRuntime[]>

@@ -1,4 +1,5 @@
 import type { ContextUsage } from './context-usage'
+import type { SessionOverrides } from './session-overrides'
 
 /**
  * Runtime state for a running agent, shared across processes.
@@ -121,6 +122,14 @@ export type AgentRuntime = {
    * resumed conversation reports nothing until it is spoken to again.
    */
   contextUsage: ContextUsage | null
+  /**
+   * Model, effort and permission mode changed from inside the conversation.
+   *
+   * Sticky for the life of the session and dropped when it ends, at which
+   * point the agent's config takes over again. Empty means "exactly what the
+   * config says".
+   */
+  overrides: SessionOverrides
   /** Epoch ms of the last activity, for idle teardown. */
   lastActiveAt: number
 }
@@ -171,6 +180,7 @@ export function emptyRuntime(agentId: string): AgentRuntime {
     usage: { ...EMPTY_USAGE },
     rateLimit: null,
     contextUsage: null,
+    overrides: {},
     lastActiveAt: Date.now()
   }
 }

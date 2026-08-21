@@ -1,5 +1,6 @@
 import type { Options } from '@anthropic-ai/claude-agent-sdk'
 import type { Agent } from '@shared/agent'
+import { effectiveSettings, type SessionOverrides } from '@shared/session-overrides'
 import { buildChildEnv } from './agent-errors'
 import { SPEAK_TOOL_NAME, VOICE_SERVER_NAME } from './speak-tool'
 
@@ -16,9 +17,18 @@ export function agentQueryOptions(
   resumeSessionId: string | null,
   /** Open Room's in-process `speak` server, built per turn. */
   voiceServer: NonNullable<Options['mcpServers']>[string],
-  canUseTool: Options['canUseTool']
+  canUseTool: Options['canUseTool'],
+  /**
+   * Session overrides for model, effort and permission mode.
+   *
+   * Applied here as well as through the live `Query` control methods, so an
+   * override set before the first prompt survives the session actually
+   * starting rather than taking effect one turn late.
+   */
+  overrides: SessionOverrides = {}
 ): Options {
   const { config } = agent
+  const settings = effectiveSettings(config, overrides)
 
   return {
     systemPrompt: { type: 'preset', preset: 'claude_code', append: agent.context },
@@ -41,15 +51,15 @@ export function agentQueryOptions(
      */
     settingSources: [],
     cwd: config.workspacePath,
-    model: config.model,
-    ...(config.effort ? { effort: config.effort } : {}),
+    model: settings.model,
+    ...(settings.effort ? { effort: settings.effort } : {}),
     ...(config.fallbackModel ? { fallbackModel: config.fallbackModel } : {}),
     mcpServers: {
       ...(config.mcpServers as Options['mcpServers']),
       // In-process, so the spoken line never leaves the app.
       [VOICE_SERVER_NAME]: voiceServer
     },
-    permissionMode: config.permissionMode,
+    permissionMode: settings.permissionMode,
     // Speaking is always allowed: it is Open Room's own in-process tool and
     // asking permission for it would stall every turn behind a dialog.
     allowedTools: [...config.allowedTools, SPEAK_TOOL_NAME],

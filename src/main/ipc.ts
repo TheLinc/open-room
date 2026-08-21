@@ -10,6 +10,7 @@ import type {
 import type { HotkeyFailure } from '@shared/hotkeys'
 import type { MicrophoneDevice } from '@shared/voice-input'
 import { appSettingsSchema, type AppSettings } from '@shared/settings'
+import { sanitizeOverrides } from '@shared/session-overrides'
 import { IpcChannel, type AgentsSnapshot, type AppInfo, type MutationResult } from '@shared/ipc'
 import { ConfigStore } from './config-store'
 import type { AgentSupervisor } from './agent-supervisor'
@@ -112,6 +113,16 @@ export function registerIpcHandlers(
     IpcChannel.interruptAgent,
     async (_e, agentId: string): Promise<MutationResult> => {
       return guard(() => supervisor.interrupt(agentId))
+    }
+  )
+
+  ipcMain.handle(
+    IpcChannel.setOverrides,
+    async (_e, agentId: string, patch: unknown): Promise<MutationResult> => {
+      // Sanitised here rather than trusted from the renderer: permission mode
+      // is a privilege boundary, and bypassPermissions must not be reachable
+      // by anything that can reach this channel.
+      return guard(() => supervisor.setOverrides(agentId, sanitizeOverrides(patch)))
     }
   )
 
