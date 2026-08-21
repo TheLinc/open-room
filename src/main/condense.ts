@@ -107,9 +107,13 @@ export async function condenseForSpeech(finalText: string): Promise<string | nul
       prompt: `${INSTRUCTION}\n\n---\n${trimmed.slice(0, 4000)}`,
       options: {
         model: 'claude-haiku-4-5',
-        // No tools, no Claude Code preset, no project settings — this is a
-        // one-shot rewrite, not an agent.
+        // No tools, no Claude Code preset, no filesystem settings — this is a
+        // one-shot rewrite, not an agent, and it has no business inheriting
+        // the machine's plugins or hooks. It is for isolation only: measured
+        // either way, it makes no difference to latency, which is dominated
+        // by the round trip rather than by startup.
         systemPrompt: 'You rewrite text into one short spoken sentence.',
+        settingSources: [],
         allowedTools: [],
         maxTurns: 1,
         persistSession: false,

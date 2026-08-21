@@ -18,12 +18,12 @@ import {
   type TranscriptEntry
 } from '@shared/agent-runtime'
 import {
-  buildChildEnv,
   classifyThrownError,
   describeAgentError,
   kindFromAssistantError
 } from './agent-errors'
 import { describeQuota } from '@shared/quota'
+import { agentQueryOptions } from './agent-options'
 import { PushableQueue } from './message-queue'
 import type { ConversationStore } from './conversation-store'
 import type { SpeechBus } from './speech-bus'
@@ -31,7 +31,6 @@ import {
   createSpeakServer,
   newTurnSpeechState,
   SPEAK_TOOL_NAME,
-  VOICE_SERVER_NAME,
   type TurnSpeechState
 } from './speak-tool'
 import { condenseForSpeech, shouldSpeakFallback, speakableAsIs } from './condense'
@@ -259,38 +258,13 @@ export class AgentSupervisor {
     resumeSessionId: string | null,
     turnSpeech: TurnSpeechState
   ): Options {
-    const { config } = agent
-
-    return {
-      systemPrompt: { type: 'preset', preset: 'claude_code', append: agent.context },
-      cwd: config.workspacePath,
-      model: config.model,
-      ...(config.effort ? { effort: config.effort } : {}),
-      ...(config.fallbackModel ? { fallbackModel: config.fallbackModel } : {}),
-      mcpServers: {
-        ...(config.mcpServers as Options['mcpServers']),
-        // In-process, so the spoken line never leaves the app.
-        [VOICE_SERVER_NAME]: createSpeakServer(agent, this.speech, turnSpeech)
-      },
-      permissionMode: config.permissionMode,
-      // Speaking is always allowed: it is Open Room's own in-process tool and
-      // asking permission for it would stall every turn behind a dialog.
-      allowedTools: [...config.allowedTools, SPEAK_TOOL_NAME],
-      disallowedTools: config.disallowedTools,
-      persistSession: config.persistSession,
-      // `resume` opens an existing conversation; the streaming generator
-      // drives it from there.
-      ...(resumeSessionId && config.persistSession ? { resume: resumeSessionId } : {}),
-      // No `title` is set deliberately: it lands in both customTitle and
-      // summary, so every conversation would carry the same name and the
-      // switcher would be useless. The SDK's own summary is per-conversation,
-      // and the agent is identified by tag instead.
-      // Replaces process.env rather than merging, so it is built explicitly
-      // with ANTHROPIC_API_KEY removed.
-      env: buildChildEnv(),
-      includePartialMessages: false,
-      canUseTool: this.permissionHandler(config.id)
-    }
+    return agentQueryOptions(
+      agent,
+      resumeSessionId,
+      // In-process, so the spoken line never leaves the app.
+      createSpeakServer(agent, this.speech, turnSpeech),
+      this.permissionHandler(agent.config.id)
+    )
   }
 
   /**
