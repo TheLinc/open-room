@@ -2,6 +2,7 @@ import { memo } from 'react'
 import { Brain, ChevronRight, CircleAlert, Layers, Terminal, Wrench } from 'lucide-react'
 import type { TranscriptEntry } from '@shared/agent-runtime'
 import { cn } from '@/lib/utils'
+import { isCommandEcho } from '@/lib/transcript'
 
 /** The half of `SDKCompactBoundaryMessage.compact_metadata` worth showing. */
 type CompactMetadata = {
@@ -129,6 +130,12 @@ export const TranscriptMessage = memo(function TranscriptMessage({
   entry: TranscriptEntry
 }): React.JSX.Element | null {
   const message = entry.message as SdkMessage
+
+  // Kept in step with `isRenderable`, which is what actually keeps this out
+  // of the list. Changing the model makes the CLI echo the change back as
+  // user content — live, and again from persisted history on resume — which
+  // would otherwise appear as an XML fragment nobody typed.
+  if (message.type === 'user' && isCommandEcho(entry)) return null
 
   if (message.type === 'assistant') {
     return (

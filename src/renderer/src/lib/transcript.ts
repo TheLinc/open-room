@@ -16,8 +16,32 @@ export function isRenderable(entry: TranscriptEntry): boolean {
   const type = message?.type
   if (type === undefined) return false
   if (type === 'system') return VISIBLE_SYSTEM_SUBTYPES.has(message?.subtype ?? '')
+  if (type === 'user' && isCommandEcho(entry)) return false
   return !SILENT_TYPES.has(type)
 }
+
+/**
+ * Whether a `user` entry is the CLI echoing a command back at us.
+ *
+ * Changing the model mid-session produces two of these, and they arrive by
+ * different routes. Live, `setModel` emits
+ * `<local-command-stdout>Set model to claude-sonnet-5</local-command-stdout>`
+ * as user content. On resume, the persisted session also carries the
+ * invocation as a `<command-name>/model</command-name>` block. Both would
+ * otherwise render as XML fragments nobody typed — the second only after a
+ * restart, which is how it survived the first fix.
+ *
+ * Matched on the wrapper rather than on `isReplay`, which is also set for
+ * genuine replayed input. The content must be *entirely* these tags: a
+ * person who types one has still said it, and should see what they sent.
+ */
+export function isCommandEcho(entry: TranscriptEntry): boolean {
+  const content = (entry.message as { message?: { content?: unknown } } | null)?.message?.content
+  if (typeof content !== 'string') return false
+  return COMMAND_ECHO.test(content.trim())
+}
+
+const COMMAND_ECHO = /^(?:\s*<(?:local-)?command-[a-z]+>[\s\S]*?<\/(?:local-)?command-[a-z]+>\s*)+$/
 
 /**
  * System messages that do carry something worth a row.
