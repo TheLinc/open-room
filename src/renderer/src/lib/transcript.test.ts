@@ -56,6 +56,13 @@ describe('isRenderable', () => {
     expect(isRenderable(entry({ type: 'system' }))).toBe(false)
   })
 
+  it('drops the result a local slash command closes with', () => {
+    // "Turn complete · 0 turns · $0.0000" under every /usage is noise; the
+    // command's own output is the row.
+    expect(isRenderable(entry({ type: 'result', num_turns: 0, duration_api_ms: 0 }))).toBe(false)
+    expect(isRenderable(entry({ type: 'result', num_turns: 1, duration_api_ms: 900 }))).toBe(true)
+  })
+
   it('drops anything with no type at all', () => {
     // Would otherwise reach the debug fallthrough row and dump raw JSON.
     expect(isRenderable(entry(null))).toBe(false)
@@ -72,8 +79,17 @@ describe('command echoes', () => {
     // this, using the session controls posts an XML fragment into the
     // conversation as though someone had typed it.
     expect(
-      isRenderable(echo('<local-command-stdout>Set model to claude-sonnet-5</local-command-stdout>'))
+      isRenderable(
+        echo('<local-command-stdout>Set model to claude-sonnet-5</local-command-stdout>')
+      )
     ).toBe(false)
+  })
+
+  it('drops the echo a manual /compact leaves behind', () => {
+    // Measured: the CLI follows a successful compaction with exactly this.
+    expect(isRenderable(echo('<local-command-stdout>Compacted </local-command-stdout>'))).toBe(
+      false
+    )
   })
 
   it('drops a stderr echo too', () => {

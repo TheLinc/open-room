@@ -9,6 +9,7 @@ describe('emptyRuntime', () => {
     expect(runtime.error).toBeNull()
     expect(runtime.rateLimit).toBeNull()
     expect(runtime.usage.numTurns).toBe(0)
+    expect(runtime.commands).toEqual([])
   })
 })
 

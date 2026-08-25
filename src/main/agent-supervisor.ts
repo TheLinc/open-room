@@ -17,13 +17,16 @@ import {
   type RateLimitStatus,
   type TranscriptEntry
 } from '@shared/agent-runtime'
-import {
-  classifyThrownError,
-  describeAgentError,
-  kindFromAssistantError
-} from './agent-errors'
+import { classifyThrownError, describeAgentError, kindFromAssistantError } from './agent-errors'
 import { describeQuota } from '@shared/quota'
 import { contextUsageFrom } from '@shared/context-usage'
+import {
+  commandListUpdate,
+  isCommandResult,
+  visibleCommands,
+  type CommandListState
+} from '@shared/slash-commands'
+import { replayKey } from '@shared/compaction'
 import { agentQueryOptions } from './agent-options'
 import {
   effectiveSettings,
@@ -70,6 +73,10 @@ type Session = {
   interrupting: boolean
   /** Reset each turn; caps how often an agent may speak and records whether it did. */
   turnSpeech: TurnSpeechState
+  /** Where the picker's command list stands; see `commandListUpdate`. */
+  commands: CommandListState
+  /** Uuids of conversation messages already appended, to drop replays. */
+  seen: Set<string>
 }
 
 /** The shape `query()` accepts on its input stream. */
@@ -247,7 +254,9 @@ export class AgentSupervisor {
         pump: Promise.resolve(),
         seq: 0,
         interrupting: false,
-        turnSpeech
+        turnSpeech,
+        commands: { loaded: false, terminal: [] },
+        seen: new Set()
       }
       session.pump = this.pump(session)
       this.sessions.set(id, session)
@@ -391,6 +400,16 @@ export class AgentSupervisor {
   private handleMessage(session: Session, message: SDKMessage): void {
     const id = session.agentId
 
+    // Compaction re-emits the messages it preserved, under their original
+    // uuids; the transcript would show them twice. Measured on a manual
+    // `/compact`: the previous command's output arrived again, timestamped
+    // before the boundary it followed.
+    const key = replayKey(message)
+    if (key) {
+      if (session.seen.has(key)) return
+      session.seen.add(key)
+    }
+
     session.seq += 1
     this.events.onTranscript({
       agentId: id,
@@ -402,6 +421,13 @@ export class AgentSupervisor {
     if (message.type === 'system' && 'session_id' in message) {
       const sessionId = message.session_id
       this.patch(id, { sessionId, activeConversationId: sessionId, state: 'working' })
+
+      // The decision about the picker's list is pure and tested; this only
+      // carries it out.
+      const update = commandListUpdate(session.commands, message)
+      session.commands = update.state
+      if (update.action?.kind === 'fetch') void this.loadCommands(session)
+      if (update.action?.kind === 'replace') this.patch(id, { commands: update.action.commands })
 
       // Tag the session so it can be found again as this agent's. Resumed
       // sessions are already tagged; re-tagging is harmless and keeps a
@@ -441,6 +467,16 @@ export class AgentSupervisor {
 
     if (message.type === 'result') {
       const runtime = this.runtimeFor(id)
+
+      // A slash command the CLI ran locally closes with a result of its own:
+      // zero turns, zero usage. Reading those into the running totals would
+      // wipe them, and its output is not something to read aloud.
+      if (isCommandResult(message)) {
+        session.interrupting = false
+        this.patch(id, { state: 'ready', sessionId: message.session_id, lastActiveAt: Date.now() })
+        return
+      }
+
       const usage = message.subtype === 'success' ? message.usage : undefined
       // An interrupt the user asked for is not a fault, even though the SDK
       // reports it as an error result.
@@ -483,6 +519,21 @@ export class AgentSupervisor {
       if (message.subtype === 'success' && !wasInterrupted) {
         void this.speakFallback(session, message.result)
       }
+    }
+  }
+
+  /**
+   * Fetches the command list for the picker once a session has initialised.
+   *
+   * Failure leaves the list empty, which the renderer treats as "unknown"
+   * rather than "none": a draft still sends, and the CLI judges it.
+   */
+  private async loadCommands(session: Session): Promise<void> {
+    try {
+      const all = await session.query.supportedCommands()
+      this.patch(session.agentId, { commands: visibleCommands(all, session.commands.terminal) })
+    } catch (error) {
+      console.warn(`[supervisor] could not list commands for ${session.agentId}:`, error)
     }
   }
 

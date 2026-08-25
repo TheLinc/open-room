@@ -1,5 +1,6 @@
 import type { ContextUsage } from './context-usage'
 import type { SessionOverrides } from './session-overrides'
+import type { SlashCommandInfo } from './slash-commands'
 
 /**
  * Runtime state for a running agent, shared across processes.
@@ -130,6 +131,13 @@ export type AgentRuntime = {
    * config says".
    */
   overrides: SessionOverrides
+  /**
+   * Slash commands the picker offers, already reduced to the ones worth
+   * showing. Empty until the session's first init message; kept when the
+   * session ends, since the list is a property of the CLI rather than of
+   * any one conversation.
+   */
+  commands: SlashCommandInfo[]
   /** Epoch ms of the last activity, for idle teardown. */
   lastActiveAt: number
 }
@@ -181,6 +189,7 @@ export function emptyRuntime(agentId: string): AgentRuntime {
     rateLimit: null,
     contextUsage: null,
     overrides: {},
+    commands: [],
     lastActiveAt: Date.now()
   }
 }

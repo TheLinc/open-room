@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { CircleAlert, Loader2, Pencil, Send, Square, X } from 'lucide-react'
 import type { Agent } from '@shared/agent'
 import { colorHexFor } from '@shared/agent-colors'
@@ -19,6 +19,13 @@ import { ConversationSwitcher } from '@/components/conversation-switcher'
 import { describeLastActive } from '@shared/conversation'
 import type { ConversationsApi } from '@/hooks/use-conversations'
 import { PermissionPrompt } from '@/components/permission-prompt'
+import { CommandPicker } from '@/components/command-picker'
+import {
+  filterCommands,
+  pickAction,
+  submitAction,
+  type SlashCommandInfo
+} from '@shared/slash-commands'
 import { MAX_RETAINED_ENTRIES } from '@/hooks/use-sessions'
 
 type Props = {
@@ -98,9 +105,42 @@ export function AgentChat({
     }
   }
 
-  const submit = async (): Promise<void> => {
-    const text = draft.trim()
+  // The picker is open while the draft is a bare `/query` — a slash in the
+  // first column and no whitespace yet. Once arguments start, it closes.
+  const pickerQuery = /^\/(\S*)$/.exec(draft)?.[1] ?? null
+  const matches = useMemo(
+    () => (pickerQuery === null ? [] : filterCommands(runtime.commands, pickerQuery)),
+    [runtime.commands, pickerQuery]
+  )
+  const pickerOpen = pickerQuery !== null && runtime.commands.length > 0
+  // Selection is remembered against the query it was made for, so typing
+  // resets it to the top without an effect firing after the render.
+  const [selection, setSelection] = useState({ query: pickerQuery, index: 0 })
+  const selected = selection.query === pickerQuery ? selection.index : 0
+  const setSelected = (update: number | ((i: number) => number)): void =>
+    setSelection({
+      query: pickerQuery,
+      index: typeof update === 'function' ? update(selected) : update
+    })
+
+  const pick = (command: SlashCommandInfo): void => {
+    const action = pickAction(command)
+    if (action.kind === 'fill') setDraft(action.draft)
+    else void submit(action.text)
+  }
+
+  const submit = async (override?: string): Promise<void> => {
+    const text = (override ?? draft).trim()
     if (!text) return
+
+    // An unrecognised command is refused rather than sent as prose: the CLI
+    // would answer "Unknown command" either way, but a typo that produces a
+    // reply looks like it did something.
+    const action = submitAction(text, runtime.commands)
+    if (action.kind === 'reject') {
+      setSendError(`No command "/${action.name}". Start with a space to send it as text.`)
+      return
+    }
 
     setDraft('')
     setSendError(null)
@@ -277,11 +317,41 @@ export function AgentChat({
             {sendError}
           </p>
         )}
-        <div className="flex items-end gap-2">
+        <div className="relative flex items-end gap-2">
+          {pickerOpen && (
+            <CommandPicker
+              commands={matches}
+              selected={selected}
+              onPick={pick}
+              onHover={setSelected}
+            />
+          )}
           <Textarea
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => {
+              if (pickerOpen && matches.length > 0) {
+                if (e.key === 'ArrowDown') {
+                  e.preventDefault()
+                  setSelected((i) => (i + 1) % matches.length)
+                  return
+                }
+                if (e.key === 'ArrowUp') {
+                  e.preventDefault()
+                  setSelected((i) => (i - 1 + matches.length) % matches.length)
+                  return
+                }
+                if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) {
+                  e.preventDefault()
+                  pick(matches[Math.min(selected, matches.length - 1)])
+                  return
+                }
+              }
+              if (pickerOpen && e.key === 'Escape') {
+                e.preventDefault()
+                setDraft('')
+                return
+              }
               // Enter sends; Shift+Enter is a newline, matching every chat
               // input people already use.
               if (e.key === 'Enter' && !e.shiftKey) {

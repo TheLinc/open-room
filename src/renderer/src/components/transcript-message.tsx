@@ -3,6 +3,8 @@ import { Brain, ChevronRight, CircleAlert, Layers, Terminal, Wrench } from 'luci
 import type { TranscriptEntry } from '@shared/agent-runtime'
 import { cn } from '@/lib/utils'
 import { isCommandEcho } from '@/lib/transcript'
+import { isSyntheticAssistant, parseCommand } from '@shared/slash-commands'
+import { isInjectedSummary } from '@shared/compaction'
 
 /** The half of `SDKCompactBoundaryMessage.compact_metadata` worth showing. */
 type CompactMetadata = {
@@ -137,6 +139,22 @@ export const TranscriptMessage = memo(function TranscriptMessage({
   // would otherwise appear as an XML fragment nobody typed.
   if (message.type === 'user' && isCommandEcho(entry)) return null
 
+  if (message.type === 'assistant' && isSyntheticAssistant(message)) {
+    // Output of a slash command the CLI ran locally. Rendered apart from the
+    // model's replies so the transcript stays a record of who said what —
+    // the /context table is not the agent talking.
+    return (
+      <div className="flex flex-col gap-2 rounded-md border border-border/60 bg-muted/20 px-3 py-2">
+        <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <Terminal className="size-3.5" /> Command output
+        </span>
+        {blocksOf(message).map((block, i) => (
+          <Block key={i} block={block} />
+        ))}
+      </div>
+    )
+  }
+
   if (message.type === 'assistant') {
     return (
       <div className="flex flex-col gap-2">
@@ -149,6 +167,24 @@ export const TranscriptMessage = memo(function TranscriptMessage({
           <Block key={i} block={block} />
         ))}
       </div>
+    )
+  }
+
+  if (message.type === 'user' && isInjectedSummary(message)) {
+    // The compaction summary, which the CLI injects as a user message. It is
+    // what the agent now remembers, so it is worth reading — but not as
+    // something the user said.
+    return (
+      <details className="rounded border border-border/60 bg-muted/20 px-2 py-1.5">
+        <summary className="flex cursor-pointer items-center gap-1.5 text-xs text-muted-foreground select-none">
+          <Layers className="size-3.5" /> Context summary after compaction
+        </summary>
+        <div className="mt-2 flex flex-col gap-2 text-muted-foreground">
+          {blocksOf(message).map((block, i) => (
+            <Block key={i} block={block} />
+          ))}
+        </div>
+      </details>
     )
   }
 
@@ -168,10 +204,27 @@ export const TranscriptMessage = memo(function TranscriptMessage({
       )
     }
 
+    const text = blocks.map((b) => b.text).join('\n')
+    const command = parseCommand(text)
+
+    // A command is not a prompt. Same side of the pane, different shape, so
+    // "/compact" never reads as something the user asked in prose.
+    if (command) {
+      return (
+        <div className="flex justify-end">
+          <div className="flex max-w-[85%] items-center gap-1.5 rounded-md border border-border bg-muted/40 px-2.5 py-1.5 font-mono text-xs">
+            <Terminal className="size-3.5 shrink-0 text-muted-foreground" />
+            <span>/{command.name}</span>
+            {command.args && <span className="text-muted-foreground">{command.args}</span>}
+          </div>
+        </div>
+      )
+    }
+
     return (
       <div className="flex justify-end">
         <div className="max-w-[85%] rounded-lg bg-muted px-3 py-2 text-sm whitespace-pre-wrap">
-          {blocks.map((b) => b.text).join('\n')}
+          {text}
         </div>
       </div>
     )

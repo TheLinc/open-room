@@ -1,4 +1,5 @@
 import type { TranscriptEntry } from '@shared/agent-runtime'
+import { isCommandResult } from '@shared/slash-commands'
 
 /**
  * Whether an entry produces any visible output.
@@ -17,6 +18,9 @@ export function isRenderable(entry: TranscriptEntry): boolean {
   if (type === undefined) return false
   if (type === 'system') return VISIBLE_SYSTEM_SUBTYPES.has(message?.subtype ?? '')
   if (type === 'user' && isCommandEcho(entry)) return false
+  // A local slash command closes with a zero-turn result; the row it would
+  // produce says nothing the command's own output did not.
+  if (isCommandResult(message)) return false
   return !SILENT_TYPES.has(type)
 }
 
