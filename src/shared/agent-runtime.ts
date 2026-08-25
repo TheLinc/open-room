@@ -1,6 +1,7 @@
 import type { ContextUsage } from './context-usage'
 import type { SessionOverrides } from './session-overrides'
 import type { SlashCommandInfo } from './slash-commands'
+import type { McpServerHealth } from './mcp-health'
 
 /**
  * Runtime state for a running agent, shared across processes.
@@ -138,6 +139,12 @@ export type AgentRuntime = {
    * any one conversation.
    */
   commands: SlashCommandInfo[]
+  /**
+   * Every MCP server the session reports, with its connection status.
+   * Refreshed from each init message; detail is fetched when something is
+   * newly wrong. Empty until the session's first init.
+   */
+  mcpServers: McpServerHealth[]
   /** Epoch ms of the last activity, for idle teardown. */
   lastActiveAt: number
 }
@@ -190,6 +197,7 @@ export function emptyRuntime(agentId: string): AgentRuntime {
     contextUsage: null,
     overrides: {},
     commands: [],
+    mcpServers: [],
     lastActiveAt: Date.now()
   }
 }

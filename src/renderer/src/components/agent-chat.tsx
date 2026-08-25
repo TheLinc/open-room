@@ -14,6 +14,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { TranscriptMessage } from '@/components/transcript-message'
 import { isRenderable } from '@/lib/transcript'
 import { ContextMeter } from '@/components/context-meter'
+import { McpHealth } from '@/components/mcp-health'
 import { SessionControls } from '@/components/session-controls'
 import { ConversationSwitcher } from '@/components/conversation-switcher'
 import { describeLastActive } from '@shared/conversation'
@@ -189,6 +190,7 @@ export function AgentChat({
         </div>
 
         <div className="flex shrink-0 items-center gap-2">
+          <McpHealth servers={runtime.mcpServers} />
           <ContextMeter usage={runtime.contextUsage} />
           <SessionControls
             config={agent.config}

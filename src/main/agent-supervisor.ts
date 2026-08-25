@@ -27,6 +27,7 @@ import {
   type CommandListState
 } from '@shared/slash-commands'
 import { replayKey } from '@shared/compaction'
+import { mcpHealthUpdate, withMcpDetail } from '@shared/mcp-health'
 import { agentQueryOptions } from './agent-options'
 import {
   effectiveSettings,
@@ -429,6 +430,14 @@ export class AgentSupervisor {
       if (update.action?.kind === 'fetch') void this.loadCommands(session)
       if (update.action?.kind === 'replace') this.patch(id, { commands: update.action.commands })
 
+      if (message.subtype === 'init') {
+        // Per-turn statuses are free; the error text behind a failure is a
+        // control round trip, asked for only when a server is newly wrong.
+        const health = mcpHealthUpdate(this.runtimeFor(id).mcpServers, message.mcp_servers)
+        this.patch(id, { mcpServers: health.servers })
+        if (health.fetchDetail) void this.loadMcpDetail(session)
+      }
+
       // Tag the session so it can be found again as this agent's. Resumed
       // sessions are already tagged; re-tagging is harmless and keeps a
       // freshly created one from being orphaned.
@@ -534,6 +543,17 @@ export class AgentSupervisor {
       this.patch(session.agentId, { commands: visibleCommands(all, session.commands.terminal) })
     } catch (error) {
       console.warn(`[supervisor] could not list commands for ${session.agentId}:`, error)
+    }
+  }
+
+  /** Adds error text, scope and tool counts to the servers already listed. */
+  private async loadMcpDetail(session: Session): Promise<void> {
+    try {
+      const detail = await session.query.mcpServerStatus()
+      const current = this.runtimeFor(session.agentId).mcpServers
+      this.patch(session.agentId, { mcpServers: withMcpDetail(current, detail) })
+    } catch (error) {
+      console.warn(`[supervisor] could not read MCP status for ${session.agentId}:`, error)
     }
   }
 

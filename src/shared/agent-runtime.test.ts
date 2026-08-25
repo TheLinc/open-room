@@ -10,6 +10,7 @@ describe('emptyRuntime', () => {
     expect(runtime.rateLimit).toBeNull()
     expect(runtime.usage.numTurns).toBe(0)
     expect(runtime.commands).toEqual([])
+    expect(runtime.mcpServers).toEqual([])
   })
 })
 
