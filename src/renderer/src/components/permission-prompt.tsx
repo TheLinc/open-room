@@ -55,12 +55,21 @@ export function PermissionPrompt({ request, agentName }: Props): React.JSX.Eleme
       {detail.kind === 'edit' && (
         <div className="flex flex-col gap-1">
           <p className="font-mono text-xs text-muted-foreground">{detail.path}</p>
-          <pre className="overflow-x-auto rounded border-l-2 border-red-500/60 bg-red-500/5 p-2 font-mono text-[11px] whitespace-pre-wrap">
-            {detail.before}
-          </pre>
-          <pre className="overflow-x-auto rounded border-l-2 border-emerald-500/60 bg-emerald-500/5 p-2 font-mono text-[11px] whitespace-pre-wrap">
-            {detail.after}
-          </pre>
+          {detail.edits.map((pair, i) => (
+            <div key={i} className={i > 0 ? 'mt-2 flex flex-col gap-1' : 'flex flex-col gap-1'}>
+              {detail.edits.length > 1 && (
+                <p className="text-[11px] text-muted-foreground">
+                  Edit {i + 1} of {detail.edits.length}
+                </p>
+              )}
+              <pre className="max-h-64 overflow-auto rounded border-l-2 border-red-500/60 bg-red-500/5 p-2 font-mono text-[11px] whitespace-pre-wrap">
+                {pair.before}
+              </pre>
+              <pre className="max-h-64 overflow-auto rounded border-l-2 border-emerald-500/60 bg-emerald-500/5 p-2 font-mono text-[11px] whitespace-pre-wrap">
+                {pair.after}
+              </pre>
+            </div>
+          ))}
         </div>
       )}
       {detail.kind === 'write' && (
@@ -73,7 +82,7 @@ export function PermissionPrompt({ request, agentName }: Props): React.JSX.Eleme
       )}
       {detail.kind === 'command' && (
         <div className="flex flex-col gap-1">
-          <pre className="overflow-x-auto rounded bg-muted/40 p-2 font-mono text-xs whitespace-pre-wrap">
+          <pre className="max-h-64 overflow-auto rounded bg-muted/40 p-2 font-mono text-xs whitespace-pre-wrap">
             {detail.command}
           </pre>
           {detail.description && (

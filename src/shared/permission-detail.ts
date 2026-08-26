@@ -8,13 +8,16 @@
  */
 
 export type PermissionDetail =
-  | { kind: 'edit'; path: string; before: string; after: string }
+  | { kind: 'edit'; path: string; edits: { before: string; after: string }[] }
   | { kind: 'write'; path: string; content: string }
   | { kind: 'command'; command: string; description?: string }
   | { kind: 'path'; label: string; value: string }
   | { kind: 'none' }
 
 const str = (value: unknown): string | null => (typeof value === 'string' ? value : null)
+
+const isObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null
 
 export function permissionDetail(
   toolName: string,
@@ -26,16 +29,20 @@ export function permissionDetail(
       const before = str(input.old_string)
       const after = str(input.new_string)
       return path !== null && before !== null && after !== null
-        ? { kind: 'edit', path, before, after }
+        ? { kind: 'edit', path, edits: [{ before, after }] }
         : { kind: 'none' }
     }
     case 'MultiEdit': {
       const path = str(input.file_path)
-      const edits = Array.isArray(input.edits) ? (input.edits as Record<string, unknown>[]) : null
-      if (path === null || !edits) return { kind: 'none' }
-      const befores = edits.map((e) => str(e.old_string) ?? '')
-      const afters = edits.map((e) => str(e.new_string) ?? '')
-      return { kind: 'edit', path, before: befores.join('\n---\n'), after: afters.join('\n---\n') }
+      const rawEdits = Array.isArray(input.edits) ? input.edits : null
+      if (path === null || !rawEdits) return { kind: 'none' }
+      const edits = rawEdits
+        .filter(isObject)
+        .map((e) => ({ before: str(e.old_string), after: str(e.new_string) }))
+        .filter(
+          (e): e is { before: string; after: string } => e.before !== null && e.after !== null
+        )
+      return edits.length > 0 ? { kind: 'edit', path, edits } : { kind: 'none' }
     }
     case 'Write': {
       const path = str(input.file_path)

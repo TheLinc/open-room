@@ -8,12 +8,11 @@ describe('permissionDetail', () => {
     ).toEqual({
       kind: 'edit',
       path: 'a.ts',
-      before: 'x',
-      after: 'y'
+      edits: [{ before: 'x', after: 'y' }]
     })
   })
 
-  it('joins a MultiEdit into one before and one after block', () => {
+  it('shows a MultiEdit as one pair per entry', () => {
     const detail = permissionDetail('MultiEdit', {
       file_path: 'a.ts',
       edits: [
@@ -24,8 +23,28 @@ describe('permissionDetail', () => {
     expect(detail).toEqual({
       kind: 'edit',
       path: 'a.ts',
-      before: 'one\n---\ntwo',
-      after: '1\n---\n2'
+      edits: [
+        { before: 'one', after: '1' },
+        { before: 'two', after: '2' }
+      ]
+    })
+  })
+
+  it('skips malformed MultiEdit entries and keeps the valid ones', () => {
+    const detail = permissionDetail('MultiEdit', {
+      file_path: 'a.ts',
+      edits: [null, { old_string: 'a', new_string: 'b' }, 'junk']
+    })
+    expect(detail).toEqual({
+      kind: 'edit',
+      path: 'a.ts',
+      edits: [{ before: 'a', after: 'b' }]
+    })
+  })
+
+  it('falls back to none for a MultiEdit with no valid entries', () => {
+    expect(permissionDetail('MultiEdit', { file_path: 'a.ts', edits: [null] })).toEqual({
+      kind: 'none'
     })
   })
 
