@@ -1,5 +1,6 @@
 import { ShieldQuestionMark } from 'lucide-react'
 import type { PermissionDecision, PermissionRequest } from '@shared/agent-runtime'
+import { permissionDetail } from '@shared/permission-detail'
 import { Button } from '@/components/ui/button'
 
 type Props = {
@@ -22,6 +23,8 @@ export function PermissionPrompt({ request, agentName }: Props): React.JSX.Eleme
   const respond = (decision: PermissionDecision): void => {
     void window.openRoom.respondPermission(request.id, decision)
   }
+
+  const detail = permissionDetail(request.toolName, request.input)
 
   return (
     <div
@@ -48,6 +51,42 @@ export function PermissionPrompt({ request, agentName }: Props): React.JSX.Eleme
           )}
         </div>
       </div>
+
+      {detail.kind === 'edit' && (
+        <div className="flex flex-col gap-1">
+          <p className="font-mono text-xs text-muted-foreground">{detail.path}</p>
+          <pre className="overflow-x-auto rounded border-l-2 border-red-500/60 bg-red-500/5 p-2 font-mono text-[11px] whitespace-pre-wrap">
+            {detail.before}
+          </pre>
+          <pre className="overflow-x-auto rounded border-l-2 border-emerald-500/60 bg-emerald-500/5 p-2 font-mono text-[11px] whitespace-pre-wrap">
+            {detail.after}
+          </pre>
+        </div>
+      )}
+      {detail.kind === 'write' && (
+        <div className="flex flex-col gap-1">
+          <p className="font-mono text-xs text-muted-foreground">{detail.path}</p>
+          <pre className="max-h-64 overflow-auto rounded bg-muted/40 p-2 font-mono text-[11px] whitespace-pre-wrap">
+            {detail.content}
+          </pre>
+        </div>
+      )}
+      {detail.kind === 'command' && (
+        <div className="flex flex-col gap-1">
+          <pre className="overflow-x-auto rounded bg-muted/40 p-2 font-mono text-xs whitespace-pre-wrap">
+            {detail.command}
+          </pre>
+          {detail.description && (
+            <p className="text-xs text-muted-foreground">{detail.description}</p>
+          )}
+        </div>
+      )}
+      {detail.kind === 'path' && (
+        <p className="font-mono text-xs">
+          <span className="text-muted-foreground">{detail.label}: </span>
+          {detail.value}
+        </p>
+      )}
 
       <details className="rounded border border-border/60 bg-background/40 px-2 py-1.5">
         <summary className="cursor-pointer text-xs text-muted-foreground select-none">
