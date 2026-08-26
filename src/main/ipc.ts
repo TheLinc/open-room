@@ -11,6 +11,8 @@ import type { HotkeyFailure } from '@shared/hotkeys'
 import type { MicrophoneDevice } from '@shared/voice-input'
 import { appSettingsSchema, type AppSettings } from '@shared/settings'
 import { sanitizeOverrides } from '@shared/session-overrides'
+import { acceptImage, type ImageAttachment } from '@shared/attachments'
+import type { LoginStatus } from '@shared/login'
 import { IpcChannel, type AgentsSnapshot, type AppInfo, type MutationResult } from '@shared/ipc'
 import { ConfigStore } from './config-store'
 import type { AgentSupervisor } from './agent-supervisor'
@@ -37,7 +39,11 @@ export function registerIpcHandlers(
    * Current account quota. Read on demand rather than captured, because a
    * renderer can mount long after the event that last set it.
    */
-  readQuota: () => RateLimitStatus | null = () => null
+  readQuota: () => RateLimitStatus | null = () => null,
+  login: { read: () => LoginStatus; recheck: () => Promise<LoginStatus> } = {
+    read: () => ({ state: 'unknown' }),
+    recheck: async () => ({ state: 'unknown' })
+  }
 ): void {
   ipcMain.handle(IpcChannel.getAppInfo, (): AppInfo => {
     return {
@@ -97,12 +103,23 @@ export function registerIpcHandlers(
 
   ipcMain.handle(
     IpcChannel.sendPrompt,
-    async (_e, agentId: string, text: string): Promise<MutationResult> => {
+    async (
+      _e,
+      agentId: string,
+      text: string,
+      images: ImageAttachment[] = []
+    ): Promise<MutationResult> => {
       // Config is re-read per prompt so edits made in the editor — or in the
       // file directly — take effect on the next turn without a restart.
       try {
         const agent = await store.read(agentId)
-        return await supervisor.send(agent, text)
+        // The renderer already applied the limits; re-check here because a
+        // renderer is not a trust boundary and a 50 MB message would wedge IPC.
+        for (const [i, image] of images.entries()) {
+          const verdict = acceptImage({ type: image.mediaType, size: image.data.length * 0.75 }, i)
+          if (!verdict.ok) return { ok: false, message: verdict.reason }
+        }
+        return await supervisor.send(agent, text, images)
       } catch (error) {
         return { ok: false, message: describeError(error) }
       }
@@ -214,6 +231,8 @@ export function registerIpcHandlers(
   )
 
   ipcMain.handle(IpcChannel.getQuota, (): RateLimitStatus | null => readQuota())
+  ipcMain.handle(IpcChannel.getLogin, (): LoginStatus => login.read())
+  ipcMain.handle(IpcChannel.recheckLogin, (): Promise<LoginStatus> => login.recheck())
 
   ipcMain.handle(IpcChannel.listVoices, async (): Promise<SystemVoice[]> => {
     return voice.listVoices().catch(() => [])
@@ -267,6 +286,10 @@ export function broadcastRuntime(runtime: AgentRuntime): void {
 
 export function broadcastQuota(limit: RateLimitStatus | null): void {
   broadcast(IpcChannel.quotaChanged, limit)
+}
+
+export function broadcastLogin(status: LoginStatus): void {
+  broadcast(IpcChannel.loginChanged, status)
 }
 
 export function broadcastTranscript(entry: TranscriptEntry): void {

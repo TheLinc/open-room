@@ -1,4 +1,5 @@
 import type { Agent } from './agent'
+import type { ImageAttachment } from './attachments'
 import type {
   AgentRuntime,
   RateLimitStatus,
@@ -8,6 +9,7 @@ import type {
 } from './agent-runtime'
 import type { Conversation, ConversationPage } from './conversation'
 import type { SessionOverridePatch } from './session-overrides'
+import type { LoginStatus } from './login'
 import type { HotkeyFailure } from './hotkeys'
 import type { AppSettings } from './settings'
 import type { MicrophoneDevice } from './voice-input'
@@ -91,6 +93,9 @@ export const IpcChannel = {
   listVoices: 'voice:list',
   quotaChanged: 'quota:changed',
   getQuota: 'quota:get',
+  loginChanged: 'login:changed',
+  getLogin: 'login:get',
+  recheckLogin: 'login:recheck',
   previewVoice: 'voice:preview',
   kokoroStatus: 'voice:kokoro-status',
   loadKokoro: 'voice:kokoro-load',
@@ -184,8 +189,11 @@ export type OpenRoomApi = {
   /** Fires when a pip in the overlay HUD is clicked. */
   onFocusAgent: (listener: (agentId: string) => void) => () => void
 
-  /** Starts the agent's session if needed, then queues the prompt. */
-  sendPrompt: (agentId: string, text: string) => Promise<MutationResult>
+  /**
+   * Starts the agent's session if needed, then queues the prompt.
+   * Images ride along as content blocks; see `userContent`.
+   */
+  sendPrompt: (agentId: string, text: string, images?: ImageAttachment[]) => Promise<MutationResult>
   /** Stops the current turn, leaving the session alive. */
   interruptAgent: (agentId: string) => Promise<MutationResult>
   /**
@@ -230,6 +238,15 @@ export type OpenRoomApi = {
    */
   getQuota: () => Promise<RateLimitStatus | null>
   onQuotaChanged: (listener: (limit: RateLimitStatus | null) => void) => () => void
+
+  /**
+   * Whether the machine's Claude Code login is usable. Checked at launch and
+   * again on request; `unknown` means the check itself could not run, and
+   * agents are still allowed to try.
+   */
+  getLogin: () => Promise<LoginStatus>
+  recheckLogin: () => Promise<LoginStatus>
+  onLoginChanged: (listener: (status: LoginStatus) => void) => () => void
 
   listVoices: () => Promise<SystemVoice[]>
   previewVoice: (

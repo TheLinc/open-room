@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 import type { Agent } from '@shared/agent'
+import type { ImageAttachment } from '@shared/attachments'
 import type {
   AgentRuntime,
   PermissionDecision,
@@ -10,6 +11,7 @@ import type {
 } from '@shared/agent-runtime'
 import type { Conversation, ConversationPage } from '@shared/conversation'
 import type { SessionOverridePatch } from '@shared/session-overrides'
+import type { LoginStatus } from '@shared/login'
 import type { AppSettings } from '@shared/settings'
 import type { KokoroStatus, SttStatus, SystemVoice } from '@shared/voice-rpc'
 import type { HotkeyFailure } from '@shared/hotkeys'
@@ -55,8 +57,11 @@ const openRoom: OpenRoomApi = {
   onFocusAgent: (listener: (agentId: string) => void): (() => void) =>
     subscribe(IpcChannel.focusAgent, (payload) => listener(payload as string)),
 
-  sendPrompt: (agentId: string, text: string): Promise<MutationResult> =>
-    ipcRenderer.invoke(IpcChannel.sendPrompt, agentId, text),
+  sendPrompt: (
+    agentId: string,
+    text: string,
+    images: ImageAttachment[] = []
+  ): Promise<MutationResult> => ipcRenderer.invoke(IpcChannel.sendPrompt, agentId, text, images),
 
   interruptAgent: (agentId: string): Promise<MutationResult> =>
     ipcRenderer.invoke(IpcChannel.interruptAgent, agentId),
@@ -119,6 +124,10 @@ const openRoom: OpenRoomApi = {
   listVoices: (): Promise<SystemVoice[]> => ipcRenderer.invoke(IpcChannel.listVoices),
 
   getQuota: (): Promise<RateLimitStatus | null> => ipcRenderer.invoke(IpcChannel.getQuota),
+  getLogin: (): Promise<LoginStatus> => ipcRenderer.invoke(IpcChannel.getLogin),
+  recheckLogin: (): Promise<LoginStatus> => ipcRenderer.invoke(IpcChannel.recheckLogin),
+  onLoginChanged: (listener: (status: LoginStatus) => void) =>
+    subscribe(IpcChannel.loginChanged, (payload) => listener(payload as LoginStatus)),
   onQuotaChanged: (listener: (limit: RateLimitStatus | null) => void) =>
     subscribe(IpcChannel.quotaChanged, (payload) => listener(payload as RateLimitStatus | null)),
 

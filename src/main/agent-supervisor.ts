@@ -17,6 +17,7 @@ import {
   type RateLimitStatus,
   type TranscriptEntry
 } from '@shared/agent-runtime'
+import { userContent, type ImageAttachment, type UserContentBlock } from '@shared/attachments'
 import { classifyThrownError, describeAgentError, kindFromAssistantError } from './agent-errors'
 import { describeQuota } from '@shared/quota'
 import { contextUsageFrom } from '@shared/context-usage'
@@ -29,6 +30,7 @@ import {
 import { replayKey } from '@shared/compaction'
 import { mcpHealthUpdate, withMcpDetail } from '@shared/mcp-health'
 import { agentQueryOptions } from './agent-options'
+import { bundledClaudePath } from './claude-binary'
 import {
   effectiveSettings,
   mergeOverrides,
@@ -83,7 +85,7 @@ type Session = {
 /** The shape `query()` accepts on its input stream. */
 type SDKUserInput = {
   type: 'user'
-  message: { role: 'user'; content: string }
+  message: { role: 'user'; content: string | UserContentBlock[] }
   parent_tool_use_id: null
 }
 
@@ -169,7 +171,11 @@ export class AgentSupervisor {
    * an IPC handler, and a rejected `invoke` reaches the renderer as an opaque
    * string with a main-process stack attached.
    */
-  async send(agent: Agent, text: string): Promise<{ ok: true } | { ok: false; message: string }> {
+  async send(
+    agent: Agent,
+    text: string,
+    images: ImageAttachment[] = []
+  ): Promise<{ ok: true } | { ok: false; message: string }> {
     const existing = this.sessions.get(agent.config.id)
 
     if (!existing) {
@@ -188,7 +194,7 @@ export class AgentSupervisor {
 
     const userMessage: SDKUserInput = {
       type: 'user',
-      message: { role: 'user', content: text },
+      message: { role: 'user', content: userContent(text, images) },
       parent_tool_use_id: null
     }
 
@@ -281,7 +287,8 @@ export class AgentSupervisor {
       // In-process, so the spoken line never leaves the app.
       createSpeakServer(agent, this.speech, turnSpeech),
       this.permissionHandler(agent.config.id),
-      this.runtimeFor(agent.config.id).overrides
+      this.runtimeFor(agent.config.id).overrides,
+      bundledClaudePath()
     )
   }
 
