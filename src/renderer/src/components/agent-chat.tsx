@@ -8,11 +8,14 @@ import {
   type PermissionRequest,
   type TranscriptEntry
 } from '@shared/agent-runtime'
+import type { ImageAttachment } from '@shared/attachments'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { TranscriptMessage } from '@/components/transcript-message'
 import { isRenderable } from '@/lib/transcript'
+import { readImage, imageFiles } from '@/lib/attachments'
+import { AttachmentChips } from '@/components/attachment-chips'
 import { ContextMeter } from '@/components/context-meter'
 import { McpHealth } from '@/components/mcp-health'
 import { SessionControls } from '@/components/session-controls'
@@ -58,6 +61,10 @@ export function AgentChat({
 }: Props): React.JSX.Element {
   const [draft, setDraft] = useState('')
   const [sendError, setSendError] = useState<string | null>(null)
+  const [images, setImages] = useState<ImageAttachment[]>([])
+  const [attachError, setAttachError] = useState<string | null>(null)
+  const [dragging, setDragging] = useState(false)
+  const dragDepth = useRef(0)
   const bottom = useRef<HTMLDivElement>(null)
   const scroller = useRef<HTMLDivElement>(null)
   const pinned = useRef(true)
@@ -130,9 +137,21 @@ export function AgentChat({
     else void submit(action.text)
   }
 
+  const attach = async (files: File[]): Promise<void> => {
+    for (const file of files) {
+      const result = await readImage(file, images.length)
+      if (!result.ok) {
+        setAttachError(result.reason)
+        return
+      }
+      setImages((prev) => [...prev, result.image])
+    }
+    setAttachError(null)
+  }
+
   const submit = async (override?: string): Promise<void> => {
     const text = (override ?? draft).trim()
-    if (!text) return
+    if (!text && images.length === 0) return
 
     // An unrecognised command is refused rather than sent as prose: the CLI
     // would answer "Unknown command" either way, but a typo that produces a
@@ -143,17 +162,40 @@ export function AgentChat({
       return
     }
 
+    const sent = images
     setDraft('')
+    setImages([])
     setSendError(null)
-    const result = await window.openRoom.sendPrompt(agent.config.id, text)
+    const result = await window.openRoom.sendPrompt(agent.config.id, text, sent)
     if (!result.ok) {
       setSendError(result.message)
       setDraft(text)
+      setImages(sent)
     }
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div
+      className="relative flex min-h-0 flex-1 flex-col"
+      onDragEnter={(e) => {
+        e.preventDefault()
+        dragDepth.current += 1
+        setDragging(true)
+      }}
+      onDragOver={(e) => {
+        e.preventDefault()
+      }}
+      onDragLeave={() => {
+        dragDepth.current -= 1
+        if (dragDepth.current === 0) setDragging(false)
+      }}
+      onDrop={(e) => {
+        e.preventDefault()
+        dragDepth.current = 0
+        setDragging(false)
+        void attach(imageFiles(e.dataTransfer.items))
+      }}
+    >
       <header className="flex items-center justify-between gap-4 border-b border-border px-6 py-3">
         <div className="flex min-w-0 items-center gap-3">
           <span
@@ -313,13 +355,24 @@ export function AgentChat({
         )}
       </div>
 
+      {dragging && (
+        <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-lg border-2 border-dashed border-primary/60 bg-background/80 text-sm">
+          Drop to attach
+        </div>
+      )}
+
       <div className="border-t border-border px-6 py-3">
         {sendError && (
           <p role="alert" className="pb-2 text-sm text-destructive">
             {sendError}
           </p>
         )}
-        <div className="relative flex items-end gap-2">
+        <AttachmentChips
+          images={images}
+          onRemove={(i) => setImages((prev) => prev.filter((_, j) => j !== i))}
+        />
+        {attachError && <p className="pt-2 text-xs text-destructive">{attachError}</p>}
+        <div className="relative flex items-end gap-2 pt-2">
           {pickerOpen && (
             <CommandPicker
               commands={matches}
@@ -331,6 +384,12 @@ export function AgentChat({
           <Textarea
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
+            onPaste={(e) => {
+              const files = imageFiles(e.clipboardData?.items)
+              if (files.length === 0) return
+              e.preventDefault()
+              void attach(files)
+            }}
             onKeyDown={(e) => {
               if (pickerOpen && matches.length > 0) {
                 if (e.key === 'ArrowDown') {
@@ -364,7 +423,11 @@ export function AgentChat({
             placeholder={`Ask ${agent.config.name} to do something…`}
             className="max-h-40 min-h-[44px] resize-none"
           />
-          <Button onClick={() => void submit()} disabled={!draft.trim()} size="icon">
+          <Button
+            onClick={() => void submit()}
+            disabled={!draft.trim() && images.length === 0}
+            size="icon"
+          >
             <Send />
           </Button>
         </div>

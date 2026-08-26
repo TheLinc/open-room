@@ -38,6 +38,7 @@ type ContentBlock = {
   content?: unknown
   is_error?: boolean
   tool_use_id?: string
+  source?: { type: string; media_type?: string; data?: string }
 }
 
 type SdkMessage = {
@@ -215,7 +216,11 @@ export const TranscriptMessage = memo(function TranscriptMessage({
       )
     }
 
-    const text = blocks.map((b) => b.text).join('\n')
+    const imageBlocks = blocks.filter((b) => b.type === 'image' && b.source?.type === 'base64')
+    const text = blocks
+      .filter((b) => b.type === 'text')
+      .map((b) => b.text)
+      .join('\n')
     const command = parseCommand(text)
 
     // A command is not a prompt. Same side of the pane, different shape, so
@@ -235,6 +240,18 @@ export const TranscriptMessage = memo(function TranscriptMessage({
     return (
       <div className="flex justify-end">
         <div className="max-w-[85%] rounded-lg bg-muted px-3 py-2 text-sm whitespace-pre-wrap">
+          {imageBlocks.length > 0 && (
+            <div className="mb-2 flex flex-wrap gap-2">
+              {imageBlocks.map((b, i) => (
+                <img
+                  key={i}
+                  src={`data:${b.source!.media_type};base64,${b.source!.data}`}
+                  alt="Attached image"
+                  className="max-h-48 max-w-full rounded object-contain"
+                />
+              ))}
+            </div>
+          )}
           {text}
         </div>
       </div>
