@@ -31,6 +31,8 @@ import {
   type SlashCommandInfo
 } from '@shared/slash-commands'
 import { MAX_RETAINED_ENTRIES } from '@/hooks/use-sessions'
+import { FilePicker } from '@/components/file-picker'
+import { applyMention, filterFiles, mentionAt, mentionFor } from '@shared/file-mentions'
 
 type Props = {
   agent: Agent
@@ -64,10 +66,19 @@ export function AgentChat({
   const [images, setImages] = useState<ImageAttachment[]>([])
   const [attachError, setAttachError] = useState<string | null>(null)
   const [dragging, setDragging] = useState(false)
+  const [caret, setCaret] = useState(0)
+  const [workspaceFiles, setWorkspaceFiles] = useState<string[]>([])
+  // The mention an Escape press dismissed, so it stays closed until the
+  // mention changes rather than reopening on every keystroke.
+  const [dismissedMention, setDismissedMention] = useState<{
+    start: number
+    query: string
+  } | null>(null)
   const dragDepth = useRef(0)
   const bottom = useRef<HTMLDivElement>(null)
   const scroller = useRef<HTMLDivElement>(null)
   const pinned = useRef(true)
+  const input = useRef<HTMLTextAreaElement>(null)
 
   const color = colorHexFor(agent.config.color)
   const busy = runtime.state === 'working' || runtime.state === 'starting'
@@ -137,6 +148,53 @@ export function AgentChat({
     else void submit(action.text)
   }
 
+  // The @ picker and the / picker are never open together: a slash in the
+  // first column requires the draft to start with it, and mentionAt only
+  // matches an @ at the start or after whitespace, so the two conditions
+  // cannot both hold for the same draft.
+  const mention = useMemo(() => mentionAt(draft, caret), [draft, caret])
+  const fileMatches = useMemo(
+    () => (mention ? filterFiles(workspaceFiles, mention.query) : []),
+    [workspaceFiles, mention]
+  )
+  const filePickerOpen =
+    mention !== null &&
+    pickerQuery === null &&
+    !(
+      dismissedMention &&
+      dismissedMention.start === mention.start &&
+      dismissedMention.query === mention.query
+    )
+
+  useEffect(() => {
+    if (!filePickerOpen) return
+    void window.openRoom.listWorkspaceFiles(agent.config.id).then(setWorkspaceFiles)
+  }, [filePickerOpen, agent.config.id])
+
+  // Same pattern as the command picker's selection: keyed on the query so
+  // typing resets it to the top without an effect firing after render.
+  const [fileSelection, setFileSelection] = useState<{ query: string | null; index: number }>({
+    query: mention?.query ?? null,
+    index: 0
+  })
+  const fileSelected = fileSelection.query === (mention?.query ?? null) ? fileSelection.index : 0
+  const setFileSelected = (update: number | ((i: number) => number)): void =>
+    setFileSelection({
+      query: mention?.query ?? null,
+      index: typeof update === 'function' ? update(fileSelected) : update
+    })
+
+  const pickFile = (file: string): void => {
+    if (!mention) return
+    const next = applyMention(draft, mention, file)
+    setDraft(next.draft)
+    setCaret(next.caret)
+    requestAnimationFrame(() => {
+      input.current?.focus()
+      input.current?.setSelectionRange(next.caret, next.caret)
+    })
+  }
+
   const attach = async (files: File[]): Promise<void> => {
     let count = images.length
     for (const file of files) {
@@ -196,6 +254,17 @@ export function AgentChat({
         dragDepth.current = 0
         setDragging(false)
         void attach(imageFiles(e.dataTransfer.items))
+
+        const others = Array.from(e.dataTransfer.files).filter((f) => !f.type.startsWith('image/'))
+        const mentions = others
+          .map((f) => window.openRoom.pathForFile(f))
+          .filter((p) => p !== '')
+          .map((p) => mentionFor(p, agent.config.workspacePath))
+        if (mentions.length > 0) {
+          setDraft(
+            (prev) => (prev && !prev.endsWith(' ') ? `${prev} ` : prev) + mentions.join(' ') + ' '
+          )
+        }
       }}
     >
       <header className="flex items-center justify-between gap-4 border-b border-border px-6 py-3">
@@ -383,9 +452,23 @@ export function AgentChat({
               onHover={setSelected}
             />
           )}
+          {filePickerOpen && (
+            <FilePicker
+              files={fileMatches}
+              selected={fileSelected}
+              onPick={pickFile}
+              onHover={setFileSelected}
+            />
+          )}
           <Textarea
+            ref={input}
             value={draft}
-            onChange={(e) => setDraft(e.target.value)}
+            onChange={(e) => {
+              setDraft(e.target.value)
+              setCaret(e.currentTarget.selectionStart ?? 0)
+            }}
+            onKeyUp={(e) => setCaret(e.currentTarget.selectionStart ?? 0)}
+            onClick={(e) => setCaret(e.currentTarget.selectionStart ?? 0)}
             onPaste={(e) => {
               const files = imageFiles(e.clipboardData?.items)
               if (files.length === 0) return
@@ -393,6 +476,28 @@ export function AgentChat({
               void attach(files)
             }}
             onKeyDown={(e) => {
+              if (filePickerOpen && fileMatches.length > 0) {
+                if (e.key === 'ArrowDown') {
+                  e.preventDefault()
+                  setFileSelected((i) => (i + 1) % fileMatches.length)
+                  return
+                }
+                if (e.key === 'ArrowUp') {
+                  e.preventDefault()
+                  setFileSelected((i) => (i - 1 + fileMatches.length) % fileMatches.length)
+                  return
+                }
+                if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) {
+                  e.preventDefault()
+                  pickFile(fileMatches[Math.min(fileSelected, fileMatches.length - 1)])
+                  return
+                }
+              }
+              if (filePickerOpen && e.key === 'Escape') {
+                e.preventDefault()
+                if (mention) setDismissedMention({ start: mention.start, query: mention.query })
+                return
+              }
               if (pickerOpen && matches.length > 0) {
                 if (e.key === 'ArrowDown') {
                   e.preventDefault()
