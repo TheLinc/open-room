@@ -28,7 +28,15 @@ import {
   type CommandListState
 } from '@shared/slash-commands'
 import { replayKey } from '@shared/compaction'
-import { drain, shouldQueue, summarise, without, type QueuedPrompt } from '@shared/prompt-queue'
+import {
+  drain,
+  queueActionForResult,
+  shouldQueue,
+  summarise,
+  without,
+  type QueueAction,
+  type QueuedPrompt
+} from '@shared/prompt-queue'
 import { mcpHealthUpdate, withMcpDetail } from '@shared/mcp-health'
 import { agentQueryOptions } from './agent-options'
 import { bundledClaudePath } from './claude-binary'
@@ -237,7 +245,12 @@ export class AgentSupervisor {
   /** Removes one waiting prompt. A no-op, not a throw, if it is already gone. */
   dropQueued(agentId: string, promptId: string): void {
     const session = this.sessions.get(agentId)
-    if (!session) return
+    if (!session) {
+      // No live session to hold a queue, but the ✕ should still clear
+      // whatever the pane is showing rather than leaving a dead row.
+      this.patch(agentId, { queued: [] })
+      return
+    }
     session.queued = without(session.queued, promptId)
     this.patch(agentId, { queued: summarise(session.queued) })
   }
@@ -517,8 +530,13 @@ export class AgentSupervisor {
       // zero turns, zero usage. Reading those into the running totals would
       // wipe them, and its output is not something to read aloud.
       if (isCommandResult(message)) {
+        const wasInterrupted = session.interrupting
         session.interrupting = false
         this.patch(id, { state: 'ready', sessionId: message.session_id, lastActiveAt: Date.now() })
+        this.settleQueue(
+          session,
+          queueActionForResult({ isCommandResult: true, isError: false, wasInterrupted })
+        )
         return
       }
 
@@ -557,6 +575,10 @@ export class AgentSupervisor {
         // The structured event is the reliable signal. Falling back to
         // matching "rate limit" or "429" in prose worked only when the text
         // happened to say so, and said nothing about when to retry.
+        this.settleQueue(
+          session,
+          queueActionForResult({ isCommandResult: false, isError: true, wasInterrupted })
+        )
         this.fail(id, this.classifyFailure(id, String(message.subtype)))
         return
       }
@@ -565,15 +587,28 @@ export class AgentSupervisor {
         void this.speakFallback(session, message.result)
       }
 
-      // One prompt per result: each queued message was typed as its own
-      // turn, so sending everything at once would change what was asked.
-      const { next, rest } = drain(session.queued)
-      session.queued = rest
-      this.patch(id, { queued: summarise(rest) })
-      if (next && !wasInterrupted && !message.is_error) {
-        this.dispatch(session, next.text, next.images)
-      }
+      this.settleQueue(
+        session,
+        queueActionForResult({ isCommandResult: false, isError: message.is_error, wasInterrupted })
+      )
     }
+  }
+
+  /** Applies what a finished turn means for prompts typed while it ran. */
+  private settleQueue(session: Session, action: QueueAction): void {
+    const id = session.agentId
+    if (action === 'clear') {
+      session.queued = []
+      this.patch(id, { queued: [] })
+      return
+    }
+
+    // One prompt per result: each queued message was typed as its own
+    // turn, so sending everything at once would change what was asked.
+    const { next, rest } = drain(session.queued)
+    session.queued = rest
+    this.patch(id, { queued: summarise(rest) })
+    if (next) this.dispatch(session, next.text, next.images)
   }
 
   /**
@@ -713,8 +748,10 @@ export class AgentSupervisor {
     this.sessions.delete(agentId)
     // Overrides belong to the session that carried them. Keeping them would
     // mean an agent quietly starting its next conversation in plan mode
-    // because of something set days ago.
-    this.patch(agentId, { state: 'idle', overrides: {} })
+    // because of something set days ago. `queued` is repeated here too: a
+    // prompt sent during the await above would have re-queued after the
+    // clear further up, and this is the patch that has the last word.
+    this.patch(agentId, { state: 'idle', overrides: {}, queued: [] })
   }
 
   private rejectPendingFor(agentId: string): void {

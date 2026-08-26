@@ -35,3 +35,21 @@ export function without(queue: QueuedPrompt[], id: string): QueuedPrompt[] {
 export function summarise(queue: QueuedPrompt[]): QueuedPromptSummary[] {
   return queue.map(({ id, text, images }) => ({ id, text, imageCount: images.length }))
 }
+
+export type QueueAction = 'dispatch' | 'clear'
+
+/**
+ * What happens to the queue when a result closes a turn.
+ *
+ * A locally-run command (`/compact`) and a successful turn both leave the
+ * session alive and ready, so the next queued prompt is sent — it was
+ * promised delivery. An error or an interrupt clears it: nothing is sent
+ * into a failed session, and Stop means stop everything.
+ */
+export function queueActionForResult(result: {
+  isCommandResult: boolean
+  isError: boolean
+  wasInterrupted: boolean
+}): QueueAction {
+  return result.wasInterrupted || result.isError ? 'clear' : 'dispatch'
+}

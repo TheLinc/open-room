@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { drain, shouldQueue, summarise, without, type QueuedPrompt } from './prompt-queue'
+import {
+  drain,
+  queueActionForResult,
+  shouldQueue,
+  summarise,
+  without,
+  type QueuedPrompt
+} from './prompt-queue'
 
 const p = (id: string): QueuedPrompt => ({ id, text: `say ${id}`, images: [] })
 
@@ -42,5 +49,37 @@ describe('summarise', () => {
       images: [{ name: 'a.png', mediaType: 'image/png', data: 'AAAA' }]
     }
     expect(summarise([withImage])).toEqual([{ id: 'x', text: 'look', imageCount: 1 }])
+  })
+})
+
+describe('queueActionForResult', () => {
+  it('dispatches the next prompt on an ordinary successful turn', () => {
+    expect(
+      queueActionForResult({ isCommandResult: false, isError: false, wasInterrupted: false })
+    ).toBe('dispatch')
+  })
+
+  it('dispatches after a locally-run command result', () => {
+    expect(
+      queueActionForResult({ isCommandResult: true, isError: false, wasInterrupted: false })
+    ).toBe('dispatch')
+  })
+
+  it('clears the queue on an error', () => {
+    expect(
+      queueActionForResult({ isCommandResult: false, isError: true, wasInterrupted: false })
+    ).toBe('clear')
+  })
+
+  it('clears the queue on an interrupt', () => {
+    expect(
+      queueActionForResult({ isCommandResult: false, isError: false, wasInterrupted: true })
+    ).toBe('clear')
+  })
+
+  it('clears the queue when a command result is also interrupted', () => {
+    expect(
+      queueActionForResult({ isCommandResult: true, isError: false, wasInterrupted: true })
+    ).toBe('clear')
   })
 })
