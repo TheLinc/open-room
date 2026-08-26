@@ -42,8 +42,16 @@ export function filesChangedIn(messages: unknown[]): ChangedFile[] {
   return [...seen.values()]
 }
 
-/** Whether an entry is a prompt the user sent (not a tool result echo or injected summary). */
-function isPrompt(entry: TranscriptEntry): boolean {
+/**
+ * Whether an entry is a prompt the user sent (not a tool result echo or an
+ * injected compaction summary).
+ *
+ * This is the turn boundary for both the live transcript, where a turn ends
+ * at the SDK's `result` message, and the persisted one, which carries no
+ * `result` at all — there a turn's end is inferred from where the *next*
+ * prompt starts, and this is that check.
+ */
+export function isPrompt(entry: TranscriptEntry): boolean {
   const m = entry.message as {
     type?: string
     isSynthetic?: boolean

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { TranscriptEntry } from './agent-runtime'
-import { filesChangedIn, turnBefore } from './files-changed'
+import { filesChangedIn, isPrompt, turnBefore } from './files-changed'
 
 const entry = (seq: number, message: unknown): TranscriptEntry => ({
   agentId: 'a',
@@ -84,5 +84,45 @@ describe('turnBefore', () => {
       entry(5, result)
     ]
     expect(turnBefore(entries, 4).map((e) => e.seq)).toEqual([2, 3, 4])
+  })
+})
+
+describe('isPrompt', () => {
+  it('is true for a user message with string content', () => {
+    expect(isPrompt(entry(1, user('hello')))).toBe(true)
+  })
+
+  it('is false for a user message whose array content is only tool_result blocks', () => {
+    expect(isPrompt(entry(1, user([{ type: 'tool_result', tool_use_id: 't' }])))).toBe(false)
+  })
+
+  it('is true for a user message with a text block plus a tool_result', () => {
+    expect(
+      isPrompt(
+        entry(
+          1,
+          user([
+            { type: 'text', text: 'hi' },
+            { type: 'tool_result', tool_use_id: 't' }
+          ])
+        )
+      )
+    ).toBe(true)
+  })
+
+  it('is false for an injected compaction summary (isSynthetic)', () => {
+    expect(
+      isPrompt(
+        entry(1, {
+          type: 'user',
+          isSynthetic: true,
+          message: { role: 'user', content: 'Summary of the conversation so far…' }
+        })
+      )
+    ).toBe(false)
+  })
+
+  it('is false for an assistant message', () => {
+    expect(isPrompt(entry(1, assistant([toolUse('Write', { file_path: 'a.ts' })])))).toBe(false)
   })
 })

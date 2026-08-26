@@ -35,30 +35,7 @@ import { MAX_RETAINED_ENTRIES } from '@/hooks/use-sessions'
 import { FilePicker } from '@/components/file-picker'
 import { applyMention, filterFiles, mentionAt, mentionFor } from '@shared/file-mentions'
 import { FilesChanged } from '@/components/files-changed'
-import { filesChangedIn, turnBefore } from '@shared/files-changed'
-
-/**
- * Whether a persisted `user` entry is a genuine prompt rather than a
- * tool-result echo or an injected compaction summary.
- *
- * Mirrors the private `isPrompt` in `@shared/files-changed` — needed here
- * because persisted history has no `result` message to bracket a turn with,
- * so the next prompt is what marks where the previous turn ended.
- */
-function isHistoryPrompt(entry: TranscriptEntry): boolean {
-  const m = entry.message as {
-    type?: string
-    isSynthetic?: boolean
-    message?: { content?: unknown }
-  } | null
-  if (m?.type !== 'user') return false
-  if (m.isSynthetic) return false
-  const content = m.message?.content
-  if (typeof content === 'string') return true
-  return (
-    Array.isArray(content) && !content.every((b) => (b as { type?: string }).type === 'tool_result')
-  )
-}
+import { filesChangedIn, isPrompt, turnBefore } from '@shared/files-changed'
 
 type Props = {
   agent: Agent
@@ -405,7 +382,7 @@ export function AgentChat({
               // the next prompt starts, unlike the live list below.
               const isTurnEnd =
                 message.type === 'assistant' &&
-                (i === historyVisible.length - 1 || isHistoryPrompt(historyVisible[i + 1]))
+                (i === historyVisible.length - 1 || isPrompt(historyVisible[i + 1]))
               return (
                 <Fragment key={entry.seq}>
                   <div style={{ contentVisibility: 'auto', containIntrinsicSize: 'auto 60px' }}>
