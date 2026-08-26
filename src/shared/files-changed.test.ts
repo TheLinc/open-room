@@ -70,4 +70,19 @@ describe('turnBefore', () => {
     ]
     expect(turnBefore(entries, 2).map((e) => e.seq)).toEqual([2])
   })
+
+  it('does not treat an injected compaction summary as a prompt boundary', () => {
+    const entries = [
+      entry(1, user('go')),
+      entry(2, assistant([toolUse('Write', { file_path: 'a.ts' })])),
+      entry(3, {
+        type: 'user',
+        isSynthetic: true,
+        message: { role: 'user', content: 'Summary of the conversation so far…' }
+      }),
+      entry(4, assistant([toolUse('Write', { file_path: 'b.ts' })])),
+      entry(5, result)
+    ]
+    expect(turnBefore(entries, 4).map((e) => e.seq)).toEqual([2, 3, 4])
+  })
 })

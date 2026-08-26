@@ -42,10 +42,16 @@ export function filesChangedIn(messages: unknown[]): ChangedFile[] {
   return [...seen.values()]
 }
 
-/** Whether an entry is a prompt the user sent (not a tool result echo). */
+/** Whether an entry is a prompt the user sent (not a tool result echo or injected summary). */
 function isPrompt(entry: TranscriptEntry): boolean {
-  const m = entry.message as { type?: string; message?: { content?: unknown } } | null
+  const m = entry.message as {
+    type?: string
+    isSynthetic?: boolean
+    message?: { content?: unknown }
+  } | null
   if (m?.type !== 'user') return false
+  // Injected compaction summaries are not prompts, despite their user type
+  if (m.isSynthetic) return false
   const content = m.message?.content
   if (typeof content === 'string') return true
   return Array.isArray(content) && !content.every((b) => (b as Block).type === 'tool_result')
@@ -53,7 +59,10 @@ function isPrompt(entry: TranscriptEntry): boolean {
 
 /**
  * The entries belonging to the turn that ends at `resultIndex`: everything
- * after the previous prompt, up to and including the result.
+ * after the previous prompt, up to but not including the result.
+ *
+ * The result entry is excluded because it never carries a tool_use, so nothing
+ * is lost by not including it.
  */
 export function turnBefore(entries: TranscriptEntry[], resultIndex: number): TranscriptEntry[] {
   let start = resultIndex
