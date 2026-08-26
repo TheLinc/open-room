@@ -43,6 +43,17 @@ export function resolveTarget(path: string, workspacePath: string): string {
   return isAbsolute(path) ? path : resolve(workspacePath, path)
 }
 
+/**
+ * How long to wait for a spawned editor command to prove itself broken.
+ *
+ * `shell: true` spawns the shell itself (cmd.exe on Windows, sh elsewhere),
+ * which starts successfully even when the command inside it does not exist —
+ * so success cannot be read off spawning alone. This window gives a bad
+ * command time to exit non-zero before "still running" is treated as
+ * "worked".
+ */
+const GRACE_PERIOD_MS = 1500
+
 /** Runs the invocation, or opens with the OS default. Never throws. */
 export async function openInEditor(
   command: string,
@@ -67,10 +78,35 @@ export async function openInEditor(
       detached: true,
       stdio: 'ignore'
     })
-    child.once('error', (error) => done({ ok: false, message: error.message }))
-    child.once('spawn', () => {
+
+    let settled = false
+    const finish = (result: { ok: true } | { ok: false; message: string }): void => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      done(result)
+    }
+
+    // Still running after the grace period: the shell resolved the command
+    // and it is doing its own thing. Unref so it cannot keep this process
+    // alive, and let it run to completion on its own.
+    const timer = setTimeout(() => {
       child.unref()
-      done({ ok: true })
+      finish({ ok: true })
+    }, GRACE_PERIOD_MS)
+
+    child.once('error', (error) => finish({ ok: false, message: error.message }))
+
+    child.once('exit', (code) => {
+      if (code === 0) {
+        child.unref()
+        finish({ ok: true })
+        return
+      }
+      finish({
+        ok: false,
+        message: `Editor command exited with code ${code}. Check the "Open files with" setting.`
+      })
     })
   })
 }

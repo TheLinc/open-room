@@ -1,6 +1,6 @@
 import { isAbsolute, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { editorInvocation, resolveTarget } from './open-in-editor'
+import { editorInvocation, openInEditor, resolveTarget } from './open-in-editor'
 
 describe('editorInvocation', () => {
   it('substitutes the path and line into the command', () => {
@@ -40,4 +40,12 @@ describe('resolveTarget', () => {
     expect(isAbsolute(absolute)).toBe(true)
     expect(resolveTarget(absolute, resolve('workspace-root'))).toBe(absolute)
   })
+})
+
+describe('openInEditor', () => {
+  it('reports a command the shell cannot find instead of claiming success', async () => {
+    const result = await openInEditor('definitely-not-an-editor-xyz {path}', 'ignored.txt')
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.message).toMatch(/exited with code|not found|ENOENT/i)
+  }, 10_000)
 })
