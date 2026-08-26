@@ -2,6 +2,7 @@ import type { ContextUsage } from './context-usage'
 import type { SessionOverrides } from './session-overrides'
 import type { SlashCommandInfo } from './slash-commands'
 import type { McpServerHealth } from './mcp-health'
+import type { QueuedPromptSummary } from './prompt-queue'
 
 /**
  * Runtime state for a running agent, shared across processes.
@@ -145,6 +146,11 @@ export type AgentRuntime = {
    * newly wrong. Empty until the session's first init.
    */
   mcpServers: McpServerHealth[]
+  /**
+   * Prompts waiting for the current turn to end, oldest first. Held in main;
+   * see `prompt-queue.ts` for why they are not pushed to the SDK early.
+   */
+  queued: QueuedPromptSummary[]
   /** Epoch ms of the last activity, for idle teardown. */
   lastActiveAt: number
 }
@@ -198,6 +204,7 @@ export function emptyRuntime(agentId: string): AgentRuntime {
     overrides: {},
     commands: [],
     mcpServers: [],
+    queued: [],
     lastActiveAt: Date.now()
   }
 }
