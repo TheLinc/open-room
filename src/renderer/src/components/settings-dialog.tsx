@@ -190,11 +190,11 @@ export function SettingsDialog({
               <div className="space-y-2">
                 <Label htmlFor="microphone">Microphone</Label>
                 <Select
-                  value={settings.microphoneId || SYSTEM_DEFAULT}
+                  value={settings.microphone || SYSTEM_DEFAULT}
                   onValueChange={(value) =>
                     void save({
                       ...settings,
-                      microphoneId: value === SYSTEM_DEFAULT ? '' : value
+                      microphone: value === SYSTEM_DEFAULT ? '' : value
                     })
                   }
                 >
@@ -204,12 +204,21 @@ export function SettingsDialog({
                   <SelectContent>
                     <SelectItem value={SYSTEM_DEFAULT}>System default</SelectItem>
                     {microphones
-                      .filter((device) => device.deviceId && !ALIASES.has(device.deviceId))
+                      .filter((device) => device.label && !ALIASES.has(device.deviceId))
                       .map((device) => (
-                        <SelectItem key={device.deviceId} value={device.deviceId}>
-                          {deviceLabel(device.label) || 'Unnamed input'}
+                        <SelectItem key={device.deviceId} value={device.label}>
+                          {deviceLabel(device.label)}
                         </SelectItem>
                       ))}
+                    {settings.microphone &&
+                      !microphones.some((device) => device.label === settings.microphone) && (
+                        // Keep an unplugged selection visible: a Select whose
+                        // value matches no item paints blank, which reads as
+                        // "nothing chosen" rather than "your headset is off".
+                        <SelectItem value={settings.microphone}>
+                          {deviceLabel(settings.microphone)} (not connected)
+                        </SelectItem>
+                      )}
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-muted-foreground">

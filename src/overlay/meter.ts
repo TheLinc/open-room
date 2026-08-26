@@ -39,7 +39,7 @@ export type CaptureLike = {
  */
 export type MeterDeps = {
   createCapture: () => CaptureLike
-  currentDeviceId: () => string
+  currentMicrophone: () => string
   now: () => number
   schedule: (callback: () => void) => number
   cancel: (handle: number) => void
@@ -47,7 +47,7 @@ export type MeterDeps = {
 
 const BROWSER_DEPS: MeterDeps = {
   createCapture: () => new Capture(),
-  currentDeviceId: () => Capture.deviceId,
+  currentMicrophone: () => Capture.microphone,
   now: () => performance.now(),
   schedule: (callback) => requestAnimationFrame(callback),
   cancel: (handle) => cancelAnimationFrame(handle)
@@ -96,7 +96,7 @@ export class Meter {
     }
 
     this.capture = capture
-    this.openedOn = this.deps.currentDeviceId()
+    this.openedOn = this.deps.currentMicrophone()
     this.lastReport = 0
     this.frame = this.deps.schedule(this.poll)
   }
@@ -121,7 +121,7 @@ export class Meter {
 
     // Picking a different device mid-test has to move the stream with it, and
     // nothing may be reported from the stream being torn down.
-    if (this.openedOn !== this.deps.currentDeviceId()) {
+    if (this.openedOn !== this.deps.currentMicrophone()) {
       void this.restart()
       return
     }

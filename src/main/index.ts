@@ -343,8 +343,8 @@ const wake = new WakeController({
 // flight when this fires.
 speech.onSpeakingChange = (speaking) => wake.setSpeaking(speaking)
 
-/** The device the wake listener's current stream was opened on. */
-let lastMicrophoneId: string | null = null
+/** The device label the wake listener's current stream was opened on. */
+let lastMicrophone: string | null = null
 
 /**
  * Starts or stops always-on listening to match the settings.
@@ -355,9 +355,9 @@ let lastMicrophoneId: string | null = null
 async function refreshWake(): Promise<void> {
   const settings = await store.readSettings()
 
-  const deviceChanged = lastMicrophoneId !== null && settings.microphoneId !== lastMicrophoneId
-  lastMicrophoneId = settings.microphoneId
-  overlay.setMicrophone(settings.microphoneId)
+  const deviceChanged = lastMicrophone !== null && settings.microphone !== lastMicrophone
+  lastMicrophone = settings.microphone
+  overlay.setMicrophone(settings.microphone)
 
   const action = wakeAction({
     enabled: settings.wakeWordEnabled,

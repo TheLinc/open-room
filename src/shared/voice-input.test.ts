@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { holdMsFor, isOverlayEvent } from './voice-input'
+import { holdMsFor, isOverlayEvent, resolveMicrophone } from './voice-input'
 
 describe('holdMsFor', () => {
   it('is the base duration plus a beat per word', () => {
@@ -48,5 +48,29 @@ describe('isOverlayEvent', () => {
     expect(isOverlayEvent(null)).toBe(false)
     expect(isOverlayEvent('silence')).toBe(false)
     expect(isOverlayEvent({})).toBe(false)
+  })
+})
+
+describe('resolveMicrophone', () => {
+  const devices = [
+    { deviceId: 'default', label: 'Default - Microphone (Webcam)' },
+    { deviceId: '534c5220', label: 'Microphone (Razer Seiren Mini) (1532:0531)' },
+    { deviceId: 'dc349283', label: 'Microphone (Webcam)' }
+  ]
+
+  it('resolves a stored label to whatever id this session gave the device', () => {
+    // Measured: Chromium re-salts deviceId on every launch of a file:// page,
+    // so the id is session-scoped and only the label survives a restart.
+    expect(resolveMicrophone(devices, 'Microphone (Razer Seiren Mini) (1532:0531)')).toBe(
+      '534c5220'
+    )
+  })
+
+  it('returns null for the system default, so no constraint is applied', () => {
+    expect(resolveMicrophone(devices, '')).toBeNull()
+  })
+
+  it('returns null for a device that is no longer present', () => {
+    expect(resolveMicrophone(devices, 'Microphone (Arctis 7+) (1038:220e)')).toBeNull()
   })
 })

@@ -46,14 +46,18 @@ export const appSettingsSchema = z.object({
   wakeWordEnabled: z.boolean().default(false),
 
   /**
-   * Which input device to listen on. Empty means the system default.
+   * Which input device to listen on, by label. Empty means the system default.
    *
    * Machines routinely have three — a webcam, a headset, a desk microphone —
-   * and the system default is frequently not the one being spoken into. A
-   * stored id is matched with `ideal`, never `exact`, so a device that has
-   * been unplugged falls back rather than failing.
+   * and the system default is frequently not the one being spoken into.
+   *
+   * The label rather than the `deviceId`, because the id does not survive a
+   * restart: Chromium re-salts it per launch for the overlay's `file://`
+   * origin (see `resolveMicrophone`). It is resolved to this session's id
+   * when a stream is opened, and a device that has been unplugged falls back
+   * to the default rather than failing.
    */
-  microphoneId: z.string().default('')
+  microphone: z.string().default('')
 })
 
 export type AppSettings = z.infer<typeof appSettingsSchema>

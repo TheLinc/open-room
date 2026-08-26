@@ -88,7 +88,7 @@ const overlay = {
   },
 
   /** Which device to listen on. Empty is the system default. */
-  onSetMicrophone: (listener: (deviceId: string) => void): (() => void) => {
+  onSetMicrophone: (listener: (label: string) => void): (() => void) => {
     const handler = (_event: unknown, deviceId: string): void => listener(deviceId)
     ipcRenderer.on(IpcChannel.overlaySetMicrophone, handler)
     return () => ipcRenderer.removeListener(IpcChannel.overlaySetMicrophone, handler)

@@ -42,7 +42,7 @@ function harness(options: { captures?: CaptureLike[]; deviceId?: string } = {}) 
       made.push(capture)
       return capture
     },
-    currentDeviceId: () => deviceId,
+    currentMicrophone: () => deviceId,
     now: () => now,
     // The real one is requestAnimationFrame; tests drive `tick` by hand.
     schedule: () => 0,

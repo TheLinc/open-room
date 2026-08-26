@@ -138,3 +138,21 @@ export type MicrophoneDevice = {
   deviceId: string
   label: string
 }
+
+/**
+ * The id this session gave the microphone a setting names, or null for none.
+ *
+ * Settings store the *label*, never the id. Measured on the packaged app:
+ * Chromium salts `deviceId` per origin, and the overlay is a `file://` page
+ * whose origin is opaque, so every launch hands the same Razer a different
+ * 64-hex id. A stored id therefore matched nothing after a restart — the
+ * settings select painted blank and capture fell back to the default. The
+ * label is what the OS calls the device and survives.
+ *
+ * Null for the empty label (system default) and for a device that has gone,
+ * so the caller opens an unconstrained stream rather than failing.
+ */
+export function resolveMicrophone(devices: MicrophoneDevice[], label: string): string | null {
+  if (!label) return null
+  return devices.find((device) => device.label === label)?.deviceId ?? null
+}

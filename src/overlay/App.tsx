@@ -144,8 +144,8 @@ export default function App(): React.JSX.Element | null {
     // Headsets appear and vanish, and a list that goes stale is worse than
     // no list — it offers a device that is no longer there.
     navigator.mediaDevices.addEventListener('devicechange', report)
-    const offSet = window.overlay.onSetMicrophone((deviceId) => {
-      Capture.deviceId = deviceId
+    const offSet = window.overlay.onSetMicrophone((label) => {
+      Capture.microphone = label
     })
 
     return () => {

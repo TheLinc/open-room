@@ -73,7 +73,7 @@ export class OverlayWindow {
    * loading, so sending it once would drop it — and a dropped device choice
    * is invisible: capture still works, just on the wrong microphone.
    */
-  private lastMicrophoneId = ''
+  private lastMicrophone = ''
 
   /** Where the overlay says its interactive region is, in window CSS pixels. */
   private hitBox: OverlayHitBox = EMPTY_HIT_BOX
@@ -131,7 +131,7 @@ export class OverlayWindow {
       this.loaded = true
       this.window?.webContents.send(IpcChannel.overlayState, this.lastState)
       this.window?.webContents.send(IpcChannel.overlayPips, this.lastPips)
-      this.window?.webContents.send(IpcChannel.overlaySetMicrophone, this.lastMicrophoneId)
+      this.window?.webContents.send(IpcChannel.overlaySetMicrophone, this.lastMicrophone)
       for (const channel of this.queued.splice(0)) {
         this.window?.webContents.send(channel)
       }
@@ -226,10 +226,10 @@ export class OverlayWindow {
   }
 
   /** Which input device captures should open. Empty is the system default. */
-  setMicrophone(deviceId: string): void {
-    this.lastMicrophoneId = deviceId
+  setMicrophone(label: string): void {
+    this.lastMicrophone = label
     if (!this.window || this.window.isDestroyed() || !this.loaded) return
-    this.window.webContents.send(IpcChannel.overlaySetMicrophone, deviceId)
+    this.window.webContents.send(IpcChannel.overlaySetMicrophone, label)
   }
 
   /** Suppress wake segments while the app is speaking. */

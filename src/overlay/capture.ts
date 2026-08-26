@@ -1,4 +1,5 @@
 import { rmsOf } from '@shared/endpointer'
+import { resolveMicrophone } from '@shared/voice-input'
 // Vite bundles the worklet as its own chunk and hands back its URL. A plain
 // `new URL('./pcm-worklet.ts', import.meta.url)` would emit the TypeScript
 // source as an asset and the browser would choke on it at `addModule`.
@@ -19,12 +20,15 @@ import pcmWorkletUrl from './pcm-worklet.ts?worker&url'
  */
 export class Capture {
   /**
-   * The device every capture opens, shared by push-to-talk and wake listening.
+   * The device every capture opens, by label, shared by push-to-talk and
+   * wake listening. Empty is the system default.
    *
    * Static because there is one microphone selection per machine, and the two
-   * consumers must not disagree about which one it is.
+   * consumers must not disagree about which one it is. A label rather than a
+   * `deviceId`: the id changes on every launch (see `resolveMicrophone`), so
+   * it is looked up at the moment a stream is opened.
    */
-  static deviceId = ''
+  static microphone = ''
 
   private context: AudioContext | null = null
   private stream: MediaStream | null = null
@@ -82,10 +86,14 @@ export class Capture {
       autoGainControl: true
     }
 
-    if (Capture.deviceId) {
+    const deviceId = Capture.microphone
+      ? resolveMicrophone(await navigator.mediaDevices.enumerateDevices(), Capture.microphone)
+      : null
+
+    if (deviceId) {
       try {
         return await navigator.mediaDevices.getUserMedia({
-          audio: { ...shared, deviceId: { exact: Capture.deviceId } }
+          audio: { ...shared, deviceId: { exact: deviceId } }
         })
       } catch (error) {
         // A denial is not a missing device, and must not be swallowed here —
