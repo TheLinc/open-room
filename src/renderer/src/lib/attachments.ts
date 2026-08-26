@@ -8,12 +8,17 @@ export async function readImage(
   const verdict = acceptImage(file, alreadyAttached)
   if (!verdict.ok) return verdict
 
-  const dataUri = await new Promise<string>((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(String(reader.result))
-    reader.onerror = () => reject(reader.error)
-    reader.readAsDataURL(file)
-  })
+  let dataUri: string
+  try {
+    dataUri = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(String(reader.result))
+      reader.onerror = () => reject(reader.error)
+      reader.readAsDataURL(file)
+    })
+  } catch {
+    return { ok: false, reason: `Could not read ${file.name || 'the image'}.` }
+  }
   // `readAsDataURL` yields `data:<type>;base64,<data>`; the SDK wants the tail.
   const data = dataUri.slice(dataUri.indexOf(',') + 1)
   const name = file.name || `pasted-${new Date().toISOString().replace(/[:.]/g, '-')}.png`
