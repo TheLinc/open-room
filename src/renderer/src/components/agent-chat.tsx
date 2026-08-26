@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { CircleAlert, Loader2, Pencil, Send, Square, X } from 'lucide-react'
 import type { Agent } from '@shared/agent'
 import { colorHexFor } from '@shared/agent-colors'
@@ -26,6 +26,7 @@ import { PermissionPrompt } from '@/components/permission-prompt'
 import { CommandPicker } from '@/components/command-picker'
 import {
   filterCommands,
+  isCommandResult,
   pickAction,
   submitAction,
   type SlashCommandInfo
@@ -33,6 +34,31 @@ import {
 import { MAX_RETAINED_ENTRIES } from '@/hooks/use-sessions'
 import { FilePicker } from '@/components/file-picker'
 import { applyMention, filterFiles, mentionAt, mentionFor } from '@shared/file-mentions'
+import { FilesChanged } from '@/components/files-changed'
+import { filesChangedIn, turnBefore } from '@shared/files-changed'
+
+/**
+ * Whether a persisted `user` entry is a genuine prompt rather than a
+ * tool-result echo or an injected compaction summary.
+ *
+ * Mirrors the private `isPrompt` in `@shared/files-changed` — needed here
+ * because persisted history has no `result` message to bracket a turn with,
+ * so the next prompt is what marks where the previous turn ended.
+ */
+function isHistoryPrompt(entry: TranscriptEntry): boolean {
+  const m = entry.message as {
+    type?: string
+    isSynthetic?: boolean
+    message?: { content?: unknown }
+  } | null
+  if (m?.type !== 'user') return false
+  if (m.isSynthetic) return false
+  const content = m.message?.content
+  if (typeof content === 'string') return true
+  return (
+    Array.isArray(content) && !content.every((b) => (b as { type?: string }).type === 'tool_result')
+  )
+}
 
 type Props = {
   agent: Agent
@@ -371,14 +397,31 @@ export function AgentChat({
 
         {historyVisible.length > 0 && (
           <div className="flex flex-col gap-3 pb-3">
-            {historyVisible.map((entry) => (
-              <div
-                key={entry.seq}
-                style={{ contentVisibility: 'auto', containIntrinsicSize: 'auto 60px' }}
-              >
-                <TranscriptMessage entry={entry} />
-              </div>
-            ))}
+            {historyVisible.map((entry, i) => {
+              const message = entry.message as { type?: string }
+              // Persisted history never carries the SDK's `result` message —
+              // only Claude Code's own user/assistant transcript reaches
+              // disk — so a turn boundary here has to be inferred from where
+              // the next prompt starts, unlike the live list below.
+              const isTurnEnd =
+                message.type === 'assistant' &&
+                (i === historyVisible.length - 1 || isHistoryPrompt(historyVisible[i + 1]))
+              return (
+                <Fragment key={entry.seq}>
+                  <div style={{ contentVisibility: 'auto', containIntrinsicSize: 'auto 60px' }}>
+                    <TranscriptMessage entry={entry} />
+                  </div>
+                  {isTurnEnd && (
+                    <FilesChanged
+                      agentId={agent.config.id}
+                      files={filesChangedIn(
+                        turnBefore(historyVisible, i + 1).map((e) => e.message)
+                      )}
+                    />
+                  )}
+                </Fragment>
+              )
+            })}
           </div>
         )}
 
@@ -406,18 +449,27 @@ export function AgentChat({
           </div>
         ) : (
           <div className="flex flex-col gap-3">
-            {visible.map((entry) => (
-              // content-visibility lets the browser skip layout and paint for
-              // rows scrolled out of view — most of the benefit of a
-              // virtualised list without the dependency, given the retained
-              // cap already bounds the DOM.
-              <div
-                key={entry.seq}
-                style={{ contentVisibility: 'auto', containIntrinsicSize: 'auto 60px' }}
-              >
-                <TranscriptMessage entry={entry} />
-              </div>
-            ))}
+            {visible.map((entry, i) => {
+              const message = entry.message as { type?: string; subtype?: string }
+              const isTurnEnd = message.type === 'result' && !isCommandResult(message)
+              return (
+                <Fragment key={entry.seq}>
+                  {/* content-visibility lets the browser skip layout and paint
+                      for rows scrolled out of view — most of the benefit of a
+                      virtualised list without the dependency, given the
+                      retained cap already bounds the DOM. */}
+                  <div style={{ contentVisibility: 'auto', containIntrinsicSize: 'auto 60px' }}>
+                    <TranscriptMessage entry={entry} />
+                  </div>
+                  {isTurnEnd && (
+                    <FilesChanged
+                      agentId={agent.config.id}
+                      files={filesChangedIn(turnBefore(visible, i).map((e) => e.message))}
+                    />
+                  )}
+                </Fragment>
+              )
+            })}
             {permissions.map((request) => (
               <PermissionPrompt key={request.id} request={request} agentName={agent.config.name} />
             ))}
