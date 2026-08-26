@@ -161,7 +161,9 @@ export const IpcChannel = {
   /** overlay → main, raise the main window on this agent. */
   overlaySelectAgent: 'overlay:select-agent',
   /** main → renderer, select this agent, from a clicked pip. */
-  focusAgent: 'app:focus-agent'
+  focusAgent: 'app:focus-agent',
+
+  listWorkspaceFiles: 'agents:list-workspace-files'
 } as const
 
 export type IpcChannelName = (typeof IpcChannel)[keyof typeof IpcChannel]
@@ -301,4 +303,9 @@ export type OpenRoomApi = {
    * the next save writes the value back.
    */
   onSettingsChanged: (listener: (settings: AppSettings) => void) => () => void
+
+  /** Posix-relative paths under the agent's workspace, for the @ picker. */
+  listWorkspaceFiles: (agentId: string) => Promise<string[]>
+  /** The absolute path of a dropped File; empty for a pasted blob with none. */
+  pathForFile: (file: File) => string
 }

@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 import type { Agent } from '@shared/agent'
 import type { ImageAttachment } from '@shared/attachments'
@@ -171,7 +171,19 @@ const openRoom: OpenRoomApi = {
     ipcRenderer.invoke(IpcChannel.saveSettings, settings),
 
   onSettingsChanged: (listener: (settings: AppSettings) => void): (() => void) =>
-    subscribe(IpcChannel.settingsChanged, (payload) => listener(payload as AppSettings))
+    subscribe(IpcChannel.settingsChanged, (payload) => listener(payload as AppSettings)),
+
+  listWorkspaceFiles: (agentId: string): Promise<string[]> =>
+    ipcRenderer.invoke(IpcChannel.listWorkspaceFiles, agentId),
+
+  // `File.path` was removed in Electron 32; this is the sanctioned way.
+  pathForFile: (file: File): string => {
+    try {
+      return webUtils.getPathForFile(file)
+    } catch {
+      return ''
+    }
+  }
 }
 
 /**

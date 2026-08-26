@@ -20,6 +20,9 @@ import type { ConversationStore } from './conversation-store'
 import type { VoiceSidecar } from './voice-sidecar'
 import type { KokoroStatus, SttStatus, SystemVoice } from '@shared/voice-rpc'
 import type { Conversation, ConversationPage } from '@shared/conversation'
+import { WorkspaceIndex } from './workspace-index'
+
+const workspaceIndex = new WorkspaceIndex()
 
 /**
  * Registers every main-process IPC handler. Called once on app ready.
@@ -277,6 +280,11 @@ export function registerIpcHandlers(
       supervisor.setOptions({ maxConcurrent: parsed.maxConcurrentAgents })
       onSettingsSaved(parsed)
     })
+  })
+
+  ipcMain.handle(IpcChannel.listWorkspaceFiles, async (_e, agentId: string): Promise<string[]> => {
+    const agent = await store.read(agentId)
+    return workspaceIndex.files(agent.config.workspacePath)
   })
 }
 
