@@ -57,7 +57,14 @@ export const appSettingsSchema = z.object({
    * when a stream is opened, and a device that has been unplugged falls back
    * to the default rather than failing.
    */
-  microphone: z.string().default('')
+  microphone: z.string().default(''),
+
+  /**
+   * How "open in editor" opens a file. A command template: `{path}` and
+   * `{line}` are substituted, e.g. `code -g {path}:{line}`. Empty means the
+   * OS default application for the file type.
+   */
+  editorCommand: z.string().default('')
 })
 
 export type AppSettings = z.infer<typeof appSettingsSchema>

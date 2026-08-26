@@ -15,6 +15,7 @@ import { acceptImage, type ImageAttachment } from '@shared/attachments'
 import type { LoginStatus } from '@shared/login'
 import { IpcChannel, type AgentsSnapshot, type AppInfo, type MutationResult } from '@shared/ipc'
 import { ConfigStore } from './config-store'
+import { openInEditor, resolveTarget } from './open-in-editor'
 import type { AgentSupervisor } from './agent-supervisor'
 import type { ConversationStore } from './conversation-store'
 import type { VoiceSidecar } from './voice-sidecar'
@@ -286,6 +287,18 @@ export function registerIpcHandlers(
     const agent = await store.read(agentId).catch(() => null)
     return agent ? workspaceIndex.files(agent.config.workspacePath) : []
   })
+
+  ipcMain.handle(
+    IpcChannel.openInEditor,
+    async (_e, agentId: string, path: string, line?: number): Promise<MutationResult> => {
+      const [agent, settings] = await Promise.all([store.read(agentId), store.readSettings()])
+      return openInEditor(
+        settings.editorCommand,
+        resolveTarget(path, agent.config.workspacePath),
+        line
+      )
+    }
+  )
 }
 
 export function broadcastRuntime(runtime: AgentRuntime): void {

@@ -163,7 +163,8 @@ export const IpcChannel = {
   /** main → renderer, select this agent, from a clicked pip. */
   focusAgent: 'app:focus-agent',
 
-  listWorkspaceFiles: 'agents:list-workspace-files'
+  listWorkspaceFiles: 'agents:list-workspace-files',
+  openInEditor: 'files:open-in-editor'
 } as const
 
 export type IpcChannelName = (typeof IpcChannel)[keyof typeof IpcChannel]
@@ -308,4 +309,7 @@ export type OpenRoomApi = {
   listWorkspaceFiles: (agentId: string) => Promise<string[]>
   /** The absolute path of a dropped File; empty for a pasted blob with none. */
   pathForFile: (file: File) => string
+
+  /** Opens a path (relative to the agent's workspace, or absolute) in the user's editor. */
+  openInEditor: (agentId: string, path: string, line?: number) => Promise<MutationResult>
 }

@@ -183,7 +183,10 @@ const openRoom: OpenRoomApi = {
     } catch {
       return ''
     }
-  }
+  },
+
+  openInEditor: (agentId: string, path: string, line?: number): Promise<MutationResult> =>
+    ipcRenderer.invoke(IpcChannel.openInEditor, agentId, path, line)
 }
 
 /**

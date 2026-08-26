@@ -10,6 +10,7 @@ import { HotkeyInput } from '@/components/hotkey-input'
 import { MicMeter } from '@/components/mic-meter'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Progress } from '@/components/ui/progress'
 import { Slider } from '@/components/ui/slider'
@@ -142,6 +143,20 @@ export function SettingsDialog({
                   value={[settings.idleTimeoutMinutes]}
                   onValueChange={([value]) => void save({ ...settings, idleTimeoutMinutes: value })}
                 />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="editor">Open files with</Label>
+                <Input
+                  id="editor"
+                  value={settings.editorCommand}
+                  placeholder="code -g {path}:{line}"
+                  onChange={(e) => void save({ ...settings, editorCommand: e.target.value })}
+                />
+                <p className="text-xs text-muted-foreground">
+                  A command; {'{path}'} and {'{line}'} are filled in. Leave empty to use whatever
+                  opens the file type.
+                </p>
               </div>
             </section>
 
