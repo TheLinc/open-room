@@ -1,6 +1,13 @@
 import { isAbsolute, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { editorInvocation, openInEditor, resolveExecutable, resolveTarget } from './open-in-editor'
+import {
+  editorInvocation,
+  isExecutableTarget,
+  openInEditor,
+  resolveExecutable,
+  resolveTarget,
+  spawnPlan
+} from './open-in-editor'
 
 describe('editorInvocation', () => {
   it('substitutes the path and line into the command', () => {
@@ -102,10 +109,56 @@ describe('resolveExecutable', () => {
   })
 })
 
+describe('isExecutableTarget', () => {
+  it.each(['notes.bat', 'X.EXE', 'run.lnk', 'tool.app', 'deploy.sh'])(
+    'treats %s as executable',
+    (path) => {
+      expect(isExecutableTarget(path)).toBe(true)
+    }
+  )
+
+  it.each(['a.ts', 'README.md', 'Makefile', 'archive.tar.gz'])(
+    'treats %s as not executable',
+    (path) => {
+      expect(isExecutableTarget(path)).toBe(false)
+    }
+  )
+})
+
+describe('spawnPlan', () => {
+  it('wraps a .cmd target in a single fully-quoted cmd invocation', () => {
+    const plan = spawnPlan(
+      'C:\\x\\code.cmd',
+      ['-g', 'C:\\w\\a.ts:3'],
+      'C:\\Windows\\System32\\cmd.exe'
+    )
+    expect(plan.file).toBe('C:\\Windows\\System32\\cmd.exe')
+    expect(plan.args).toEqual(['/d', '/s', '/c', '""C:\\x\\code.cmd" "-g" "C:\\w\\a.ts:3""'])
+    expect(plan.verbatim).toBe(true)
+  })
+
+  it('passes args through untouched for a non-shim executable', () => {
+    const plan = spawnPlan('C:\\tools\\subl.exe', ['a.ts'], 'C:\\Windows\\System32\\cmd.exe')
+    expect(plan).toEqual({ file: 'C:\\tools\\subl.exe', args: ['a.ts'], verbatim: false })
+  })
+})
+
 describe('openInEditor', () => {
   it('reports a command that cannot be resolved instead of claiming success', async () => {
     const result = await openInEditor('definitely-not-an-editor-xyz {path}', 'ignored.txt')
     expect(result.ok).toBe(false)
     if (!result.ok) expect(result.message).toMatch(/Could not find/)
   }, 10_000)
+
+  it('refuses to launch an executable target with the OS default, before touching electron', async () => {
+    const result = await openInEditor('', 'C:/x/notes.bat')
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.message).toMatch(/executable/)
+  })
+
+  it('refuses an argument containing a quote before resolving or spawning', async () => {
+    const result = await openInEditor('code {path}', 'a" & calc')
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.message).toMatch(/quotes/)
+  })
 })

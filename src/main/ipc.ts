@@ -291,12 +291,16 @@ export function registerIpcHandlers(
   ipcMain.handle(
     IpcChannel.openInEditor,
     async (_e, agentId: string, path: string, line?: number): Promise<MutationResult> => {
-      const [agent, settings] = await Promise.all([store.read(agentId), store.readSettings()])
-      return openInEditor(
-        settings.editorCommand,
-        resolveTarget(path, agent.config.workspacePath),
-        line
-      )
+      try {
+        const [agent, settings] = await Promise.all([store.read(agentId), store.readSettings()])
+        return await openInEditor(
+          settings.editorCommand,
+          resolveTarget(path, agent.config.workspacePath),
+          line
+        )
+      } catch (error) {
+        return { ok: false, message: describeError(error) }
+      }
     }
   )
 }

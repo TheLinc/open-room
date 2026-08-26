@@ -44,6 +44,43 @@ export function resolveTarget(path: string, workspacePath: string): string {
   return isAbsolute(path) ? path : resolve(workspacePath, path)
 }
 
+/**
+ * Extensions `ShellExecute`'s `open` verb *runs* rather than displays or
+ * hands to an associated viewer. `shell.openPath` — the OS-default branch
+ * below — goes through exactly that verb, and the path it opens comes from
+ * the agent's own Write/Edit tool inputs, so this list is what stands
+ * between a model writing a file and that file executing.
+ */
+const EXECUTABLE_EXTENSIONS = new Set([
+  '.exe',
+  '.bat',
+  '.cmd',
+  '.com',
+  '.ps1',
+  '.vbs',
+  '.js',
+  '.jse',
+  '.wsf',
+  '.wsh',
+  '.msi',
+  '.reg',
+  '.scr',
+  '.hta',
+  '.lnk',
+  '.pif',
+  '.app',
+  '.sh',
+  '.command'
+])
+
+/** Whether opening `path` with the OS default would execute rather than view it. */
+export function isExecutableTarget(path: string): boolean {
+  const base = path.split(/[/\\]/).pop() ?? path
+  const dot = base.lastIndexOf('.')
+  if (dot === -1) return false
+  return EXECUTABLE_EXTENSIONS.has(base.slice(dot).toLowerCase())
+}
+
 const DEFAULT_PATHEXT = '.COM;.EXE;.BAT;.CMD'
 
 function hasPathSeparator(file: string): boolean {
@@ -87,14 +124,18 @@ export function resolveExecutable(
   const pathExts = isWindows ? (env.PATHEXT ?? DEFAULT_PATHEXT).split(';').filter(Boolean) : []
 
   if (hasPathSeparator(file)) {
-    if (exists(file)) return file
+    // Same reasoning as the PATH walk below: an extensionless name is only
+    // ever resolved through PATHEXT on win32, never checked as a literal
+    // file, since a same-directory extensionless script existing on disk
+    // does not mean `spawn` can execute it directly.
     if (isWindows && !hasExtension(file)) {
       for (const ext of pathExts) {
         const candidate = file + ext
         if (exists(candidate)) return candidate
       }
+      return null
     }
-    return null
+    return exists(file) ? file : null
   }
 
   const pathVar = isWindows ? (env.Path ?? env.PATH) : env.PATH
@@ -132,6 +173,31 @@ export function resolveExecutable(
 const GRACE_PERIOD_MS = 1500
 
 /**
+ * The concrete `spawn` invocation for a resolved executable.
+ *
+ * A `.cmd`/`.bat` target must run through `cmd /d /s /c` because Node
+ * refuses to spawn one directly (CVE-2024-27980); everything else spawns as
+ * itself with `args` untouched. Pure so the exact quoting can be asserted
+ * without spawning anything: quoting the whole argv inside one pair of
+ * double quotes (`windowsVerbatimArguments: true` on the caller's side)
+ * makes cmd treat `& | < > ^` as literal characters rather than operators —
+ * the documented safe form, and only reachable once every argument has
+ * already been checked for a quote it could use to break out of it.
+ */
+export function spawnPlan(
+  resolved: string,
+  args: string[],
+  comSpec: string
+): { file: string; args: string[]; verbatim: boolean } {
+  if (!/\.(cmd|bat)$/i.test(resolved)) return { file: resolved, args, verbatim: false }
+  return {
+    file: comSpec,
+    args: ['/d', '/s', '/c', `"${[resolved, ...args].map((a) => `"${a}"`).join(' ')}"`],
+    verbatim: true
+  }
+}
+
+/**
  * Runs the invocation, or opens with the OS default. Never throws.
  *
  * No `shell: true`: `path` (and therefore the substituted `{path}` argument)
@@ -139,13 +205,11 @@ const GRACE_PERIOD_MS = 1500
  * `file_path` — so a shell would let a model-crafted path such as
  * `x.ts & calc` execute as a second command. Without a shell, Node still
  * refuses to spawn a `.cmd`/`.bat` file directly (CVE-2024-27980), which is
- * exactly what `code` is on Windows. `resolveExecutable` finds that shim
- * ahead of time, and when the resolved target is a `.cmd`/`.bat`, the child
- * is launched as `cmd /d /s /c "<fully quoted argv>"` — quoting the whole
- * argv inside one pair of double quotes makes cmd treat `& | < > ^` as
- * literal characters rather than operators, and any argument containing a
- * quote is refused below before this branch is ever reached, so that
- * quoting can't be broken out of.
+ * exactly what `code` is on Windows; `resolveExecutable` finds that shim
+ * ahead of time and `spawnPlan` builds the one shelled-out form this ever
+ * uses. Opening is not the same operation as running: the OS-default branch
+ * below refuses an executable target for the same reason, since "open"
+ * must never mean "run" for a path an agent chose.
  */
 export async function openInEditor(
   command: string,
@@ -154,6 +218,16 @@ export async function openInEditor(
 ): Promise<{ ok: true } | { ok: false; message: string }> {
   const invocation = editorInvocation(command, path, line)
   if (!invocation) {
+    // Checked before importing electron: `shell.openPath` runs `ShellExecute`'s
+    // `open` verb, which executes rather than displays these extensions, and
+    // `path` comes from the agent's own Write/Edit tool inputs.
+    if (isExecutableTarget(path)) {
+      return {
+        ok: false,
+        message:
+          'Open Room will not launch an executable file. Set an editor command under "Open files with" to open it as text.'
+      }
+    }
     // Imported lazily: vitest runs this module in a plain Node environment,
     // where `require('electron')` resolves to the binary path string rather
     // than the API, so a top-level import would break the pure functions
@@ -163,8 +237,16 @@ export async function openInEditor(
     return error ? { ok: false, message: error } : { ok: true }
   }
 
-  if (invocation.args.some((arg) => /["\n\r]/.test(arg))) {
-    return { ok: false, message: 'Editor arguments may not contain quotes or line breaks.' }
+  // `%` and `!` are refused alongside quotes and line breaks: cmd expands
+  // `%VAR%` in its first parsing pass and `!VAR!` under delayed expansion,
+  // both before quote parsing even runs, so quoting alone cannot neutralise
+  // them once a `.cmd`/`.bat` target routes through cmd at all.
+  if (invocation.args.some((arg) => /["\n\r%!]/.test(arg))) {
+    return {
+      ok: false,
+      message:
+        'Editor arguments may not contain quotes, percent signs, exclamation marks or line breaks.'
+    }
   }
 
   const resolved = resolveExecutable(invocation.file, process.env, process.platform, existsSync)
@@ -176,16 +258,15 @@ export async function openInEditor(
   }
 
   return new Promise((done) => {
-    const isCmdShim = /\.(cmd|bat)$/i.test(resolved)
-    const child = isCmdShim
-      ? spawn(
-          process.env.ComSpec ?? 'cmd.exe',
-          ['/d', '/s', '/c', `"${[resolved, ...invocation.args].map((a) => `"${a}"`).join(' ')}"`],
-          { detached: true, stdio: 'ignore', windowsVerbatimArguments: true }
-        )
-      : spawn(resolved, invocation.args, { detached: true, stdio: 'ignore' })
+    const plan = spawnPlan(resolved, invocation.args, process.env.ComSpec ?? 'cmd.exe')
+    const child = spawn(plan.file, plan.args, {
+      detached: true,
+      stdio: 'ignore',
+      windowsVerbatimArguments: plan.verbatim
+    })
 
     let settled = false
+    let timer: NodeJS.Timeout
     const finish = (result: { ok: true } | { ok: false; message: string }): void => {
       if (settled) return
       settled = true
@@ -196,7 +277,7 @@ export async function openInEditor(
     // Still running after the grace period: the target resolved and is
     // doing its own thing. Unref so it cannot keep this process alive, and
     // let it run to completion on its own.
-    const timer = setTimeout(() => {
+    timer = setTimeout(() => {
       child.unref()
       finish({ ok: true })
     }, GRACE_PERIOD_MS)
