@@ -60,6 +60,7 @@ export async function listWorkspaceFiles(root: string): Promise<string[]> {
 
 export class WorkspaceIndex {
   private readonly cache = new Map<string, { at: number; files: string[] }>()
+  private readonly inflight = new Map<string, Promise<string[]>>()
   private readonly ttlMs: number
   private readonly now: () => number
 
@@ -71,8 +72,17 @@ export class WorkspaceIndex {
   async files(root: string): Promise<string[]> {
     const hit = this.cache.get(root)
     if (hit && this.now() - hit.at < this.ttlMs) return hit.files
-    const files = await listWorkspaceFiles(root)
-    this.cache.set(root, { at: this.now(), files })
-    return files
+
+    const existing = this.inflight.get(root)
+    if (existing) return existing
+
+    const walk = listWorkspaceFiles(root)
+      .then((files) => {
+        this.cache.set(root, { at: this.now(), files })
+        return files
+      })
+      .finally(() => this.inflight.delete(root))
+    this.inflight.set(root, walk)
+    return walk
   }
 }

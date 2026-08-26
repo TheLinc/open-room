@@ -283,8 +283,8 @@ export function registerIpcHandlers(
   })
 
   ipcMain.handle(IpcChannel.listWorkspaceFiles, async (_e, agentId: string): Promise<string[]> => {
-    const agent = await store.read(agentId)
-    return workspaceIndex.files(agent.config.workspacePath)
+    const agent = await store.read(agentId).catch(() => null)
+    return agent ? workspaceIndex.files(agent.config.workspacePath) : []
   })
 }
 

@@ -47,4 +47,11 @@ describe('WorkspaceIndex', () => {
     now += 101
     expect(await index.files(root)).toHaveLength(3)
   })
+
+  it('serves two concurrent cold calls from a single walk', async () => {
+    let now = 1000
+    const index = new WorkspaceIndex({ ttlMs: 100, now: () => now })
+    const [a, b] = await Promise.all([index.files(root), index.files(root)])
+    expect(a).toBe(b)
+  })
 })
