@@ -241,14 +241,15 @@ export function spawnPlan(
 export async function openInEditor(
   command: string,
   path: string,
-  line?: number
+  line?: number,
+  platform: NodeJS.Platform = process.platform
 ): Promise<{ ok: true } | { ok: false; message: string }> {
   const invocation = editorInvocation(command, path, line)
   if (!invocation) {
     // Checked before importing electron: `shell.openPath` runs `ShellExecute`'s
     // `open` verb, which executes rather than displays these extensions, and
     // `path` comes from the agent's own Write/Edit tool inputs.
-    if (isExecutableTarget(path)) {
+    if (isExecutableTarget(path, platform)) {
       return {
         ok: false,
         message:
@@ -276,7 +277,7 @@ export async function openInEditor(
     }
   }
 
-  const resolved = resolveExecutable(invocation.file, process.env, process.platform, existsSync)
+  const resolved = resolveExecutable(invocation.file, process.env, platform, existsSync)
   if (!resolved) {
     return {
       ok: false,

@@ -186,13 +186,15 @@ describe('openInEditor', () => {
   }, 10_000)
 
   it('refuses to launch an executable target with the OS default, before touching electron', async () => {
-    const result = await openInEditor('', 'C:/x/notes.bat')
+    // Platform forced to win32: this exercises the Windows executable list,
+    // not whatever OS the suite happens to run on.
+    const result = await openInEditor('', 'C:/x/notes.bat', undefined, 'win32')
     expect(result.ok).toBe(false)
     if (!result.ok) expect(result.message).toMatch(/executable/)
   })
 
   it('refuses a trailing-dot executable target, which Win32 would resolve to the real name', async () => {
-    const result = await openInEditor('', 'C:/x/notes.bat.')
+    const result = await openInEditor('', 'C:/x/notes.bat.', undefined, 'win32')
     expect(result.ok).toBe(false)
     if (!result.ok) expect(result.message).toMatch(/executable/)
   })
