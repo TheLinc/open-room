@@ -123,6 +123,24 @@ describe('isExecutableTarget', () => {
       expect(isExecutableTarget(path)).toBe(false)
     }
   )
+
+  it.each(['C:/x/notes.bat.', 'C:\\x\\notes.bat ', 'C:/x/notes.bat. . '])(
+    'treats %s as executable, since Win32 strips the trailing dots and spaces before resolving',
+    (path) => {
+      expect(isExecutableTarget(path)).toBe(true)
+    }
+  )
+
+  it('treats an alternate data stream as executable', () => {
+    expect(isExecutableTarget('C:/x/notes.txt:evil.bat')).toBe(true)
+  })
+
+  it.each(['C:/x/notes.txt.', 'C:/x/a.ts'])(
+    'leaves %s not executable after normalisation',
+    (path) => {
+      expect(isExecutableTarget(path)).toBe(false)
+    }
+  )
 })
 
 describe('spawnPlan', () => {
@@ -152,6 +170,12 @@ describe('openInEditor', () => {
 
   it('refuses to launch an executable target with the OS default, before touching electron', async () => {
     const result = await openInEditor('', 'C:/x/notes.bat')
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.message).toMatch(/executable/)
+  })
+
+  it('refuses a trailing-dot executable target, which Win32 would resolve to the real name', async () => {
+    const result = await openInEditor('', 'C:/x/notes.bat.')
     expect(result.ok).toBe(false)
     if (!result.ok) expect(result.message).toMatch(/executable/)
   })

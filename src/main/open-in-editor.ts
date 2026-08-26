@@ -73,9 +73,20 @@ const EXECUTABLE_EXTENSIONS = new Set([
   '.command'
 ])
 
-/** Whether opening `path` with the OS default would execute rather than view it. */
+/**
+ * Whether opening `path` with the OS default would execute rather than view it.
+ *
+ * The name is normalised before its extension is read because the Win32 path
+ * layer strips trailing dots and spaces from a filename before resolving it —
+ * so `notes.bat.` and `notes.bat ` open the real `notes.bat`, and a raw
+ * extension of `.` or `.bat ` would sail past this list — and because an NTFS
+ * alternate data stream (`notes.txt:evil.bat`) executes the stream rather than
+ * the file it hangs off, which no extension check on the whole name can see.
+ */
 export function isExecutableTarget(path: string): boolean {
-  const base = path.split(/[/\\]/).pop() ?? path
+  const raw = path.split(/[/\\]/).pop() ?? path
+  const base = raw.replace(/[. ]+$/, '')
+  if (base.includes(':')) return true
   const dot = base.lastIndexOf('.')
   if (dot === -1) return false
   return EXECUTABLE_EXTENSIONS.has(base.slice(dot).toLowerCase())
