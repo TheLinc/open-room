@@ -1,6 +1,6 @@
 import { isAbsolute, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { editorInvocation, openInEditor, resolveTarget } from './open-in-editor'
+import { editorInvocation, openInEditor, resolveExecutable, resolveTarget } from './open-in-editor'
 
 describe('editorInvocation', () => {
   it('substitutes the path and line into the command', () => {
@@ -42,10 +42,70 @@ describe('resolveTarget', () => {
   })
 })
 
+describe('resolveExecutable', () => {
+  it('finds a .cmd shim under a PATH directory on win32', () => {
+    const result = resolveExecutable(
+      'code',
+      { Path: 'C:\\other;C:\\tools', PATHEXT: '.COM;.EXE;.BAT;.CMD' },
+      'win32',
+      (p) => p === 'C:\\tools\\code.CMD'
+    )
+    expect(result).toBe('C:\\tools\\code.CMD')
+  })
+
+  it('finds a bare executable on PATH on darwin', () => {
+    const result = resolveExecutable(
+      'subl',
+      { PATH: '/usr/bin:/usr/local/bin' },
+      'darwin',
+      (p) => p === '/usr/local/bin/subl'
+    )
+    expect(result).toBe('/usr/local/bin/subl')
+  })
+
+  it('returns null when nothing on PATH matches', () => {
+    const result = resolveExecutable(
+      'nonexistent-editor',
+      { PATH: '/usr/bin' },
+      'darwin',
+      () => false
+    )
+    expect(result).toBeNull()
+  })
+
+  it('prefers a PATHEXT match over a same-directory extensionless file on win32', () => {
+    // Real-world case: an editor's install directory can hold both a POSIX
+    // shebang script named exactly `code` (for use under a POSIX shell) and
+    // a `code.cmd` shim, side by side, in a directory that PATH lists
+    // before anything else. cmd.exe's own lookup for a bare `code` never
+    // considers the extensionless file — only PATHEXT-suffixed names — so
+    // this must not either, or the resolved path is one `spawn` cannot
+    // execute directly (ENOENT).
+    const exists = new Set(['C:\\editor\\code', 'C:\\editor\\code.CMD'])
+    const result = resolveExecutable(
+      'code',
+      { Path: 'C:\\editor', PATHEXT: '.COM;.EXE;.BAT;.CMD' },
+      'win32',
+      (p) => exists.has(p)
+    )
+    expect(result).toBe('C:\\editor\\code.CMD')
+  })
+
+  it('returns a file containing a path separator directly, when it exists', () => {
+    const result = resolveExecutable(
+      '/opt/editor/bin/subl',
+      {},
+      'darwin',
+      (p) => p === '/opt/editor/bin/subl'
+    )
+    expect(result).toBe('/opt/editor/bin/subl')
+  })
+})
+
 describe('openInEditor', () => {
-  it('reports a command the shell cannot find instead of claiming success', async () => {
+  it('reports a command that cannot be resolved instead of claiming success', async () => {
     const result = await openInEditor('definitely-not-an-editor-xyz {path}', 'ignored.txt')
     expect(result.ok).toBe(false)
-    if (!result.ok) expect(result.message).toMatch(/exited with code|not found|ENOENT/i)
+    if (!result.ok) expect(result.message).toMatch(/Could not find/)
   }, 10_000)
 })
