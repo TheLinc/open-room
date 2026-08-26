@@ -442,6 +442,13 @@ export class AgentSupervisor {
     } catch (error) {
       this.fail(id, classifyThrownError(error))
     } finally {
+      // A turn can end here too — a crash or the stream simply closing — not
+      // only through a `result` message, so this is a queue-settling point
+      // as much as `settleQueue` itself: without clearing it here, a prompt
+      // typed while the turn was running is left in `runtime.queued` forever
+      // once the session is deleted below.
+      session.queued = []
+      this.patch(id, { queued: [] })
       session.queue.close()
       this.sessions.delete(id)
     }
@@ -710,9 +717,9 @@ export class AgentSupervisor {
     if (!session) return
 
     // Stop means stop everything: a queued prompt is a promise to send it
-    // once the turn ends, and an interrupted turn never will.
-    session.queued = []
-    this.patch(agentId, { queued: [] })
+    // once the turn ends, and an interrupted turn never will. Routed through
+    // settleQueue so there is one owner of clearing the queue.
+    this.settleQueue(session, 'clear')
 
     session.interrupting = true
     try {

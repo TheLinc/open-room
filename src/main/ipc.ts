@@ -297,10 +297,14 @@ export function registerIpcHandlers(
     async (_e, agentId: string, path: string, line?: number): Promise<MutationResult> => {
       try {
         const [agent, settings] = await Promise.all([store.read(agentId), store.readSettings()])
+        // The renderer is not a trust boundary, and `line` reaches argv via
+        // {line} substitution, so it is validated here rather than trusted.
+        const safeLine =
+          Number.isInteger(line) && (line as number) > 0 ? (line as number) : undefined
         return await openInEditor(
           settings.editorCommand,
           resolveTarget(path, agent.config.workspacePath),
-          line
+          safeLine
         )
       } catch (error) {
         return { ok: false, message: describeError(error) }

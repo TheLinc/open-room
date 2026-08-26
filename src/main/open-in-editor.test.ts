@@ -110,37 +110,54 @@ describe('resolveExecutable', () => {
 })
 
 describe('isExecutableTarget', () => {
-  it.each(['notes.bat', 'X.EXE', 'run.lnk', 'tool.app', 'deploy.sh'])(
-    'treats %s as executable',
-    (path) => {
-      expect(isExecutableTarget(path)).toBe(true)
-    }
-  )
+  it.each(['notes.bat', 'X.EXE', 'run.lnk'])('treats %s as executable on win32', (path) => {
+    expect(isExecutableTarget(path, 'win32')).toBe(true)
+  })
 
   it.each(['a.ts', 'README.md', 'Makefile', 'archive.tar.gz'])(
     'treats %s as not executable',
     (path) => {
-      expect(isExecutableTarget(path)).toBe(false)
+      expect(isExecutableTarget(path, 'win32')).toBe(false)
     }
   )
 
   it.each(['C:/x/notes.bat.', 'C:\\x\\notes.bat ', 'C:/x/notes.bat. . '])(
     'treats %s as executable, since Win32 strips the trailing dots and spaces before resolving',
     (path) => {
-      expect(isExecutableTarget(path)).toBe(true)
+      expect(isExecutableTarget(path, 'win32')).toBe(true)
     }
   )
 
   it('treats an alternate data stream as executable', () => {
-    expect(isExecutableTarget('C:/x/notes.txt:evil.bat')).toBe(true)
+    expect(isExecutableTarget('C:/x/notes.txt:evil.bat', 'win32')).toBe(true)
   })
 
   it.each(['C:/x/notes.txt.', 'C:/x/a.ts'])(
     'leaves %s not executable after normalisation',
     (path) => {
-      expect(isExecutableTarget(path)).toBe(false)
+      expect(isExecutableTarget(path, 'win32')).toBe(false)
     }
   )
+
+  it('treats a .js file as executable on win32', () => {
+    expect(isExecutableTarget('C:/x/a.js', 'win32')).toBe(true)
+  })
+
+  it('does not treat a .js file as executable on darwin, since it opens in an editor there', () => {
+    expect(isExecutableTarget('/x/a.js', 'darwin')).toBe(false)
+  })
+
+  it('treats a shell script as executable on darwin', () => {
+    expect(isExecutableTarget('/x/run.sh', 'darwin')).toBe(true)
+  })
+
+  it('treats an app bundle as executable on darwin', () => {
+    expect(isExecutableTarget('/x/Tool.app', 'darwin')).toBe(true)
+  })
+
+  it('does not treat a .bat file as executable on darwin, since that extension means nothing there', () => {
+    expect(isExecutableTarget('/x/notes.bat', 'darwin')).toBe(false)
+  })
 })
 
 describe('spawnPlan', () => {

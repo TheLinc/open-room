@@ -45,13 +45,14 @@ export function resolveTarget(path: string, workspacePath: string): string {
 }
 
 /**
- * Extensions `ShellExecute`'s `open` verb *runs* rather than displays or
- * hands to an associated viewer. `shell.openPath` — the OS-default branch
- * below — goes through exactly that verb, and the path it opens comes from
- * the agent's own Write/Edit tool inputs, so this list is what stands
+ * Extensions that execute rather than open on Windows, where
+ * `ShellExecute`'s `open` verb *runs* these instead of displaying them or
+ * handing them to an associated viewer. `shell.openPath` — the OS-default
+ * branch below — goes through exactly that verb, and the path it opens comes
+ * from the agent's own Write/Edit tool inputs, so this list is what stands
  * between a model writing a file and that file executing.
  */
-const EXECUTABLE_EXTENSIONS = new Set([
+const WINDOWS_EXECUTABLE_EXTENSIONS = new Set([
   '.exe',
   '.bat',
   '.cmd',
@@ -67,11 +68,17 @@ const EXECUTABLE_EXTENSIONS = new Set([
   '.scr',
   '.hta',
   '.lnk',
-  '.pif',
-  '.app',
-  '.sh',
-  '.command'
+  '.pif'
 ])
+
+/**
+ * Extensions that execute rather than open on macOS/Linux. `shell.openPath`
+ * there opens `.js` and friends in the associated editor rather than running
+ * them — only an app bundle or a shell script can be handed to
+ * Terminal/launched, so this list is deliberately much shorter than the
+ * Windows one.
+ */
+const POSIX_EXECUTABLE_EXTENSIONS = new Set(['.app', '.sh', '.command'])
 
 /**
  * Whether opening `path` with the OS default would execute rather than view it.
@@ -82,14 +89,23 @@ const EXECUTABLE_EXTENSIONS = new Set([
  * extension of `.` or `.bat ` would sail past this list — and because an NTFS
  * alternate data stream (`notes.txt:evil.bat`) executes the stream rather than
  * the file it hangs off, which no extension check on the whole name can see.
+ * That normalisation applies on every platform; which extensions count as
+ * executable is platform-specific, since the two OS's "open" verbs execute
+ * different sets of files.
  */
-export function isExecutableTarget(path: string): boolean {
+export function isExecutableTarget(
+  path: string,
+  platform: NodeJS.Platform = process.platform
+): boolean {
   const raw = path.split(/[/\\]/).pop() ?? path
   const base = raw.replace(/[. ]+$/, '')
   if (base.includes(':')) return true
   const dot = base.lastIndexOf('.')
   if (dot === -1) return false
-  return EXECUTABLE_EXTENSIONS.has(base.slice(dot).toLowerCase())
+  const ext = base.slice(dot).toLowerCase()
+  const extensions =
+    platform === 'win32' ? WINDOWS_EXECUTABLE_EXTENSIONS : POSIX_EXECUTABLE_EXTENSIONS
+  return extensions.has(ext)
 }
 
 const DEFAULT_PATHEXT = '.COM;.EXE;.BAT;.CMD'
@@ -277,7 +293,6 @@ export async function openInEditor(
     })
 
     let settled = false
-    let timer: NodeJS.Timeout
     const finish = (result: { ok: true } | { ok: false; message: string }): void => {
       if (settled) return
       settled = true
@@ -288,7 +303,7 @@ export async function openInEditor(
     // Still running after the grace period: the target resolved and is
     // doing its own thing. Unref so it cannot keep this process alive, and
     // let it run to completion on its own.
-    timer = setTimeout(() => {
+    const timer = setTimeout(() => {
       child.unref()
       finish({ ok: true })
     }, GRACE_PERIOD_MS)
