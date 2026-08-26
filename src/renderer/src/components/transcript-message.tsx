@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils'
 import { isCommandEcho } from '@/lib/transcript'
 import { isSyntheticAssistant, parseCommand } from '@shared/slash-commands'
 import { isInjectedSummary } from '@shared/compaction'
+import { MarkdownText } from './markdown'
 
 /** The half of `SDKCompactBoundaryMessage.compact_metadata` worth showing. */
 type CompactMetadata = {
@@ -58,10 +59,20 @@ function Json({ value }: { value: unknown }): React.JSX.Element {
   )
 }
 
-function Block({ block }: { block: ContentBlock }): React.JSX.Element | null {
+function Block({
+  block,
+  markdown = false
+}: {
+  block: ContentBlock
+  markdown?: boolean
+}): React.JSX.Element | null {
   switch (block.type) {
     case 'text':
-      return <p className="text-sm whitespace-pre-wrap">{block.text}</p>
+      return markdown ? (
+        <MarkdownText text={block.text ?? ''} />
+      ) : (
+        <p className="text-sm whitespace-pre-wrap">{block.text}</p>
+      )
 
     case 'thinking':
       return (
@@ -164,7 +175,7 @@ export const TranscriptMessage = memo(function TranscriptMessage({
           </p>
         )}
         {blocksOf(message).map((block, i) => (
-          <Block key={i} block={block} />
+          <Block key={i} block={block} markdown />
         ))}
       </div>
     )
