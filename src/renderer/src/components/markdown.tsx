@@ -21,7 +21,11 @@ export function MarkdownText({ text }: { text: string }): React.JSX.Element {
         components={{
           // `setWindowOpenHandler` in main routes `_blank` to the OS browser;
           // a plain click would navigate the renderer itself away.
-          a: ({ node: _node, ...props }) => <a {...props} target="_blank" rel="noreferrer" />
+          a: ({ node, ...props }) => {
+            // `node` is the hast element; it must not reach the DOM as an attribute.
+            void node
+            return <a {...props} target="_blank" rel="noreferrer" />
+          }
         }}
       >
         {text}
