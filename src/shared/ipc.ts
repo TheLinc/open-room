@@ -67,6 +67,8 @@ export const IpcChannel = {
 
   sendPrompt: 'session:send',
   interruptAgent: 'session:interrupt',
+  /** Removes one prompt waiting for the current turn to end. */
+  dropQueuedPrompt: 'session:drop-queued',
   setOverrides: 'session:set-overrides',
   stopAgent: 'session:stop',
   listRuntimes: 'session:runtimes',
@@ -199,6 +201,8 @@ export type OpenRoomApi = {
   sendPrompt: (agentId: string, text: string, images?: ImageAttachment[]) => Promise<MutationResult>
   /** Stops the current turn, leaving the session alive. */
   interruptAgent: (agentId: string) => Promise<MutationResult>
+  /** Removes one prompt waiting for the current turn to end. */
+  dropQueuedPrompt: (agentId: string, id: string) => Promise<void>
   /**
    * Changes model, effort or permission mode for this session only.
    *

@@ -137,6 +137,10 @@ export function registerIpcHandlers(
     }
   )
 
+  ipcMain.handle(IpcChannel.dropQueuedPrompt, (_e, agentId: string, id: string): void => {
+    supervisor.dropQueued(agentId, id)
+  })
+
   ipcMain.handle(
     IpcChannel.setOverrides,
     async (_e, agentId: string, patch: unknown): Promise<MutationResult> => {

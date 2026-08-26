@@ -28,6 +28,7 @@ import {
   type CommandListState
 } from '@shared/slash-commands'
 import { replayKey } from '@shared/compaction'
+import { drain, shouldQueue, summarise, without, type QueuedPrompt } from '@shared/prompt-queue'
 import { mcpHealthUpdate, withMcpDetail } from '@shared/mcp-health'
 import { agentQueryOptions } from './agent-options'
 import { bundledClaudePath } from './claude-binary'
@@ -80,6 +81,8 @@ type Session = {
   commands: CommandListState
   /** Uuids of conversation messages already appended, to drop replays. */
   seen: Set<string>
+  /** Prompts typed while this turn runs; sent one at a time as turns end. */
+  queued: QueuedPrompt[]
 }
 
 /** The shape `query()` accepts on its input stream. */
@@ -176,18 +179,36 @@ export class AgentSupervisor {
     text: string,
     images: ImageAttachment[] = []
   ): Promise<{ ok: true } | { ok: false; message: string }> {
-    const existing = this.sessions.get(agent.config.id)
+    const id = agent.config.id
+    const existing = this.sessions.get(id)
 
     if (!existing) {
-      const resumeId = this.runtimeFor(agent.config.id).activeConversationId
+      const resumeId = this.runtimeFor(id).activeConversationId
       const started = await this.start(agent, resumeId)
       if (!started.ok) return started
     }
 
-    const session = this.sessions.get(agent.config.id)
+    const session = this.sessions.get(id)
     if (!session) return { ok: false, message: 'Session did not start.' }
 
-    this.patch(agent.config.id, { state: 'working', lastActiveAt: Date.now(), error: null })
+    // `start()` leaves the runtime at `starting` — the init message is what
+    // moves it to `working` — so a cold agent's very first prompt must
+    // dispatch unconditionally. Only a prompt sent into an already-running
+    // session can be genuinely mid-turn.
+    if (existing && shouldQueue(this.runtimeFor(id).state)) {
+      session.queued = [...session.queued, { id: randomUUID(), text, images }]
+      this.patch(id, { queued: summarise(session.queued) })
+      return { ok: true }
+    }
+
+    this.dispatch(session, text, images)
+    return { ok: true }
+  }
+
+  /** Pushes one prompt into the live session and echoes it to the transcript. */
+  private dispatch(session: Session, text: string, images: ImageAttachment[]): void {
+    const id = session.agentId
+    this.patch(id, { state: 'working', lastActiveAt: Date.now(), error: null })
 
     session.turnSpeech.calls = 0
     session.turnSpeech.spoke = false
@@ -204,14 +225,21 @@ export class AgentSupervisor {
     // identically to everything else.
     session.seq += 1
     this.events.onTranscript({
-      agentId: agent.config.id,
+      agentId: id,
       seq: session.seq,
       receivedAt: Date.now(),
       message: userMessage
     })
 
     session.queue.push(userMessage)
-    return { ok: true }
+  }
+
+  /** Removes one waiting prompt. A no-op, not a throw, if it is already gone. */
+  dropQueued(agentId: string, promptId: string): void {
+    const session = this.sessions.get(agentId)
+    if (!session) return
+    session.queued = without(session.queued, promptId)
+    this.patch(agentId, { queued: summarise(session.queued) })
   }
 
   private async start(
@@ -263,7 +291,8 @@ export class AgentSupervisor {
         interrupting: false,
         turnSpeech,
         commands: { loaded: false, terminal: [] },
-        seen: new Set()
+        seen: new Set(),
+        queued: []
       }
       session.pump = this.pump(session)
       this.sessions.set(id, session)
@@ -535,6 +564,15 @@ export class AgentSupervisor {
       if (message.subtype === 'success' && !wasInterrupted) {
         void this.speakFallback(session, message.result)
       }
+
+      // One prompt per result: each queued message was typed as its own
+      // turn, so sending everything at once would change what was asked.
+      const { next, rest } = drain(session.queued)
+      session.queued = rest
+      this.patch(id, { queued: summarise(rest) })
+      if (next && !wasInterrupted && !message.is_error) {
+        this.dispatch(session, next.text, next.images)
+      }
     }
   }
 
@@ -636,6 +674,11 @@ export class AgentSupervisor {
     const session = this.sessions.get(agentId)
     if (!session) return
 
+    // Stop means stop everything: a queued prompt is a promise to send it
+    // once the turn ends, and an interrupted turn never will.
+    session.queued = []
+    this.patch(agentId, { queued: [] })
+
     session.interrupting = true
     try {
       await session.query.interrupt()
@@ -657,6 +700,9 @@ export class AgentSupervisor {
     // Any dialog still open belongs to a session that is going away; denying
     // unblocks the turn so the pump can finish instead of hanging on stop().
     this.rejectPendingFor(agentId)
+
+    session.queued = []
+    this.patch(agentId, { queued: [] })
 
     session.queue.close()
     try {

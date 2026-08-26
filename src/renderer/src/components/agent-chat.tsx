@@ -16,6 +16,7 @@ import { TranscriptMessage } from '@/components/transcript-message'
 import { isRenderable } from '@/lib/transcript'
 import { readImage, imageFiles } from '@/lib/attachments'
 import { AttachmentChips } from '@/components/attachment-chips'
+import { QueuedPrompts } from '@/components/queued-prompts'
 import { ContextMeter } from '@/components/context-meter'
 import { McpHealth } from '@/components/mcp-health'
 import { SessionControls } from '@/components/session-controls'
@@ -467,6 +468,7 @@ export function AgentChat({
             {sendError}
           </p>
         )}
+        <QueuedPrompts agentId={agent.config.id} queued={runtime.queued} />
         <AttachmentChips
           images={images}
           onRemove={(i) => setImages((prev) => prev.filter((_, j) => j !== i))}
@@ -563,6 +565,7 @@ export function AgentChat({
             onClick={() => void submit()}
             disabled={!draft.trim() && images.length === 0}
             size="icon"
+            title={busy ? 'Queue for after this turn' : 'Send'}
           >
             <Send />
           </Button>
