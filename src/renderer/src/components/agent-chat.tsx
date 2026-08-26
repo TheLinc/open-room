@@ -138,13 +138,15 @@ export function AgentChat({
   }
 
   const attach = async (files: File[]): Promise<void> => {
+    let count = images.length
     for (const file of files) {
-      const result = await readImage(file, images.length)
+      const result = await readImage(file, count)
       if (!result.ok) {
         setAttachError(result.reason)
         return
       }
       setImages((prev) => [...prev, result.image])
+      count += 1
     }
     setAttachError(null)
   }
