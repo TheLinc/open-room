@@ -316,6 +316,7 @@ export function AgentChat({
           <SessionControls
             config={agent.config}
             overrides={runtime.overrides}
+            sessionPermissionMode={runtime.permissionMode}
             onChange={(patch) => void window.openRoom.setOverrides(agent.config.id, patch)}
           />
           {runtime.state === 'working' && (

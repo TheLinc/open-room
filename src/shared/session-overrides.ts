@@ -27,9 +27,20 @@ export type SessionOverrides = {
  * for a refactor where approving every write is the friction, and much less
  * so as a standing default that outlives the session it was turned on for.
  *
- * The SDK's `PermissionMode` also carries `bypassPermissions`, `dontAsk` and
- * `auto`. None are offered, and `sanitizeOverrides` rejects them rather than
- * relying on the UI never sending one.
+ * `auto` hands routine approvals to the SDK's classifier and escalates the
+ * rest through the ordinary prompt. Measured on claude-sonnet-5: two Bash
+ * calls, one of them a file deletion, ran with `canUseTool` never firing.
+ * That is a lot of trust to place in a classifier, which is why it is a
+ * choice and not the default — but it is a bounded one: what the classifier
+ * will not approve still reaches the user, and nothing here can turn that
+ * off. The SDK's `PermissionMode` also carries `bypassPermissions` and
+ * `dontAsk`; neither is offered, and `sanitizeOverrides` rejects them rather
+ * than relying on the UI never sending one.
+ *
+ * Not every model supports auto. Measured on claude-haiku-4-5, which reports
+ * `supportsAutoMode: null`: the query starts, and the init message reports
+ * `permissionMode: "default"` — a silent downgrade. `permissionModeNotice`
+ * turns that into something the pane can say.
  */
 export const SESSION_PERMISSION_MODES = [
   {
@@ -46,6 +57,11 @@ export const SESSION_PERMISSION_MODES = [
     id: 'plan',
     label: 'Plan first',
     hint: 'Research and propose an approach without changing anything.'
+  },
+  {
+    id: 'auto',
+    label: 'Auto',
+    hint: 'A classifier approves routine actions and asks you about risky ones. Needs Sonnet, Opus or Fable; Haiku falls back to asking every time.'
   }
 ] as const
 
@@ -186,4 +202,21 @@ export function overrideControlCalls(
     calls.push({ kind: 'effort', effortLevel: after.effort ?? null })
 
   return calls
+}
+
+/**
+ * What to tell the user when the session is not running the permission mode
+ * that was asked for.
+ *
+ * Only one case exists today: `auto` on a model without `supportsAutoMode`,
+ * which the SDK downgrades to `default` without saying so. Null means there
+ * is nothing to explain — the modes agree, or the session has not reported
+ * one yet.
+ */
+export function permissionModeNotice(requested: string, effective: string | null): string | null {
+  if (effective === null || effective === requested) return null
+  if (requested === 'auto') {
+    return 'Auto mode is not available on this model, so the agent is asking every time instead.'
+  }
+  return null
 }

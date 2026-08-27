@@ -429,6 +429,9 @@ export function AgentEditor({
                             <SelectItem value="plan">
                               Plan — propose changes without making them
                             </SelectItem>
+                            <SelectItem value="auto">
+                              Auto — a classifier approves routine actions, asks about risky ones
+                            </SelectItem>
                           </SelectContent>
                         </Select>
                       )}

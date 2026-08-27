@@ -111,7 +111,7 @@ export const agentConfigSchema = z.object({
   mcpServers: z.record(z.string(), mcpServerSchema).default({}),
 
   // Permissions. These are not symmetric — see the note in CLAUDE.md.
-  permissionMode: z.enum(['default', 'plan']).default('default'),
+  permissionMode: z.enum(['default', 'plan', 'auto']).default('default'),
   allowedTools: z.array(z.string()).default([]),
   disallowedTools: z.array(z.string()).default([]),
 

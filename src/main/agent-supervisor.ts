@@ -487,6 +487,10 @@ export class AgentSupervisor {
       if (update.action?.kind === 'replace') this.patch(id, { commands: update.action.commands })
 
       if (message.subtype === 'init') {
+        // What the CLI is actually running, which can differ from what was
+        // asked for; see permissionModeNotice.
+        this.patch(id, { permissionMode: message.permissionMode ?? null })
+
         // Per-turn statuses are free; the error text behind a failure is a
         // control round trip, asked for only when a server is newly wrong.
         const health = mcpHealthUpdate(this.runtimeFor(id).mcpServers, message.mcp_servers)

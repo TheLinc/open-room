@@ -5,6 +5,7 @@ import {
   mergeOverrides,
   overriddenFields,
   overrideControlCalls,
+  permissionModeNotice,
   sanitizeOverrides,
   type SessionOverrides
 } from './session-overrides'
@@ -124,9 +125,35 @@ describe('sanitizeOverrides', () => {
     expect(sanitizeOverrides({ permissionMode: 'bypassPermissions' })).toEqual({})
   })
 
-  it('refuses the other modes the app does not model', () => {
+  it('refuses dontAsk, which the app does not model', () => {
     expect(sanitizeOverrides({ permissionMode: 'dontAsk' })).toEqual({})
-    expect(sanitizeOverrides({ permissionMode: 'auto' })).toEqual({})
+  })
+
+  it('accepts auto, where a classifier decides and escalates the rest', () => {
+    expect(sanitizeOverrides({ permissionMode: 'auto' })).toEqual({ permissionMode: 'auto' })
+  })
+})
+
+describe('permissionModeNotice', () => {
+  it('says nothing while the session runs the mode that was asked for', () => {
+    expect(permissionModeNotice('auto', 'auto')).toBeNull()
+    expect(permissionModeNotice('default', 'default')).toBeNull()
+  })
+
+  it('says nothing before the session has reported a mode', () => {
+    expect(permissionModeNotice('auto', null)).toBeNull()
+  })
+
+  it('explains a silent downgrade from auto', () => {
+    // Measured: with claude-haiku-4-5 (supportsAutoMode null) the init message
+    // reports permissionMode "default" for a query started with "auto".
+    expect(permissionModeNotice('auto', 'default')).toMatch(/auto mode/i)
+    expect(permissionModeNotice('auto', 'default')).toMatch(/asking every time/i)
+  })
+
+  it('stays quiet about differences the user did not ask about', () => {
+    // Plan mode is what was asked for; nothing to explain.
+    expect(permissionModeNotice('plan', 'plan')).toBeNull()
   })
 
   it('passes null through so a field can be cleared', () => {

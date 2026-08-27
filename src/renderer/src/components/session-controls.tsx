@@ -3,6 +3,7 @@ import { ChevronDown, RotateCcw, SlidersHorizontal } from 'lucide-react'
 import { EFFORT_LEVELS, MODELS, type AgentConfig } from '@shared/agent'
 import {
   effectiveSettings,
+  permissionModeNotice,
   overriddenFields,
   SESSION_PERMISSION_MODES,
   type SessionOverridePatch,
@@ -14,6 +15,8 @@ import { Button } from '@/components/ui/button'
 type Props = {
   config: AgentConfig
   overrides: SessionOverrides
+  /** The mode the live session reports, or null before init. */
+  sessionPermissionMode: string | null
   onChange: (patch: SessionOverridePatch) => void
 }
 
@@ -30,10 +33,16 @@ type Props = {
  * edited later should follow its new config, not a copy of the old one taken
  * when someone opened this menu.
  */
-export function SessionControls({ config, overrides, onChange }: Props): React.JSX.Element {
+export function SessionControls({
+  config,
+  overrides,
+  sessionPermissionMode,
+  onChange
+}: Props): React.JSX.Element {
   const [open, setOpen] = useState(false)
 
   const active = effectiveSettings(config, overrides)
+  const modeNotice = permissionModeNotice(active.permissionMode, sessionPermissionMode)
   const changed = overriddenFields(config, overrides)
 
   const modelLabel = MODELS.find((m) => m.id === active.model)?.label ?? active.model
@@ -107,6 +116,11 @@ export function SessionControls({ config, overrides, onChange }: Props): React.J
                 selected={overrides.permissionMode}
                 onPick={(permissionMode) => onChange({ permissionMode })}
               />
+              {modeNotice && (
+                <p className="px-3 pb-2 text-xs text-amber-500" role="status">
+                  {modeNotice}
+                </p>
+              )}
             </div>
 
             {changed.length > 0 && (

@@ -41,7 +41,7 @@ export const agentFormSchema = z
     model: z.enum(MODEL_IDS),
     effort: z.union([z.enum(EFFORT_LEVELS), z.literal(OPTIONAL_SELECT)]),
     fallbackModel: z.union([z.enum(MODEL_IDS), z.literal(OPTIONAL_SELECT)]),
-    permissionMode: z.enum(['default', 'plan']),
+    permissionMode: z.enum(['default', 'plan', 'auto']),
     toolPermissions: z.record(z.string(), z.enum(['ask', 'allow', 'deny'])),
     persistSession: z.boolean(),
     hotkey: z.string(),

@@ -60,6 +60,11 @@ describe('agentConfigSchema', () => {
     expect(result.success).toBe(false)
   })
 
+  it('accepts auto as a standing permission mode', () => {
+    const result = agentConfigSchema.safeParse({ ...validConfig, permissionMode: 'auto' })
+    expect(result.success).toBe(true)
+  })
+
   it('never accepts bypassPermissions as a permission mode', () => {
     const result = agentConfigSchema.safeParse({
       ...validConfig,

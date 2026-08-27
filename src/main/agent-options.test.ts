@@ -70,6 +70,7 @@ describe('agentQueryOptions permissions', () => {
   it('never sets bypassPermissions from config', () => {
     expect(build().permissionMode).toBe('default')
     expect(build(agent({ permissionMode: 'plan' })).permissionMode).toBe('plan')
+    expect(build(agent({ permissionMode: 'auto' })).permissionMode).toBe('auto')
   })
 })
 

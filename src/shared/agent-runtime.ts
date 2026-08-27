@@ -151,6 +151,12 @@ export type AgentRuntime = {
    * see `prompt-queue.ts` for why they are not pushed to the SDK early.
    */
   queued: QueuedPromptSummary[]
+  /**
+   * The permission mode the live session actually reports on its init
+   * message. It can differ from what was asked for: `auto` on a model
+   * without `supportsAutoMode` comes back as `default`. Null until init.
+   */
+  permissionMode: string | null
   /** Epoch ms of the last activity, for idle teardown. */
   lastActiveAt: number
 }
@@ -205,6 +211,7 @@ export function emptyRuntime(agentId: string): AgentRuntime {
     commands: [],
     mcpServers: [],
     queued: [],
+    permissionMode: null,
     lastActiveAt: Date.now()
   }
 }
