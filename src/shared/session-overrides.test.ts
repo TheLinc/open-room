@@ -53,9 +53,9 @@ describe('overriddenFields', () => {
     // Picking the value the agent already has is not an override, and must
     // not light the badge — otherwise the header claims a difference that
     // does not exist.
-    expect(overriddenFields(config({ model: 'claude-opus-5' }), { model: 'claude-opus-5' })).toEqual(
-      []
-    )
+    expect(
+      overriddenFields(config({ model: 'claude-opus-5' }), { model: 'claude-opus-5' })
+    ).toEqual([])
   })
 
   it('names each field that genuinely differs', () => {

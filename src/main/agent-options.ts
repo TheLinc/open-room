@@ -25,7 +25,13 @@ export function agentQueryOptions(
    * override set before the first prompt survives the session actually
    * starting rather than taking effect one turn late.
    */
-  overrides: SessionOverrides = {}
+  overrides: SessionOverrides = {},
+  /**
+   * The SDK's bundled `claude`, resolved outside the asar. Null when the
+   * platform package is missing, in which case the SDK is left to its own
+   * resolution and reports the failure itself.
+   */
+  claudeExecutable: string | null = null
 ): Options {
   const { config } = agent
   const settings = effectiveSettings(config, overrides)
@@ -76,6 +82,7 @@ export function agentQueryOptions(
     // Replaces process.env rather than merging, so it is built explicitly
     // with ANTHROPIC_API_KEY removed.
     env: buildChildEnv(),
+    ...(claudeExecutable ? { pathToClaudeCodeExecutable: claudeExecutable } : {}),
     includePartialMessages: false,
     canUseTool
   }

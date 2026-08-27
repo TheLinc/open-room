@@ -1,5 +1,6 @@
 import { query } from '@anthropic-ai/claude-agent-sdk'
 import { buildChildEnv } from './agent-errors'
+import { bundledClaudePath } from './claude-binary'
 
 /**
  * Turns a finished turn's final text into one spoken sentence.
@@ -98,7 +99,10 @@ const INSTRUCTION = [
   'Under 20 words. Reply with the sentence only.'
 ].join(' ')
 
-export async function condenseForSpeech(finalText: string): Promise<string | null> {
+export async function condenseForSpeech(
+  finalText: string,
+  claudeExecutable: string | null = bundledClaudePath()
+): Promise<string | null> {
   const trimmed = finalText.trim()
   if (!trimmed) return null
 
@@ -117,7 +121,8 @@ export async function condenseForSpeech(finalText: string): Promise<string | nul
         allowedTools: [],
         maxTurns: 1,
         persistSession: false,
-        env: buildChildEnv()
+        env: buildChildEnv(),
+        ...(claudeExecutable ? { pathToClaudeCodeExecutable: claudeExecutable } : {})
       }
     })) {
       if (message.type === 'result') {

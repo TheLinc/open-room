@@ -135,11 +135,17 @@ export function sanitizeOverrides(patch: unknown): SessionOverridePatch {
   else if (typeof raw.model === 'string' && MODEL_IDS.includes(raw.model)) clean.model = raw.model
 
   if (raw.effort === null) clean.effort = null
-  else if (typeof raw.effort === 'string' && (EFFORT_LEVELS as readonly string[]).includes(raw.effort))
+  else if (
+    typeof raw.effort === 'string' &&
+    (EFFORT_LEVELS as readonly string[]).includes(raw.effort)
+  )
     clean.effort = raw.effort as SessionOverrides['effort']
 
   if (raw.permissionMode === null) clean.permissionMode = null
-  else if (typeof raw.permissionMode === 'string' && PERMISSION_MODE_IDS.includes(raw.permissionMode))
+  else if (
+    typeof raw.permissionMode === 'string' &&
+    PERMISSION_MODE_IDS.includes(raw.permissionMode)
+  )
     clean.permissionMode = raw.permissionMode as SessionPermissionMode
 
   return clean

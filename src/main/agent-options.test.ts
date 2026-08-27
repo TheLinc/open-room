@@ -149,3 +149,23 @@ describe('session overrides', () => {
     expect('effort' in agentQueryOptions(agent(), null, voiceServer, undefined, {})).toBe(false)
   })
 })
+
+describe('agentQueryOptions executable', () => {
+  it('names the unpacked claude binary so the SDK does not spawn it from inside the asar', () => {
+    // Measured in the packaged build: without this the SDK resolved its
+    // bundled claude.exe under app.asar and every agent failed to launch.
+    const options = agentQueryOptions(
+      agent(),
+      null,
+      voiceServer,
+      undefined,
+      {},
+      'C:/app.asar.unpacked/claude.exe'
+    )
+    expect(options.pathToClaudeCodeExecutable).toBe('C:/app.asar.unpacked/claude.exe')
+  })
+
+  it('leaves the SDK to its own resolution when no binary was found', () => {
+    expect('pathToClaudeCodeExecutable' in build()).toBe(false)
+  })
+})

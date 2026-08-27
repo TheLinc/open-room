@@ -19,6 +19,7 @@ import {
   broadcastPermissionResolved,
   broadcastQuota,
   broadcastRuntime,
+  broadcastLogin,
   broadcastTranscript,
   broadcastSettingsChanged,
   broadcastTranscriptCleared,
@@ -26,6 +27,8 @@ import {
 } from './ipc'
 import { ConfigStore } from './config-store'
 import { AgentSupervisor } from './agent-supervisor'
+import { checkLogin } from './login-check'
+import type { LoginStatus } from '@shared/login'
 import { ConversationStore } from './conversation-store'
 import { SpeechBus } from './speech-bus'
 import { NotificationSink } from './notification-sink'
@@ -108,6 +111,21 @@ async function primeSpeech(): Promise<void> {
 let accountQuota: RateLimitStatus | null = null
 
 /**
+ * The machine's Claude Code login, checked at launch by asking the SDK's own
+ * binary. Like quota it belongs to the account, not to any agent. It is
+ * rechecked when the user asks and when an agent fails for want of it — the
+ * one event that says the launch-time answer has gone stale.
+ */
+let accountLogin: LoginStatus = { state: 'unknown' }
+
+async function recheckLogin(): Promise<LoginStatus> {
+  const status = await checkLogin()
+  accountLogin = status
+  broadcastLogin(status)
+  return status
+}
+
+/**
  * Records quota and surfaces it where it can actually be seen.
  *
  * The banner alone is not enough: this app expects the main window to be
@@ -138,6 +156,7 @@ const supervisor = new AgentSupervisor(
     onRuntime: (runtime) => {
       broadcastRuntime(runtime)
       void pushHud()
+      if (runtime.error?.kind === 'not-authenticated') void recheckLogin()
     },
     onTranscript: broadcastTranscript,
     onPermissionRequest: (request) => {
@@ -531,9 +550,13 @@ app.whenReady().then(async () => {
       void refreshHotkeys()
       void refreshWake()
     },
-    () => accountQuota
+    () => accountQuota,
+    { read: () => accountLogin, recheck: recheckLogin }
   )
   createWindow()
+  // Before any agent can be asked to run: a signed-out account gets the
+  // first-run screen instead of a failing agent.
+  void recheckLogin()
 
   ipcMain.handle(IpcChannel.getHotkeyFailures, () => hotkeyFailures)
 

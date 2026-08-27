@@ -16,8 +16,16 @@ files:
   - '!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
   - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
+# Everything that must be a real file on disk rather than a member of the
+# asar: native modules, and the SDK's own claude binary, which the SDK spawns
+# and no archive can execute. electron-builder unpacks most of these on its
+# own by detecting .node files; listing them keeps that from depending on a
+# heuristic, and the SDK binary is a plain executable the heuristic can miss.
 asarUnpack:
   - resources/**
+  - node_modules/@anthropic-ai/claude-agent-sdk-*/**
+  - node_modules/onnxruntime-node/**
+  - node_modules/@img/**
 win:
   executableName: open-room
 nsis:
@@ -28,23 +36,14 @@ nsis:
 mac:
   entitlementsInherit: build/entitlements.mac.plist
   extendInfo:
-    - NSCameraUsageDescription: Application requests access to the device's camera.
-    - NSMicrophoneUsageDescription: Application requests access to the device's microphone.
-    - NSDocumentsFolderUsageDescription: Application requests access to the user's Documents folder.
-    - NSDownloadsFolderUsageDescription: Application requests access to the user's Downloads folder.
+    # The only permission the app asks for. The listening overlay owns the
+    # microphone; nothing touches the camera or the user's folders.
+    - NSMicrophoneUsageDescription: Open Room listens for push-to-talk and wake words when voice input is enabled.
+  # Unsigned and unnotarized for now — no Apple Developer account. The README
+  # carries the Gatekeeper bypass. Reversible whenever signing is set up.
   notarize: false
 dmg:
   artifactName: ${name}-${version}.${ext}
-linux:
-  target:
-    - AppImage
-    - snap
-    - deb
-  maintainer: Lincoln Laylor
-  category: Utility
-appImage:
-  artifactName: ${name}-${version}.${ext}
+# No auto-update. The scaffold pointed `publish` at a placeholder URL, which
+# electron-builder would otherwise bake into the app as an update feed.
 npmRebuild: false
-publish:
-  provider: generic
-  url: https://example.com/auto-updates

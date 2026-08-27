@@ -79,7 +79,7 @@ describe('classifyThrownError', () => {
   })
 
   it('attaches an actionable hint where one exists', () => {
-    expect(classifyThrownError(new Error('spawn claude ENOENT')).hint).toContain('npm install')
+    expect(classifyThrownError(new Error('spawn claude ENOENT')).hint).toContain('Reinstall')
     expect(classifyThrownError(new Error('Not logged in')).hint).toContain('sign in')
   })
 })

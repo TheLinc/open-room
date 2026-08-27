@@ -48,8 +48,11 @@ export function kindFromAssistantError(error: string): AgentErrorKind {
 }
 
 const HINTS: Partial<Record<AgentErrorKind, string>> = {
-  'cli-missing': 'Install Claude Code with: npm install -g @anthropic-ai/claude-code',
-  'not-authenticated': 'Run `claude` in a terminal and sign in, then try again.',
+  // The SDK ships its own claude binary, so this is a broken install rather
+  // than a missing global one.
+  'cli-missing': 'The bundled Claude Code binary is missing or cannot start. Reinstall Open Room.',
+  'not-authenticated':
+    'Install Claude Code, run `claude` in a terminal and sign in, then try again.',
   'workspace-missing': 'Pick a folder that exists in this agent’s settings.',
   'rate-limited': 'Usage limit reached. This clears on its own — try again shortly.',
   overloaded: 'The service is busy. This usually clears within a minute.',
