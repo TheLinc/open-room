@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Download, Loader2 } from 'lucide-react'
 import { findEntry, formatBytes, totalBytes } from '@shared/model-catalog'
 import type { HotkeyFailure } from '@shared/hotkeys'
@@ -68,6 +68,24 @@ export function SettingsDialog({
   // Pushed as well as polled: the overlay enumerates, so the list can arrive
   // after this opened, and devices come and go while it is open.
   useEffect(() => window.openRoom.onMicrophonesChanged(setMicrophones), [])
+
+  // The editor command is free text, and every other field here saves on
+  // change. Doing that per keystroke writes settings.json and re-registers
+  // the global hotkeys once per character, so this one is held locally and
+  // written after a pause (or on blur). Null means "showing the saved value".
+  const [editorDraft, setEditorDraft] = useState<string | null>(null)
+  const flushEditor = useCallback((): void => {
+    if (editorDraft === null || !settings) return
+    if (editorDraft !== settings.editorCommand) {
+      void save({ ...settings, editorCommand: editorDraft })
+    }
+    setEditorDraft(null)
+  }, [editorDraft, settings, save])
+  useEffect(() => {
+    if (editorDraft === null) return
+    const timer = setTimeout(flushEditor, 400)
+    return () => clearTimeout(timer)
+  }, [editorDraft, flushEditor])
 
   // Polled rather than pushed: the download runs in the sidecar, and a status
   // call is cheap next to fetching 154 MB.
@@ -149,9 +167,10 @@ export function SettingsDialog({
                 <Label htmlFor="editor">Open files with</Label>
                 <Input
                   id="editor"
-                  value={settings.editorCommand}
+                  value={editorDraft ?? settings.editorCommand}
                   placeholder="code -g {path}:{line}"
-                  onChange={(e) => void save({ ...settings, editorCommand: e.target.value })}
+                  onChange={(e) => setEditorDraft(e.target.value)}
+                  onBlur={flushEditor}
                 />
                 <p className="text-xs text-muted-foreground">
                   A command; {'{path}'} and {'{line}'} are filled in. Leave empty to use whatever

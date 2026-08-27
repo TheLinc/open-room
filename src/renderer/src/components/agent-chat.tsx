@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { CircleAlert, Loader2, Pencil, Send, Square, X } from 'lucide-react'
+import { CircleAlert, ListPlus, Loader2, Pencil, Send, Square, X } from 'lucide-react'
 import type { Agent } from '@shared/agent'
 import { colorHexFor } from '@shared/agent-colors'
 import {
@@ -241,15 +241,19 @@ export function AgentChat({
   return (
     <div
       className="relative flex min-h-0 flex-1 flex-col"
+      // Only a drag carrying files is offered the overlay; a text selection
+      // dragged across the pane is not something to attach.
       onDragEnter={(e) => {
+        if (!e.dataTransfer.types.includes('Files')) return
         e.preventDefault()
         dragDepth.current += 1
         setDragging(true)
       }}
       onDragOver={(e) => {
-        e.preventDefault()
+        if (e.dataTransfer.types.includes('Files')) e.preventDefault()
       }}
-      onDragLeave={() => {
+      onDragLeave={(e) => {
+        if (!e.dataTransfer.types.includes('Files')) return
         dragDepth.current -= 1
         if (dragDepth.current === 0) setDragging(false)
       }}
@@ -567,7 +571,7 @@ export function AgentChat({
             size="icon"
             title={busy ? 'Queue for after this turn' : 'Send'}
           >
-            <Send />
+            {busy ? <ListPlus /> : <Send />}
           </Button>
         </div>
       </div>

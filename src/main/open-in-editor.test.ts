@@ -205,3 +205,13 @@ describe('openInEditor', () => {
     if (!result.ok) expect(result.message).toMatch(/quotes/)
   })
 })
+
+describe('openInEditor timing', () => {
+  it('resolves as soon as a direct executable has started, not after the grace window', async () => {
+    // node stays up for three seconds; the click must not wait for it.
+    const started = Date.now()
+    const result = await openInEditor('node -e {path}', 'setTimeout(function(){},3000)')
+    expect(result).toEqual({ ok: true })
+    expect(Date.now() - started).toBeLessThan(1000)
+  }, 10_000)
+})

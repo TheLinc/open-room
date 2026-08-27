@@ -191,11 +191,15 @@ export function resolveExecutable(
 }
 
 /**
- * How long to wait for a spawned editor command to prove itself broken.
+ * How long to wait for a `.cmd`/`.bat` shim to prove itself broken.
  *
- * A command that exits non-zero within this window is reported as broken;
- * one still running after it has elapsed is treated as having worked and
- * left to run on its own.
+ * Only the shim branch needs it: there the process that starts is cmd.exe,
+ * which says nothing about whether the command inside it ran. A shim that
+ * exits non-zero within this window is reported as broken; one still running
+ * after it has elapsed is treated as having worked and left to run on its
+ * own. A directly spawned executable was resolved on disk and started as
+ * itself, so its `spawn` event is the answer, and the click resolves at once
+ * — an editor that stays running (notepad) must not cost the whole window.
  */
 const GRACE_PERIOD_MS = 1500
 
@@ -310,6 +314,15 @@ export async function openInEditor(
     }, GRACE_PERIOD_MS)
 
     child.once('error', (error) => finish({ ok: false, message: error.message }))
+
+    // A direct executable genuinely started once `spawn` fires; report
+    // success there rather than waiting to see whether it stays up.
+    if (!plan.verbatim) {
+      child.once('spawn', () => {
+        child.unref()
+        finish({ ok: true })
+      })
+    }
 
     child.once('exit', (code) => {
       if (code === 0) {
