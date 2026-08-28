@@ -4,6 +4,8 @@ A desktop app for running several named Claude Code agents at once and talking t
 
 Each agent is a persona: it has a name, a colour, its own model and tool access, a voice, a workspace folder, and a persistent `AGENT.md` describing its role. You address one by name ("hey Atlas, run the tests"), or press a hotkey and speak, or type into its chat pane. It works in the background and reports back through a native notification or, if you enable it, out loud in its own voice. Conversations persist across restarts, so an agent you spoke to yesterday remembers what you were doing.
 
+![Two agents in Open Room: Atlas, mid-task, asking permission to run a command, while Juno has finished](docs/screenshot.png)
+
 Open Room is a **conversational layer over Claude Code**, not a task launcher wrapped around it. Every agent is a real Claude Code session driven through the [Agent SDK](https://docs.anthropic.com/en/docs/agent-sdk), and its chat pane shows exactly what the terminal would.
 
 > **Read this first.** Open Room uses the Claude Code account already logged in on your machine. It ships no credentials, handles no API keys, and never proxies anyone else's account — every turn any agent runs bills *your* subscription. Running four agents concurrently means four Claude Code sessions drawing on one account; rate-limit events are surfaced in the app because they are a routine part of that.
