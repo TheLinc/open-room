@@ -14,6 +14,7 @@ import { checkAgentName } from '@shared/phonetics'
 import type { HotkeyFailure } from '@shared/hotkeys'
 import { explainAccelerator } from '@shared/accelerator'
 import { HotkeyInput } from '@/components/hotkey-input'
+import { useStaticDialog } from '@/hooks/use-static-dialog'
 import type { KokoroStatus, SystemVoice } from '@shared/voice-rpc'
 import { DEFAULT_KOKORO_VOICE, KOKORO_VOICES } from '@shared/kokoro-voices'
 import {
@@ -149,6 +150,7 @@ export function AgentEditor({
   const isNew = agent === undefined
   const [saveError, setSaveError] = useState<string | null>(null)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
+  const staticDialog = useStaticDialog()
 
   const defaults = useMemo(
     () => toFormValues(agent ?? createDefaultAgent('', '', 'amber'), CLAUDE_CODE_TOOLS),
@@ -230,14 +232,20 @@ export function AgentEditor({
     <Dialog open={open} onOpenChange={onOpenChange}>
       {/* `overflow-hidden` matters: DialogContent is a grid by default with no
           clipping, so without it the tab content paints past the rounded
-          container instead of being confined to the scroll area below. */}
-      <DialogContent className="flex max-h-[85vh] h-full flex-col gap-0 overflow-hidden sm:max-w-2xl px-0">
+          container instead of being confined to the scroll area below.
+          Static backdrop: an outside click pulses rather than closes — a form
+          full of typing must only close on a deliberate gesture (Esc, the X,
+          Cancel, Save). See use-static-dialog.ts. */}
+      <DialogContent
+        {...staticDialog}
+        className="flex max-h-[85vh] h-full flex-col gap-0 overflow-hidden sm:max-w-2xl px-0"
+      >
         <DialogHeader className="px-2">
           <DialogTitle>{isNew ? 'New agent' : `Edit ${agent.config.name}`}</DialogTitle>
           <DialogDescription>
             {isNew
               ? 'Give the agent a name you can say out loud, and a folder to work in.'
-              : 'Changes are written to config.json and AGENT.md immediately.'}
+              : 'Saved to config.json and AGENT.md when you save changes.'}
           </DialogDescription>
         </DialogHeader>
 

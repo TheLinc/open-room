@@ -280,3 +280,15 @@
     vertical-align: middle;
   }
 }
+
+/* The static-dialog pulse: feedback for an outside click a form dialog
+   deliberately ignored (see use-static-dialog.ts). Animates the `scale`
+   property so it composes with the content's translate centering. */
+@keyframes dialog-attention {
+  50% {
+    scale: 1.015;
+  }
+}
+.dialog-attention {
+  animation: dialog-attention 180ms ease-out;
+}
