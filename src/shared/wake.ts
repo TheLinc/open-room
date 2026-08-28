@@ -8,11 +8,15 @@ import { phoneticKeys } from './phonetics'
  * and `Atlus` are the same sound and must both hit; edit distance would also
  * accept `Atlas` for `Atlantic`, which is a different word entirely.
  *
- * The `hey` prefix is load-bearing and not decoration. The SpeechBus prefixes
- * spoken lines with a bare agent name (`"Atlas — the build is green"`), so
+ * The `hey` prefix is load-bearing and not decoration. The SpeechBus plays
+ * spoken lines verbatim and never emits an agent name into the audio, so
  * requiring `hey` means TTS output cannot form a valid wake phrase no matter
  * what an agent says. That is a structural guarantee rather than a heuristic,
- * and it is the first of the three self-trigger defences.
+ * and it is the first of the three self-trigger defences. (The bus used to
+ * prefix lines with a bare name — `"Atlas — the build is green"` — which the
+ * `hey` requirement neutralised; dropping the prefix strengthened this rather
+ * than weakening it, and the requirement still matters because a name can
+ * reach the microphone by other routes.)
  */
 
 export type WakeCandidate = {
