@@ -37,6 +37,7 @@ import { FilePicker } from '@/components/file-picker'
 import { applyMention, filterFiles, mentionAt, mentionFor } from '@shared/file-mentions'
 import { FilesChanged } from '@/components/files-changed'
 import { filesChangedIn, isPrompt, turnBefore } from '@shared/files-changed'
+import { trimOverlap } from '@shared/history-overlap'
 
 type Props = {
   agent: Agent
@@ -89,7 +90,9 @@ export function AgentChat({
   // Silent messages must be dropped before render, not inside the row: an
   // empty wrapper still reserves its contain-intrinsic-size placeholder.
   const visible = entries.filter(isRenderable)
-  const historyVisible = conversations.history.filter(isRenderable)
+  // History is re-read on every mount and the live list survives sidebar
+  // switches, so after a live turn the two overlap; see trimOverlap.
+  const historyVisible = trimOverlap(conversations.history, entries).filter(isRenderable)
 
   // Follow the tail only while the user is already at the bottom — yanking
   // them down mid-scroll while an agent streams is the classic chat-log

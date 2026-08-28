@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { AgentRuntime, TranscriptEntry } from '@shared/agent-runtime'
-import { CONVERSATION_PAGE_SIZE, type Conversation } from '@shared/conversation'
+import { CONVERSATION_PAGE_SIZE, autoSelectTarget, type Conversation } from '@shared/conversation'
+
+const EMPTY_CONVERSATIONS: Conversation[] = []
 
 export type ConversationsApi = {
   conversations: Conversation[]
@@ -31,7 +33,14 @@ export function useConversations(
   runtime: AgentRuntime,
   persistSession: boolean
 ): ConversationsApi {
-  const [conversations, setConversations] = useState<Conversation[]>([])
+  /**
+   * The list, stamped with the agent it was fetched for. The fetch is async,
+   * so after switching agents this briefly holds the previous agent's
+   * conversations; deriving from the stamp keeps them from being shown or —
+   * worse — auto-selected for the wrong agent.
+   */
+  const [listed, setListed] = useState<{ agentId: string; list: Conversation[] } | null>(null)
+  const conversations = listed && listed.agentId === agentId ? listed.list : EMPTY_CONVERSATIONS
   const [loadingEarlier, setLoadingEarlier] = useState(false)
 
   /**
@@ -65,10 +74,11 @@ export function useConversations(
 
   const refresh = useCallback(async () => {
     if (!agentId || !persistSession) {
-      setConversations([])
+      setListed(null)
       return
     }
-    setConversations(await window.openRoom.listConversations(agentId))
+    const list = await window.openRoom.listConversations(agentId)
+    setListed({ agentId, list })
   }, [agentId, persistSession])
 
   useEffect(() => {
@@ -82,13 +92,19 @@ export function useConversations(
   // agent is idle and nothing is chosen yet: doing this to a working agent
   // would tear down the session it is mid-turn on.
   useEffect(() => {
-    if (!agentId || activeId || conversations.length === 0) return
-    if (runtime.state !== 'idle') return
-    if (autoSelected.current === agentId) return
+    const target = autoSelectTarget({
+      agentId,
+      listedFor: listed?.agentId ?? null,
+      conversations,
+      activeId,
+      state: runtime.state,
+      alreadyFor: autoSelected.current
+    })
+    if (!agentId || !target) return
 
     autoSelected.current = agentId
-    void window.openRoom.selectConversation(agentId, conversations[0].sessionId)
-  }, [agentId, activeId, conversations, runtime.state])
+    void window.openRoom.selectConversation(agentId, target)
+  }, [agentId, listed, activeId, conversations, runtime.state])
 
   /**
    * Persisted messages are wrapped in the same envelope live entries use, so

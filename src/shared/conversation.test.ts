@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { describeLastActive, resolvePageRange } from './conversation'
+import { autoSelectTarget, describeLastActive, resolvePageRange } from './conversation'
 
 describe('describeLastActive', () => {
   const now = Date.UTC(2026, 7, 16, 12, 0, 0)
@@ -50,5 +50,44 @@ describe('resolvePageRange', () => {
 
   it('never requests a zero-length page', () => {
     expect(resolvePageRange(10, { limit: 0 })).toEqual({ start: 9, end: 10 })
+  })
+})
+
+describe('autoSelectTarget', () => {
+  const base = {
+    agentId: 'juno',
+    listedFor: 'juno',
+    conversations: [{ sessionId: 's-juno', title: 'x', lastModified: 2 }],
+    activeId: null,
+    state: 'idle' as const,
+    alreadyFor: null
+  }
+
+  it('lands an idle agent with nothing chosen in its most recent conversation', () => {
+    expect(autoSelectTarget(base)).toBe('s-juno')
+  })
+
+  it('refuses a list that was loaded for a different agent', () => {
+    // The list refreshes asynchronously after the selected agent changes, so
+    // for a moment it is the previous agent's. Selecting from it handed one
+    // agent another's session — its turn was appended to the other's file.
+    expect(autoSelectTarget({ ...base, listedFor: 'atlas' })).toBeNull()
+  })
+
+  it('does nothing once a conversation is chosen', () => {
+    expect(autoSelectTarget({ ...base, activeId: 's-other' })).toBeNull()
+  })
+
+  it('does not touch a working agent', () => {
+    expect(autoSelectTarget({ ...base, state: 'working' })).toBeNull()
+  })
+
+  it('fires once per agent so it cannot fight a deliberate deselection', () => {
+    expect(autoSelectTarget({ ...base, alreadyFor: 'juno' })).toBeNull()
+    expect(autoSelectTarget({ ...base, alreadyFor: 'atlas' })).toBe('s-juno')
+  })
+
+  it('has nothing to pick from an empty list', () => {
+    expect(autoSelectTarget({ ...base, conversations: [] })).toBeNull()
   })
 })

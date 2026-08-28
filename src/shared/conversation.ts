@@ -64,3 +64,33 @@ export function describeLastActive(lastModified: number, now = Date.now()): stri
   const days = Math.round(seconds / 86_400)
   return `${days} day${days === 1 ? '' : 's'} ago`
 }
+
+/**
+ * Which conversation an agent should land in when its pane opens, or null
+ * to leave things as they are.
+ *
+ * Only an idle agent with nothing chosen yet, and only once per agent, so
+ * this cannot fight a user's choice or tear down a session mid-turn. The
+ * list must have been loaded *for this agent*: it refreshes asynchronously
+ * after the selected agent changes, and for a moment it is still the
+ * previous agent's. Selecting from it during that window handed one agent
+ * another's session id — measured: the second agent's turn was appended
+ * to the first agent's transcript file, with the first agent's context.
+ */
+export function autoSelectTarget(input: {
+  agentId: string | null
+  /** The agent the list was fetched for. */
+  listedFor: string | null
+  conversations: Conversation[]
+  activeId: string | null
+  state: string
+  /** The agent this already fired for, if any. */
+  alreadyFor: string | null
+}): string | null {
+  const { agentId, listedFor, conversations, activeId, state, alreadyFor } = input
+  if (!agentId || listedFor !== agentId) return null
+  if (activeId || conversations.length === 0) return null
+  if (state !== 'idle') return null
+  if (alreadyFor === agentId) return null
+  return conversations[0].sessionId
+}
