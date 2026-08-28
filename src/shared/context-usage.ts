@@ -5,17 +5,35 @@
  * filling up is a normal event rather than an edge case — and until now the
  * only signal was an agent starting to behave badly.
  *
- * Derived from the ordinary result message, which matters: the SDK's richer
- * `context_usage` (per-category breakdown, MCP tool costs, memory files) is
- * attached only to `/context` results, so a detailed card would need slash
- * command execution. The headline number does not, and that is what makes
- * this independent of the rest of Phase 5c.
+ * The headline number is derived from the ordinary result message, so it
+ * costs nothing per turn. The SDK's richer breakdown (per-category tokens,
+ * MCP tool costs, memory files) is a `getContextUsage()` control request;
+ * the one piece of it read today is the auto-compact threshold, fetched
+ * once per session, which anchors the severity bands below.
  */
 
 /** Amber: worth knowing about before starting something long. */
 export const CONTEXT_WARN_FRACTION = 0.7
 /** Red: compaction is imminent and worth doing deliberately. */
 export const CONTEXT_HIGH_FRACTION = 0.9
+
+/**
+ * How far short of the compact point each band starts, as a fraction of the
+ * window. Red at 5 points out is "the next long turn triggers it"; amber at
+ * 15 is room to finish what is in flight and compact deliberately.
+ */
+export const CONTEXT_WARN_MARGIN = 0.15
+export const CONTEXT_HIGH_MARGIN = 0.05
+
+/**
+ * What the session reported about auto-compaction, read once per session
+ * from `getContextUsage()`. `thresholdTokens` is absolute — measured on a
+ * real session it was 167000 against a 200000 window, not a fraction.
+ */
+export type AutoCompact = {
+  enabled: boolean
+  thresholdTokens: number | null
+}
 
 export type ContextUsage = {
   /** Tokens the last request's prompt occupied. */
@@ -95,10 +113,33 @@ export function contextUsageFrom(
 
 export type ContextSeverity = 'ok' | 'warn' | 'high'
 
-export function contextSeverity(usage: ContextUsage | null): ContextSeverity {
+/**
+ * Where this session's window actually stops being usable, as a fraction:
+ * the auto-compact point when the session reported one, the window itself
+ * when compaction is off (the request fails rather than compacts), and null
+ * when nothing has been reported — the legacy constants then apply.
+ */
+export function compactAnchor(
+  usage: ContextUsage,
+  autoCompact: AutoCompact | null | undefined
+): number | null {
+  if (!autoCompact) return null
+  if (!autoCompact.enabled) return 1
+  if (!autoCompact.thresholdTokens || autoCompact.thresholdTokens <= 0) return null
+  if (usage.windowTokens <= 0) return null
+  return autoCompact.thresholdTokens / usage.windowTokens
+}
+
+export function contextSeverity(
+  usage: ContextUsage | null,
+  autoCompact?: AutoCompact | null
+): ContextSeverity {
   if (!usage) return 'ok'
-  if (usage.fraction >= CONTEXT_HIGH_FRACTION) return 'high'
-  if (usage.fraction >= CONTEXT_WARN_FRACTION) return 'warn'
+  const anchor = compactAnchor(usage, autoCompact)
+  const high = anchor === null ? CONTEXT_HIGH_FRACTION : anchor - CONTEXT_HIGH_MARGIN
+  const warn = anchor === null ? CONTEXT_WARN_FRACTION : anchor - CONTEXT_WARN_MARGIN
+  if (usage.fraction >= high) return 'high'
+  if (usage.fraction >= warn) return 'warn'
   return 'ok'
 }
 

@@ -1,4 +1,4 @@
-import type { ContextUsage } from './context-usage'
+import type { AutoCompact, ContextUsage } from './context-usage'
 import type { SessionOverrides } from './session-overrides'
 import type { SlashCommandInfo } from './slash-commands'
 import type { McpServerHealth } from './mcp-health'
@@ -126,6 +126,14 @@ export type AgentRuntime = {
    */
   contextUsage: ContextUsage | null
   /**
+   * Whether and where this session auto-compacts, from `getContextUsage()`
+   * on the session's first init. The meter's warning bands anchor to it;
+   * null (nothing reported yet) falls back to the legacy fractions. Kept
+   * when the session ends, like `commands`: it is CLI configuration, not
+   * conversation state.
+   */
+  autoCompact: AutoCompact | null
+  /**
    * Model, effort and permission mode changed from inside the conversation.
    *
    * Sticky for the life of the session and dropped when it ends, at which
@@ -207,6 +215,7 @@ export function emptyRuntime(agentId: string): AgentRuntime {
     usage: { ...EMPTY_USAGE },
     rateLimit: null,
     contextUsage: null,
+    autoCompact: null,
     overrides: {},
     commands: [],
     mcpServers: [],

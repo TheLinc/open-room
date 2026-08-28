@@ -92,6 +92,12 @@ type Session = {
   seen: Set<string>
   /** Prompts typed while this turn runs; sent one at a time as turns end. */
   queued: QueuedPrompt[]
+  /**
+   * Whether the auto-compact threshold has been asked for. Once per session:
+   * the init message is re-sent every turn, and `getContextUsage()` is a
+   * control round trip.
+   */
+  autoCompactFetched: boolean
 }
 
 /** The shape `query()` accepts on its input stream. */
@@ -343,7 +349,8 @@ export class AgentSupervisor {
         turnSpeech,
         commands: { loaded: false, terminal: [] },
         seen: new Set(),
-        queued: []
+        queued: [],
+        autoCompactFetched: false
       }
       session.pump = this.pump(session)
       this.sessions.set(id, session)
@@ -535,6 +542,11 @@ export class AgentSupervisor {
         const health = mcpHealthUpdate(this.runtimeFor(id).mcpServers, message.mcp_servers)
         this.patch(id, { mcpServers: health.servers })
         if (health.fetchDetail) void this.loadMcpDetail(session)
+
+        if (!session.autoCompactFetched) {
+          session.autoCompactFetched = true
+          void this.loadAutoCompact(session)
+        }
       }
 
       // Tag the session so it can be found again as this agent's. Resumed
@@ -673,6 +685,27 @@ export class AgentSupervisor {
       this.patch(session.agentId, { commands: visibleCommands(all, session.commands.terminal) })
     } catch (error) {
       console.warn(`[supervisor] could not list commands for ${session.agentId}:`, error)
+    }
+  }
+
+  /**
+   * Reads where this session auto-compacts, so the context meter's warning
+   * bands can anchor to the point compaction will actually happen rather
+   * than to a round number. `autoCompactThreshold` is absolute tokens
+   * (measured: 167000 against a 200000 window). Failure leaves the runtime
+   * field as it was, and the meter falls back to the legacy fractions.
+   */
+  private async loadAutoCompact(session: Session): Promise<void> {
+    try {
+      const usage = await session.query.getContextUsage()
+      this.patch(session.agentId, {
+        autoCompact: {
+          enabled: usage.isAutoCompactEnabled,
+          thresholdTokens: usage.autoCompactThreshold ?? null
+        }
+      })
+    } catch (error) {
+      console.warn(`[supervisor] could not read auto-compact for ${session.agentId}:`, error)
     }
   }
 

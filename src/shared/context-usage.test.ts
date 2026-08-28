@@ -114,6 +114,39 @@ describe('contextSeverity', () => {
     expect(contextSeverity(at(0.9))).toBe('high')
     expect(contextSeverity(at(1.4))).toBe('high')
   })
+
+  /**
+   * Anchored figures are from a real session: getContextUsage() on
+   * claude-haiku-4-5 reported autoCompactThreshold 167000 against a 200000
+   * window — absolute tokens, not a fraction — with isAutoCompactEnabled
+   * true. Anchor 0.835, so warn from 0.685 and high from 0.785.
+   */
+  const measured = { usedTokens: 0, windowTokens: 200000, fraction: 0 }
+  const real = (fraction: number) => ({ ...measured, fraction })
+  const compact = { enabled: true, thresholdTokens: 167000 }
+
+  it('anchors both bands to the point the session will actually compact at', () => {
+    expect(contextSeverity(real(0.68), compact)).toBe('ok')
+    expect(contextSeverity(real(0.69), compact)).toBe('warn')
+    expect(contextSeverity(real(0.78), compact)).toBe('warn')
+    expect(contextSeverity(real(0.79), compact)).toBe('high')
+  })
+
+  it('anchors to the window itself when auto-compact is off', () => {
+    // With compaction disabled the real cliff is the window: the request
+    // fails rather than compacts, so the margins hang off 1.0.
+    const off = { enabled: false, thresholdTokens: null }
+    expect(contextSeverity(real(0.84), off)).toBe('ok')
+    expect(contextSeverity(real(0.86), off)).toBe('warn')
+    expect(contextSeverity(real(0.96), off)).toBe('high')
+  })
+
+  it('keeps the legacy bands when the threshold is unknown', () => {
+    expect(contextSeverity(real(0.7), null)).toBe('warn')
+    expect(contextSeverity(real(0.7), { enabled: true, thresholdTokens: null })).toBe('warn')
+    expect(contextSeverity(real(0.7), { enabled: true, thresholdTokens: 0 })).toBe('warn')
+    expect(contextSeverity(real(0.9), null)).toBe('high')
+  })
 })
 
 describe('describeContext', () => {

@@ -315,7 +315,7 @@ export function AgentChat({
 
         <div className="flex shrink-0 items-center gap-2">
           <McpHealth servers={runtime.mcpServers} />
-          <ContextMeter usage={runtime.contextUsage} />
+          <ContextMeter usage={runtime.contextUsage} autoCompact={runtime.autoCompact} />
           <SessionControls
             config={agent.config}
             overrides={runtime.overrides}
