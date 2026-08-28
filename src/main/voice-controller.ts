@@ -71,7 +71,10 @@ export class VoiceController {
     }
 
     const settings = await this.deps.readSettings()
-    if (!settings.voiceInputEnabled) {
+    // Either path justifies a capture: hotkeys only exist with push-to-talk
+    // on, and a wake match arrives here too — gating on the push-to-talk
+    // flag alone made wake-only mode hear its name and refuse to listen.
+    if (!settings.voiceInputEnabled && !settings.wakeWordEnabled) {
       this.apply({ type: 'blocked', message: 'Voice input is turned off' })
       return
     }

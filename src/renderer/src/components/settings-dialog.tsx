@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Download, Loader2 } from 'lucide-react'
 import { findEntry, formatBytes, totalBytes } from '@shared/model-catalog'
 import type { HotkeyFailure } from '@shared/hotkeys'
 import type { MicrophoneDevice } from '@shared/voice-input'
 import type { SttStatus } from '@shared/voice-rpc'
 import { useSettings } from '@/hooks/use-settings'
+import { useStaticDialog } from '@/hooks/use-static-dialog'
 import { explainAccelerator } from '@shared/accelerator'
 import { HotkeyInput } from '@/components/hotkey-input'
 import { MicMeter } from '@/components/mic-meter'
@@ -51,6 +52,7 @@ export function SettingsDialog({
   hotkeyFailures: HotkeyFailure[]
 }): React.JSX.Element {
   const { settings, save, error } = useSettings()
+  const staticDialog = useStaticDialog()
   const [stt, setStt] = useState<SttStatus | null>(null)
   const [downloading, setDownloading] = useState(false)
   const [downloadError, setDownloadError] = useState<string | null>(null)
@@ -102,7 +104,50 @@ export function SettingsDialog({
   const installed = stt?.installed ?? false
   const globalFailure = hotkeyFailures.find((failure) => failure.agentId === null)
 
-  const download = async (): Promise<void> => {
+  /**
+   * Which switch is waiting on the model download offer. The switches used
+   * to be disabled until Whisper was installed, with the download at the
+   * bottom of the dialog — a dead control with its explanation somewhere
+   * else, which read as broken. Flipping one now offers the download in
+   * place; declining cancels the enable (the setting was never written).
+   */
+  const [pendingEnable, setPendingEnable] = useState<'ptt' | 'wake' | null>(null)
+
+  // The download takes minutes and other settings can change during it, so
+  // the completion save must not write back a stale copy from its closure.
+  const settingsRef = useRef(settings)
+  useEffect(() => {
+    settingsRef.current = settings
+  }, [settings])
+
+  const enable = (which: 'ptt' | 'wake', on: boolean): void => {
+    const current = settingsRef.current
+    if (!current) return
+    void save(
+      which === 'ptt' ? { ...current, voiceInputEnabled: on } : { ...current, wakeWordEnabled: on }
+    )
+  }
+
+  const requestEnable = (which: 'ptt' | 'wake', on: boolean): void => {
+    setEnableError(null)
+    // Turning off never needs the model, and with it installed there is
+    // nothing to ask.
+    if (!on || installed) {
+      setPendingEnable(null)
+      enable(which, on)
+      return
+    }
+    setPendingEnable(which)
+  }
+
+  // Set while a download accepted from a toggle is running, so the voice
+  // section shows its progress there and the switch can flip on when it
+  // lands. A download started from the model card below stays down there.
+  const [completing, setCompleting] = useState<'ptt' | 'wake' | null>(null)
+  // A failure of that download, shown beside the switches that asked for it.
+  const [enableError, setEnableError] = useState<string | null>(null)
+
+  const download = async (): Promise<boolean> => {
     setDownloading(true)
     setDownloadError(null)
 
@@ -111,12 +156,36 @@ export function SettingsDialog({
     setDownloading(false)
     setStt(await window.openRoom.sttStatus())
     if (!result.ok) setDownloadError(result.message)
+    return result.ok
+  }
+
+  const acceptDownload = async (): Promise<void> => {
+    const which = pendingEnable
+    setPendingEnable(null)
+    if (!which) return
+
+    setCompleting(which)
+    setEnableError(null)
+    const ok = await download()
+    setCompleting(null)
+
+    // Finish what the toggle started; a download that fails leaves the
+    // switch exactly where it was, with the failure shown where it happened.
+    if (ok) enable(which, true)
+    else setEnableError('The download failed — the switch was left off. Details below.')
   }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      {/* DialogContent is a grid and does not clip by default. */}
-      <DialogContent className="flex max-h-[80vh] flex-col overflow-hidden sm:max-w-lg px-0">
+      {/* DialogContent is a grid and does not clip by default. Static
+          backdrop: outside clicks pulse rather than close, the same as the
+          agent editor — settings save on change, so nothing is lost either
+          way, but the two dialogs must not disagree about what a click
+          beside them means. */}
+      <DialogContent
+        {...staticDialog}
+        className="flex max-h-[80vh] flex-col overflow-hidden sm:max-w-lg px-0"
+      >
         <DialogHeader className="px-2">
           <DialogTitle>Settings</DialogTitle>
         </DialogHeader>
@@ -193,12 +262,12 @@ export function SettingsDialog({
                 <Switch
                   id="voice-input"
                   checked={settings.voiceInputEnabled}
-                  // A shortcut that exists but cannot possibly work is worse
-                  // than no shortcut, so this is the gate on the whole feature.
-                  disabled={!installed}
-                  onCheckedChange={(checked) =>
-                    void save({ ...settings, voiceInputEnabled: checked })
-                  }
+                  // Not disabled while the model is missing: the switch is
+                  // how the download gets offered. It stays off until the
+                  // model is actually installed, so a shortcut that cannot
+                  // work still never exists.
+                  disabled={downloading}
+                  onCheckedChange={(checked) => requestEnable('ptt', checked)}
                 />
               </div>
 
@@ -214,12 +283,43 @@ export function SettingsDialog({
                 <Switch
                   id="wake-word"
                   checked={settings.wakeWordEnabled}
-                  disabled={!installed || !settings.voiceInputEnabled}
-                  onCheckedChange={(checked) =>
-                    void save({ ...settings, wakeWordEnabled: checked })
-                  }
+                  // Independent of push-to-talk on purpose: each is its own
+                  // opt-in, and gating this on the other made hands-free-only
+                  // use impossible — while turning push-to-talk off greyed
+                  // this out with the microphone still open behind it.
+                  disabled={downloading}
+                  onCheckedChange={(checked) => requestEnable('wake', checked)}
                 />
               </div>
+
+              {pendingEnable && entry && (
+                <div className="space-y-2 rounded-lg border border-border p-3">
+                  <p className="text-sm">
+                    {pendingEnable === 'ptt' ? 'Push-to-talk needs' : 'Wake words need'} the{' '}
+                    {entry.label} speech model — a one-time {formatBytes(totalBytes(entry))}{' '}
+                    download. It runs entirely on this machine; nothing you say is sent anywhere.
+                  </p>
+                  <div className="flex gap-2">
+                    <Button size="sm" onClick={() => void acceptDownload()}>
+                      <Download />
+                      Download and enable
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => setPendingEnable(null)}>
+                      Not now
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {completing && (
+                <div className="space-y-1">
+                  <Progress value={(stt?.progress ?? 0) * 100} />
+                  <p className="text-xs text-muted-foreground">
+                    Downloading the speech model — the switch flips on when it lands.
+                  </p>
+                </div>
+              )}
+              {enableError && <p className="text-xs text-destructive">{enableError}</p>}
 
               <div className="space-y-2">
                 <Label htmlFor="microphone">Microphone</Label>
@@ -319,8 +419,9 @@ export function SettingsDialog({
                   )}
                   {!installed && !downloading && (
                     <p className="text-xs text-muted-foreground">
-                      Voice input stays off until a model is installed. It runs entirely on this
-                      machine — nothing you say is sent anywhere.
+                      Voice input stays off until this is installed — flipping either switch above
+                      offers the download too. It runs entirely on this machine; nothing you say is
+                      sent anywhere.
                     </p>
                   )}
                 </div>

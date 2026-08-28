@@ -41,6 +41,7 @@ import { WakeController } from './wake-controller'
 import { wakeAction } from './wake-refresh'
 import { MicrophoneTest } from './microphone-test'
 import { AppTray } from './tray'
+import { trayVoiceToggle, voiceActive } from './tray-voice'
 import { IpcChannel } from '@shared/ipc'
 import type { RateLimitStatus } from '@shared/agent-runtime'
 import { pipsFor } from '@shared/pips'
@@ -278,19 +279,37 @@ function showMainWindow(): void {
   mainWindow.focus()
 }
 
-/** The tray's voice toggle. The settings dialog is the other way in. */
+/**
+ * The tray's voice toggle. The settings dialog is the other way in.
+ *
+ * Off is total — both push-to-talk and wake words, and the wake listener is
+ * stopped so the microphone actually closes. On restores push-to-talk only;
+ * `trayVoiceToggle` records why.
+ */
 async function toggleVoiceInput(): Promise<void> {
   const settings = await store.readSettings()
-  const enabled = !settings.voiceInputEnabled
+  const decision = trayVoiceToggle(settings)
 
-  const next = { ...settings, voiceInputEnabled: enabled }
+  // Same invariant as the settings dialog: the setting only becomes true
+  // with the speech model installed. The dialog offers the download in
+  // place; the tray has no surface for that, so it points at Settings.
+  if (decision.enabling && !((await voice.sttStatus().catch(() => null))?.installed ?? false)) {
+    new Notification({
+      title: 'Voice input needs the speech model',
+      body: 'Open Settings and flip the switch there to download it.'
+    }).show()
+    return
+  }
+
+  const next = { ...settings, ...decision.next }
   await store.writeSettings(next)
-  tray.setVoiceEnabled(enabled)
+  tray.setVoiceEnabled(voiceActive(next))
 
   // The settings dialog may be open on the old value. Without this it would
   // show the wrong state and write it straight back on the next save.
   broadcastSettingsChanged(next)
   await refreshHotkeys()
+  await refreshWake()
 }
 
 const hotkeys = new HotkeyManager((agentId) => void controller.onTrigger(agentId))
@@ -546,7 +565,7 @@ app.whenReady().then(async () => {
     conversations,
     voice,
     (saved) => {
-      tray.setVoiceEnabled(saved.voiceInputEnabled)
+      tray.setVoiceEnabled(voiceActive(saved))
       void refreshHotkeys()
       void refreshWake()
     },
@@ -656,16 +675,16 @@ app.whenReady().then(async () => {
       app.quit()
     }
   })
-  tray.setVoiceEnabled(settings.voiceInputEnabled)
+  tray.setVoiceEnabled(voiceActive(settings))
 
   await refreshHotkeys()
   await refreshWake()
   await pushHud()
 
   // Warm the speech model so the first utterance is not waiting on it. Only
-  // when voice input is on: this pulls 147 MB of weights into the sidecar,
-  // which is pure waste for anyone who never uses the feature.
-  if (settings.voiceInputEnabled) {
+  // when some voice path is on: this pulls 147 MB of weights into the
+  // sidecar, which is pure waste for anyone who never uses the feature.
+  if (voiceActive(settings)) {
     voice
       .sttStatus()
       .then((status) => (status.installed ? voice.loadStt() : undefined))

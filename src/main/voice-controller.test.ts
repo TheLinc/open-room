@@ -71,14 +71,36 @@ describe('VoiceController preconditions', () => {
     expect(overlay.startCapture).not.toHaveBeenCalled()
   })
 
-  it('refuses when voice input is disabled', async () => {
+  it('refuses when every voice path is disabled', async () => {
     const { controller, lastState } = harness({
-      readSettings: async () => ({ ...DEFAULT_SETTINGS, voiceInputEnabled: false })
+      readSettings: async () => ({
+        ...DEFAULT_SETTINGS,
+        voiceInputEnabled: false,
+        wakeWordEnabled: false
+      })
     })
 
     await controller.onTrigger(null)
 
     expect(lastState().phase).toBe('error')
+  })
+
+  it('opens a capture for a wake trigger with push-to-talk off', async () => {
+    // Wake words and push-to-talk are independent opt-ins, and a wake match
+    // arrives through the same onTrigger as the hotkey. Gating captures on
+    // the push-to-talk flag alone made wake-only mode hear its name and
+    // then refuse to listen.
+    const { controller, overlay } = harness({
+      readSettings: async () => ({
+        ...DEFAULT_SETTINGS,
+        voiceInputEnabled: false,
+        wakeWordEnabled: true
+      })
+    })
+
+    await controller.onTrigger('atlas')
+
+    expect(overlay.startCapture).toHaveBeenCalled()
   })
 
   it('refuses when the microphone was denied, and opens no capture', async () => {
