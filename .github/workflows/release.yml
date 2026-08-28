@@ -58,8 +58,13 @@ jobs:
       - name: Typecheck, lint, test
         run: npm run typecheck && npm run lint && npm test
 
+      # `--publish never` is required, not belt-and-braces: on a tag build
+      # electron-builder reads GITHUB_REF_TYPE/GITHUB_REF_NAME, switches its
+      # publish policy on, infers a GitHub target from the git remote (no
+      # `publish` config needed), and fails wanting GH_TOKEN. The release job
+      # below is what uploads; electron-builder only packages.
       - name: Package
-        run: npm run ${{ matrix.script }}
+        run: npm run ${{ matrix.script }} -- --publish never
         env:
           # electron-builder tries to sign when it finds credentials in the
           # environment; keep the no-signing decision explicit either way.
