@@ -1,0 +1,78 @@
+name: Bug report
+description: Something in Open Room does not work the way the README says it should
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks. Three facts explain most bug reports here, so they are required: your OS, your Claude Code version, and whether voice input is on.
+
+        Please do not paste anything from `~/.claude` — session transcripts can contain your code and your prompts.
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Windows 11
+        - Windows 10
+        - macOS (Apple Silicon)
+        - macOS (Intel)
+    validations:
+      required: true
+  - type: input
+    id: claude-version
+    attributes:
+      label: Claude Code version
+      description: Output of `claude --version` from the global CLI you signed in with.
+      placeholder: e.g. 2.1.14
+    validations:
+      required: true
+  - type: input
+    id: open-room-version
+    attributes:
+      label: Open Room version
+      description: From the installer filename, or the git commit if you built from source.
+      placeholder: e.g. 0.1.0, or a commit hash
+    validations:
+      required: true
+  - type: dropdown
+    id: voice-input
+    attributes:
+      label: Voice input
+      description: Settings → voice input. Wake words are a separate switch beyond push-to-talk.
+      options:
+        - 'Off'
+        - Push-to-talk only
+        - Push-to-talk and wake words
+    validations:
+      required: true
+  - type: dropdown
+    id: tts
+    attributes:
+      label: Text-to-speech on the affected agent
+      options:
+        - 'Off (notifications only)'
+        - System voice
+        - Kokoro
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, what you expected, what you saw instead. If an agent's chat pane showed an error, paste that text.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Create an agent with …
+        2. …
+  - type: textarea
+    id: config
+    attributes:
+      label: Agent config (optional)
+      description: '`~/.open-room/agents/<id>/config.json`, with the workspace path redacted if you like. Not `AGENT.md` unless it is relevant.'
+      render: json

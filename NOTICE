@@ -1,0 +1,82 @@
+Open Room
+Copyright (c) 2026 Lincoln Laylor
+Licensed under the MIT License (see LICENSE).
+
+This product includes software and models developed by third parties. The
+runtime dependencies bundled into the installer are listed below with their
+licences; each package's full licence text ships in its own directory under
+node_modules/ inside the application bundle. Development-only tooling
+(bundlers, linters, test runners) is not bundled and is not listed.
+
+Downloaded models are NOT bundled. They are fetched on demand from the
+sources below, with their size, licence and attribution shown in the app
+before the download is agreed to.
+
+--------------------------------------------------------------------------
+Claude Code and the Agent SDK
+--------------------------------------------------------------------------
+
+@anthropic-ai/claude-agent-sdk, and the per-platform packages carrying the
+`claude` binary that it spawns
+  (c) Anthropic PBC. All rights reserved. Use is subject to the Legal
+  Agreements at https://code.claude.com/docs/en/legal-and-compliance.
+  https://github.com/anthropics/claude-agent-sdk-typescript
+
+Open Room ships no Anthropic credentials. Every model call is made through
+this SDK on behalf of the Claude Code account logged in on the user's
+machine and is billed to that account.
+
+--------------------------------------------------------------------------
+Bundled runtime dependencies
+--------------------------------------------------------------------------
+
+Electron                      MIT          https://github.com/electron/electron
+React, React DOM              MIT          https://react.dev
+@electron-toolkit/preload     MIT          https://github.com/alex8088/electron-toolkit
+@electron-toolkit/utils       MIT          https://github.com/alex8088/electron-toolkit
+@huggingface/transformers     Apache-2.0   https://github.com/huggingface/transformers.js
+onnxruntime-node              MIT          https://github.com/microsoft/onnxruntime
+kokoro-js                     Apache-2.0   https://github.com/hexgrad/kokoro
+sharp (via transformers.js)   Apache-2.0   https://sharp.pixelplumbing.com
+double-metaphone              MIT          https://github.com/words/double-metaphone
+zod                           MIT          https://zod.dev
+radix-ui                      MIT          https://radix-ui.com/primitives
+shadcn                        MIT          https://github.com/shadcn-ui/ui
+tailwindcss                   MIT          https://tailwindcss.com
+tailwind-merge                MIT          https://github.com/dcastil/tailwind-merge
+class-variance-authority      Apache-2.0   https://github.com/joe-bell/cva
+clsx                          MIT          https://github.com/lukeed/clsx
+lucide-react                  ISC          https://lucide.dev
+react-hook-form               MIT          https://react-hook-form.com
+@hookform/resolvers           MIT          https://react-hook-form.com
+react-markdown                MIT          https://github.com/remarkjs/react-markdown
+remark-gfm                    MIT          https://github.com/remarkjs/remark-gfm
+next-themes                   MIT          https://github.com/pacocoursey/next-themes
+sonner                        MIT          https://sonner.emilkowal.ski
+Geist (@fontsource-variable)  OFL-1.1      https://vercel.com/font
+
+--------------------------------------------------------------------------
+Models downloaded on demand
+--------------------------------------------------------------------------
+
+Whisper tiny.en and base.en (ONNX)
+  Whisper (c) OpenAI, Apache-2.0. ONNX conversion by onnx-community.
+  https://github.com/openai/whisper
+  https://huggingface.co/onnx-community
+
+Silero VAD (ONNX)
+  (c) Silero Team, MIT. ONNX conversion by onnx-community.
+  https://github.com/snakers4/silero-vad
+
+Kokoro-82M v1.0 (ONNX) and its voice packs
+  (c) hexgrad, Apache-2.0. ONNX conversion by onnx-community.
+  https://huggingface.co/hexgrad/Kokoro-82M
+  https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX
+
+--------------------------------------------------------------------------
+System voices
+--------------------------------------------------------------------------
+
+Windows SAPI voices and macOS speech voices are part of the operating
+system and are used through its public APIs. No voice data is
+redistributed.

@@ -53,7 +53,12 @@ If Open Room launches and you are not signed in, it shows a first-run screen wit
 
 ### 2. Install Open Room
 
-Download the installer for your platform from the releases page (NSIS `.exe` on Windows, `.dmg` on macOS), or build it yourself — see [Development](#development). The builds are not code-signed, so expect the usual unsigned-app warnings.
+Download the installer for your platform from the [releases page](https://github.com/TheLinc/open-room/releases) (NSIS `.exe` on Windows, `.dmg` on macOS), or build it yourself — see [Development](#development).
+
+The builds are not code-signed, so both operating systems will object once:
+
+- **Windows:** SmartScreen shows "Windows protected your PC". Click *More info*, then *Run anyway*.
+- **macOS:** Gatekeeper says the app "cannot be opened because the developer cannot be verified". Right-click the app and choose *Open*, then *Open* again in the dialog — or run `xattr -d com.apple.quarantine "/Applications/Open Room.app"`.
 
 Nothing is bundled beyond the app: no voices, no speech models. System text-to-speech works immediately; anything neural downloads on demand, with size and licence shown before you agree.
 
@@ -254,7 +259,7 @@ CI runs typecheck, lint, tests and a build on both Windows and macOS runners for
 
 The codebase is laid out to keep decisions pure and testable and executors thin. `src/shared/` holds logic every process can import — the wake matcher, the capture reducer, the speech bus rules, context-usage maths, session-override rules, slash-command filtering — all of it without a window, microphone or subprocess in sight. `src/main/` executes those decisions against Electron and the SDK; `src/voice/` against the models; `src/overlay/` and `src/renderer/` against the screen.
 
-`CLAUDE.md` in the repository root is the long-form design record: every settled decision, the measurement behind it, and the gotchas that cost time. It is written for someone who has never seen the codebase and is the right thing to read before changing anything described above.
+`CONTRIBUTING.md` covers setup, layout, testing rules and which decisions are settled versus open. `CLAUDE.md` in the repository root is the long-form design record: every settled decision, the measurement behind it, and the gotchas that cost time. It is written for someone who has never seen the codebase and is the right thing to read before changing anything described above.
 
 ---
 
@@ -287,4 +292,4 @@ Known gaps, recorded rather than hidden:
 
 ## Licence
 
-MIT. Downloaded models carry their own licences (Whisper and Kokoro are Apache-2.0, Silero VAD is MIT), shown in the app before download.
+MIT. Third-party attributions are in `NOTICE`. Downloaded models carry their own licences (Whisper and Kokoro are Apache-2.0, Silero VAD is MIT), shown in the app before download.
