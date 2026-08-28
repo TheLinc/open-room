@@ -28,6 +28,7 @@ import {
   type CommandListState
 } from '@shared/slash-commands'
 import { replayKey } from '@shared/compaction'
+import { resumeTarget } from '@shared/conversation'
 import {
   drain,
   queueActionForResult,
@@ -137,6 +138,13 @@ export class AgentSupervisor {
   private readonly sessions = new Map<string, Session>()
   private readonly runtimes = new Map<string, AgentRuntime>()
   private readonly pendingPermissions = new Map<string, PendingPermission>()
+  /**
+   * Agents whose conversation has been chosen explicitly this session —
+   * selected, or deliberately started new. Without this an explicit "new
+   * conversation" is indistinguishable from "nothing chosen yet", and the
+   * next prompt would resume the very conversation the user just left.
+   */
+  private readonly chosen = new Set<string>()
 
   constructor(
     private readonly events: SupervisorEvents,
@@ -191,7 +199,7 @@ export class AgentSupervisor {
     const existing = this.sessions.get(id)
 
     if (!existing) {
-      const resumeId = this.runtimeFor(id).activeConversationId
+      const resumeId = await this.resolveResume(agent)
       const started = await this.start(agent, resumeId)
       if (!started.ok) return started
     }
@@ -211,6 +219,36 @@ export class AgentSupervisor {
 
     this.dispatch(session, text, images)
     return { ok: true }
+  }
+
+  /**
+   * Lands an opened agent in its most recent conversation, so the pane shows
+   * it before anything is typed. A no-op once a conversation has been chosen
+   * or a session is live; the same resolution `send()` performs for a prompt.
+   */
+  async ensureConversation(agent: Agent): Promise<void> {
+    if (this.sessions.has(agent.config.id)) return
+    await this.resolveResume(agent)
+  }
+
+  /**
+   * The conversation a cold agent's prompt continues. A prompt can arrive by
+   * voice for an agent nobody has opened this session, so the latest
+   * conversation is looked up here rather than left to the pane; the
+   * runtime is patched so the pane, the switcher and the overlay all name
+   * the conversation the prompt is about to land in.
+   */
+  private async resolveResume(agent: Agent): Promise<string | null> {
+    const id = agent.config.id
+    const activeId = this.runtimeFor(id).activeConversationId
+    const chosen = this.chosen.has(id)
+
+    const latestId =
+      chosen || activeId ? null : ((await this.conversations.list(agent))[0]?.sessionId ?? null)
+    const target = resumeTarget({ chosen, activeId, latestId })
+
+    if (target !== activeId) this.patch(id, { activeConversationId: target, sessionId: target })
+    return target
   }
 
   /** Pushes one prompt into the live session and echoes it to the transcript. */
@@ -397,6 +435,7 @@ export class AgentSupervisor {
    * selecting a conversation is a decision about resume, not a start.
    */
   setActiveConversation(agentId: string, sessionId: string | null): void {
+    this.chosen.add(agentId)
     if (this.runtimeFor(agentId).activeConversationId === sessionId) return
 
     // Live entries belong to the conversation that produced them. Leaving

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { autoSelectTarget, describeLastActive, resolvePageRange } from './conversation'
+import { describeLastActive, resolvePageRange, resumeTarget } from './conversation'
 
 describe('describeLastActive', () => {
   const now = Date.UTC(2026, 7, 16, 12, 0, 0)
@@ -53,41 +53,20 @@ describe('resolvePageRange', () => {
   })
 })
 
-describe('autoSelectTarget', () => {
-  const base = {
-    agentId: 'juno',
-    listedFor: 'juno',
-    conversations: [{ sessionId: 's-juno', title: 'x', lastModified: 2 }],
-    activeId: null,
-    state: 'idle' as const,
-    alreadyFor: null
-  }
-
-  it('lands an idle agent with nothing chosen in its most recent conversation', () => {
-    expect(autoSelectTarget(base)).toBe('s-juno')
+describe('resumeTarget', () => {
+  it('resumes the latest conversation when nothing has been chosen for the agent', () => {
+    expect(resumeTarget({ chosen: false, activeId: null, latestId: 'latest' })).toBe('latest')
   })
 
-  it('refuses a list that was loaded for a different agent', () => {
-    // The list refreshes asynchronously after the selected agent changes, so
-    // for a moment it is the previous agent's. Selecting from it handed one
-    // agent another's session — its turn was appended to the other's file.
-    expect(autoSelectTarget({ ...base, listedFor: 'atlas' })).toBeNull()
+  it('keeps an explicit choice', () => {
+    expect(resumeTarget({ chosen: true, activeId: 'picked', latestId: 'latest' })).toBe('picked')
   })
 
-  it('does nothing once a conversation is chosen', () => {
-    expect(autoSelectTarget({ ...base, activeId: 's-other' })).toBeNull()
+  it('honours an explicit new conversation rather than resuming over it', () => {
+    expect(resumeTarget({ chosen: true, activeId: null, latestId: 'latest' })).toBeNull()
   })
 
-  it('does not touch a working agent', () => {
-    expect(autoSelectTarget({ ...base, state: 'working' })).toBeNull()
-  })
-
-  it('fires once per agent so it cannot fight a deliberate deselection', () => {
-    expect(autoSelectTarget({ ...base, alreadyFor: 'juno' })).toBeNull()
-    expect(autoSelectTarget({ ...base, alreadyFor: 'atlas' })).toBe('s-juno')
-  })
-
-  it('has nothing to pick from an empty list', () => {
-    expect(autoSelectTarget({ ...base, conversations: [] })).toBeNull()
+  it('starts fresh when the agent has no conversations yet', () => {
+    expect(resumeTarget({ chosen: false, activeId: null, latestId: null })).toBeNull()
   })
 })

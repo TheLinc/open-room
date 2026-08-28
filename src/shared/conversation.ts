@@ -66,31 +66,22 @@ export function describeLastActive(lastModified: number, now = Date.now()): stri
 }
 
 /**
- * Which conversation an agent should land in when its pane opens, or null
- * to leave things as they are.
+ * Which conversation a prompt continues when the agent has no live session.
  *
- * Only an idle agent with nothing chosen yet, and only once per agent, so
- * this cannot fight a user's choice or tear down a session mid-turn. The
- * list must have been loaded *for this agent*: it refreshes asynchronously
- * after the selected agent changes, and for a moment it is still the
- * previous agent's. Selecting from it during that window handed one agent
- * another's session id — measured: the second agent's turn was appended
- * to the first agent's transcript file, with the first agent's context.
+ * "Launching selects each agent's most recent conversation" has to hold for
+ * every input path, not only a pane that was opened and clicked. A wake
+ * word or push-to-talk prompt to an agent nobody has opened this session
+ * used to start a fresh conversation — amnesia by route, exactly what the
+ * persistence model exists to prevent. So the decision lives in main:
+ * nothing chosen yet means the latest; an explicit choice, including an
+ * explicit "new conversation" (chosen with no id), is kept as made.
  */
-export function autoSelectTarget(input: {
-  agentId: string | null
-  /** The agent the list was fetched for. */
-  listedFor: string | null
-  conversations: Conversation[]
+export function resumeTarget(input: {
+  /** Whether a conversation was explicitly selected or explicitly started new. */
+  chosen: boolean
   activeId: string | null
-  state: string
-  /** The agent this already fired for, if any. */
-  alreadyFor: string | null
+  latestId: string | null
 }): string | null {
-  const { agentId, listedFor, conversations, activeId, state, alreadyFor } = input
-  if (!agentId || listedFor !== agentId) return null
-  if (activeId || conversations.length === 0) return null
-  if (state !== 'idle') return null
-  if (alreadyFor === agentId) return null
-  return conversations[0].sessionId
+  if (input.chosen) return input.activeId
+  return input.activeId ?? input.latestId
 }

@@ -562,6 +562,16 @@ app.whenReady().then(async () => {
 
   ipcMain.on(IpcChannel.selectAgent, (_event, agentId: string | null) => {
     selectedAgentId = agentId
+    // Opening an agent lands it in its latest conversation. Decided here, not
+    // in the renderer: a prompt by voice reaches an agent nobody has opened,
+    // and the pane's own effect used to re-select the latest conversation the
+    // moment "New conversation" cleared the choice.
+    if (agentId) {
+      void store
+        .read(agentId)
+        .then((agent) => supervisor.ensureConversation(agent))
+        .catch(() => {})
+    }
   })
 
   overlay.create()

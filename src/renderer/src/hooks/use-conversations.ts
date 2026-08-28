@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { AgentRuntime, TranscriptEntry } from '@shared/agent-runtime'
-import { CONVERSATION_PAGE_SIZE, autoSelectTarget, type Conversation } from '@shared/conversation'
+import { CONVERSATION_PAGE_SIZE, type Conversation } from '@shared/conversation'
 
 const EMPTY_CONVERSATIONS: Conversation[] = []
 
@@ -60,9 +60,6 @@ export function useConversations(
   const activeId = runtime.activeConversationId
   const active = conversations.find((c) => c.sessionId === activeId) ?? null
 
-  // Guards the one-shot auto-select so it cannot fight a user's choice.
-  const autoSelected = useRef<string | null>(null)
-
   /**
    * Synchronous re-entry guard for pagination.
    *
@@ -88,23 +85,8 @@ export function useConversations(
     void refresh()
   }, [refresh])
 
-  // On opening an agent, land in its most recent conversation. Only when the
-  // agent is idle and nothing is chosen yet: doing this to a working agent
-  // would tear down the session it is mid-turn on.
-  useEffect(() => {
-    const target = autoSelectTarget({
-      agentId,
-      listedFor: listed?.agentId ?? null,
-      conversations,
-      activeId,
-      state: runtime.state,
-      alreadyFor: autoSelected.current
-    })
-    if (!agentId || !target) return
-
-    autoSelected.current = agentId
-    void window.openRoom.selectConversation(agentId, target)
-  }, [agentId, listed, activeId, conversations, runtime.state])
+  // Landing in the most recent conversation on open is main's decision, made
+  // on `selectAgent`; the runtime's activeConversationId is what arrives here.
 
   /**
    * Persisted messages are wrapped in the same envelope live entries use, so
