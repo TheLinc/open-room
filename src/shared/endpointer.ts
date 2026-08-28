@@ -18,18 +18,34 @@ export type EndpointerConfig = {
   hangMs: number
   /** No speech at all within this window cancels the capture. */
   noSpeechTimeoutMs: number
-  /** A capture never runs longer than this, speech or not. */
+  /**
+   * A capture never runs longer than this, speech or not.
+   *
+   * This is a stuck-microphone failsafe, not a UX bound — at 30s it cut off
+   * a real dictated prompt mid-sentence and dispatched the truncated text.
+   * It stays unconditional because the runaway case it guards against (a TV
+   * keeping the detector loud) is exactly the one that never goes quiet;
+   * what changed is the magnitude. Five minutes of 16kHz mono is ~19MB.
+   */
   maxDurationMs: number
   /** How far above the noise floor counts as speech. */
   speechMultiplier: number
+  /**
+   * Trailing window the floor may ratchet *down* from, never up. A floor
+   * sampled while the user was already talking sits above their voice and
+   * deafens the capture; the first between-sentences pause repairs it. Down
+   * only, so a genuinely noisy room keeps its high floor.
+   */
+  floorAdaptMs: number
 }
 
 export const DEFAULT_ENDPOINTER: EndpointerConfig = {
   floorSampleMs: 300,
-  hangMs: 1500,
+  hangMs: 2500,
   noSpeechTimeoutMs: 5000,
-  maxDurationMs: 30_000,
-  speechMultiplier: 3
+  maxDurationMs: 300_000,
+  speechMultiplier: 3,
+  floorAdaptMs: 1000
 }
 
 /**
@@ -49,9 +65,23 @@ export function rmsOf(frame: Float32Array): number {
   return Math.sqrt(sum / frame.length)
 }
 
+/**
+ * A level most of the window sat at or below. The 25th percentile rather
+ * than the mean: someone who presses the hotkey and starts talking inside
+ * the floor window leaves a mean at speech level, which deafens the capture
+ * to the very voice that set it — but the beat of quiet before their first
+ * word is still in the samples, and a low percentile reads that instead.
+ */
+function quietLevel(samples: number[]): number {
+  if (samples.length === 0) return 0
+  const sorted = [...samples].sort((a, b) => a - b)
+  return sorted[Math.floor(0.25 * (sorted.length - 1))]
+}
+
 export class Endpointer {
   private floorSamples: number[] = []
   private floor = 0
+  private recent: { rms: number; at: number }[] = []
   private speechStarted = false
   private lastLoudMs = 0
   private done = false
@@ -72,19 +102,27 @@ export class Endpointer {
       return 'ended-max-duration'
     }
 
-    // Sample the room first. Speech during this window raises the floor and
-    // makes the detector less sensitive, which is the safe direction to err.
+    // Sample the room first. Speech during this window is repaired by the
+    // percentile and, failing that, by the downward ratchet below.
     if (elapsedMs < this.config.floorSampleMs) {
       this.floorSamples.push(rms)
       return 'listening'
     }
 
     if (this.floor === 0) {
-      const mean =
-        this.floorSamples.reduce((sum, value) => sum + value, 0) /
-        Math.max(1, this.floorSamples.length)
-      this.floor = Math.max(mean, MIN_FLOOR)
+      this.floor = Math.max(quietLevel(this.floorSamples), MIN_FLOOR)
     }
+
+    // The floor only ever ratchets down: a trailing window quieter than the
+    // floor proves the floor was set during speech, while a noisy room keeps
+    // producing loud frames and holds its floor. Without this, talking
+    // through the whole floor window left a capture deaf until it cancelled.
+    this.recent.push({ rms, at: elapsedMs })
+    while (this.recent.length > 0 && this.recent[0].at < elapsedMs - this.config.floorAdaptMs) {
+      this.recent.shift()
+    }
+    const trailing = Math.max(quietLevel(this.recent.map((entry) => entry.rms)), MIN_FLOOR)
+    if (trailing < this.floor) this.floor = trailing
 
     if (rms > this.floor * this.config.speechMultiplier) {
       this.lastLoudMs = elapsedMs

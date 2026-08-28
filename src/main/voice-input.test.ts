@@ -99,11 +99,19 @@ describe('reduce', () => {
     expect(commands).toContain('stop-audio')
   })
 
-  it('the hard cap ends the capture rather than discarding it', () => {
+  it('the hard cap ends the capture rather than discarding it, and says so', () => {
+    // Minutes of dictation should not be thrown away — but silently
+    // dispatching a truncated prompt to an agent with tool access is worse
+    // than the truncation itself. The pill shows this message.
     const { state, commands } = reduce(listening, { type: 'maxDuration' })
 
     expect(state.phase).toBe('transcribing')
     expect(commands).toContain('stop-audio')
+    expect(state.message).not.toBe('')
+  })
+
+  it('silence carries no such message', () => {
+    expect(reduce(listening, { type: 'silence' }).state.message).toBe('')
   })
 
   it('a no-speech timeout cancels rather than transcribing', () => {

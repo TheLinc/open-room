@@ -68,9 +68,23 @@ export function reduce(state: CaptureState, event: CaptureEvent): Result {
 
     case 'silence':
     case 'stopRequested':
-    case 'maxDuration':
       if (state.phase !== 'listening') return { state, commands: [] }
       return { state: { ...state, phase: 'transcribing' }, commands: ['stop-audio'] }
+
+    case 'maxDuration':
+      // The failsafe tripped mid-capture. Minutes of dictation are worth too
+      // much to discard, but dispatching silently truncated text to an agent
+      // with tool access would be worse than the truncation — so it is sent
+      // with the cut made visible on the pill.
+      if (state.phase !== 'listening') return { state, commands: [] }
+      return {
+        state: {
+          ...state,
+          phase: 'transcribing',
+          message: 'Hit the capture time limit — sending what was heard'
+        },
+        commands: ['stop-audio']
+      }
 
     case 'noSpeech':
     case 'cancelRequested':

@@ -44,24 +44,40 @@ describe('Endpointer', () => {
     const verdicts = feed(new Endpointer(), [
       ...floor(0.01),
       ...new Array(10).fill(0.5),
-      ...new Array(31).fill(0.01)
+      ...new Array(60).fill(0.01)
     ])
 
     expect(verdicts).toContain('ended-silence')
   })
 
   it('does not end on a pause shorter than the hang time', () => {
+    // Two seconds — the kind of mid-prompt thinking pause that ended real
+    // captures when the hang was 1.5s.
     const verdicts = feed(new Endpointer(), [
       ...floor(0.01),
       ...new Array(10).fill(0.5),
-      ...new Array(20).fill(0.01), // 1s pause — mid-sentence
+      ...new Array(40).fill(0.01),
       ...new Array(10).fill(0.5)
     ])
 
     expect(verdicts).not.toContain('ended-silence')
   })
 
+  it('lets a long prompt run for minutes', () => {
+    // A user dictating a long prompt was cut off mid-sentence at 30s in the
+    // field. The cap is a stuck-microphone failsafe, not a UX bound, so a
+    // minute of continuous speech must survive it.
+    const frames = 60_000 / 50
+
+    expect(feed(new Endpointer(), [...floor(0.01), ...new Array(frames).fill(0.5)])).not.toContain(
+      'ended-max-duration'
+    )
+  })
+
   it('ends at the hard cap even while speech continues', () => {
+    // Unconditional on purpose: a cap that yields to speech is no failsafe,
+    // because the runaway case — a TV keeping the detector loud — is exactly
+    // the one that never goes quiet.
     const frames = DEFAULT_ENDPOINTER.maxDurationMs / 50 + 4
 
     expect(feed(new Endpointer(), [...floor(0.01), ...new Array(frames).fill(0.5)])).toContain(
@@ -69,11 +85,42 @@ describe('Endpointer', () => {
     )
   })
 
-  it('cancels a capture whose noise floor was polluted by speech', () => {
-    // Talking through the floor window raises the threshold above the voice
-    // that set it, so nothing ever reads as speech. Cancelling after the
-    // no-speech timeout is the right outcome: better a capture that gives up
-    // than one that records the room for thirty seconds.
+  it('hears speech that starts inside the floor window, after a brief gap', () => {
+    // Press, a beat of quiet, then talking before the window closes. The mean
+    // of those samples is speech-level and deafened the capture; a low
+    // percentile reads the gap instead.
+    const verdicts = feed(new Endpointer(), [
+      0.01,
+      0.01,
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      ...new Array(10).fill(0.5)
+    ])
+
+    expect(verdicts).toContain('speech-started')
+  })
+
+  it('recovers a speech-polluted floor at the first real pause', () => {
+    // Talking through the whole floor window sets the threshold above the
+    // voice that set it. The floor may ratchet down when a trailing window
+    // shows the room is quieter than the floor claimed — so the first
+    // between-sentences pause repairs the capture instead of it dying.
+    const verdicts = feed(new Endpointer(), [
+      ...new Array(6).fill(0.5), // floor window, all speech
+      ...new Array(10).fill(0.5), // unheard: below 3x the polluted floor
+      ...new Array(24).fill(0.01), // a 1.2s pause between sentences
+      ...new Array(10).fill(0.5) // now audible against the repaired floor
+    ])
+
+    expect(verdicts).toContain('speech-started')
+  })
+
+  it('cancels when a polluted floor never gets a pause to repair itself', () => {
+    // A perfectly steady loud level from the first frame is indistinguishable
+    // from room noise, so giving up at the no-speech timeout is still right.
+    // Real speech modulates; the ratchet test above is the realistic case.
     const frames = DEFAULT_ENDPOINTER.noSpeechTimeoutMs / 50 + 4
 
     expect(feed(new Endpointer(), new Array(frames).fill(0.5))).toContain('cancelled-no-speech')

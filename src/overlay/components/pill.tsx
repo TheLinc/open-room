@@ -116,7 +116,10 @@ export function Pill({
         </div>
       ) : null}
 
-      {state.phase === 'error' && state.message ? (
+      {/* Not gated on the error phase: a capture cut by the time-limit
+          failsafe still transcribes and dispatches, and the message is how
+          the user learns the prompt was truncated. */}
+      {state.message ? (
         <div className="text-[10px] leading-normal text-slate-100/70">{state.message}</div>
       ) : null}
     </div>
