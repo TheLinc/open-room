@@ -1,13 +1,7 @@
-import {
-  deleteSession,
-  getSessionMessages,
-  listSessions,
-  renameSession,
-  tagSession
-} from '@anthropic-ai/claude-agent-sdk'
 import type { Agent } from '@shared/agent'
 import { resolvePageRange, type Conversation, type ConversationPage } from '@shared/conversation'
 import type { WorktreeMap, WorktreeRecord } from '@shared/worktrees'
+import { hostSessions, type SessionApi } from './session-reader'
 
 /**
  * Reads and manages an agent's conversations.
@@ -39,7 +33,10 @@ export type WorktreeLookup = {
 }
 
 export class ConversationStore {
-  constructor(private readonly worktrees: WorktreeLookup | null = null) {}
+  constructor(
+    private readonly worktrees: WorktreeLookup | null = null,
+    private readonly sessionsFor: (agent: Agent) => SessionApi = () => hostSessions
+  ) {}
 
   /**
    * Conversations belonging to this agent, newest first.
@@ -61,14 +58,17 @@ export class ConversationStore {
     const records = this.worktrees ? await this.worktrees.records(agent.config.id) : {}
     for (const record of Object.values(records)) dirs.add(record.path)
 
+    const api = this.sessionsFor(agent)
     const seen = new Set<string>()
     const conversations: Conversation[] = []
     for (const dir of dirs) {
-      const sessions = await listSessions({
-        dir,
-        limit: 100,
-        includeWorktrees: dir === agent.config.workspacePath
-      }).catch(() => [])
+      const sessions = await api
+        .listSessions({
+          dir,
+          limit: 100,
+          includeWorktrees: dir === agent.config.workspacePath
+        })
+        .catch(() => [])
 
       for (const session of sessions) {
         if (session.tag !== agentTag(agent.config.id) || seen.has(session.sessionId)) continue
@@ -92,12 +92,14 @@ export class ConversationStore {
   /** Marks a session as this agent's, so `list` can find it later. */
   async claim(agent: Agent, sessionId: string): Promise<void> {
     if (!agent.config.persistSession) return
-    await tagSession(sessionId, agentTag(agent.config.id), {
-      dir: await this.dirFor(agent, sessionId)
-    }).catch(() => {
-      // A session that cannot be tagged still works; it just will not appear
-      // in the switcher. Not worth failing a turn over.
-    })
+    await this.sessionsFor(agent)
+      .tagSession(sessionId, agentTag(agent.config.id), {
+        dir: await this.dirFor(agent, sessionId)
+      })
+      .catch(() => {
+        // A session that cannot be tagged still works; it just will not appear
+        // in the switcher. Not worth failing a turn over.
+      })
   }
 
   /**
@@ -113,9 +115,11 @@ export class ConversationStore {
     sessionId: string,
     options: { limit: number; offset?: number }
   ): Promise<ConversationPage> {
-    const all = await getSessionMessages(sessionId, {
-      dir: await this.dirFor(agent, sessionId)
-    }).catch(() => [])
+    const all = await this.sessionsFor(agent)
+      .getSessionMessages(sessionId, {
+        dir: await this.dirFor(agent, sessionId)
+      })
+      .catch(() => [])
 
     const total = all.length
     const { start, end } = resolvePageRange(total, options)
@@ -124,11 +128,15 @@ export class ConversationStore {
   }
 
   async rename(agent: Agent, sessionId: string, title: string): Promise<void> {
-    await renameSession(sessionId, title, { dir: await this.dirFor(agent, sessionId) })
+    await this.sessionsFor(agent).renameSession(sessionId, title, {
+      dir: await this.dirFor(agent, sessionId)
+    })
   }
 
   async remove(agent: Agent, sessionId: string): Promise<void> {
-    await deleteSession(sessionId, { dir: await this.dirFor(agent, sessionId) })
+    await this.sessionsFor(agent).deleteSession(sessionId, {
+      dir: await this.dirFor(agent, sessionId)
+    })
   }
 
   async removeAll(agent: Agent): Promise<void> {
