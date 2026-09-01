@@ -8,6 +8,7 @@ import {
   slugifyAgentName,
   type Agent
 } from '@shared/agent'
+import { isLinuxAbsolutePath } from '@shared/wsl'
 
 /**
  * The editor works on a flat shape rather than `AgentConfig` directly.
@@ -45,6 +46,7 @@ export const agentFormSchema = z
     toolPermissions: z.record(z.string(), z.enum(['ask', 'allow', 'deny'])),
     persistSession: z.boolean(),
     worktrees: z.boolean(),
+    wslDistro: z.string(),
     hotkey: z.string(),
     mcpServersJson: z
       .string()
@@ -66,6 +68,15 @@ export const agentFormSchema = z
         code: 'custom',
         path: ['voiceId'],
         message: 'Choose a voice, or turn off “Speak aloud”'
+      })
+    }
+    // A WSL agent reads its workspace inside the distro, so the path must be
+    // a Linux path — a Windows path there would silently mean something else.
+    if (values.wslDistro && !isLinuxAbsolutePath(values.workspacePath)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['workspacePath'],
+        message: 'Use a Linux path inside the distro, like /home/you/project'
       })
     }
   })
@@ -133,6 +144,7 @@ export function toFormValues(agent: Agent, tools: readonly string[]): AgentFormV
     toolPermissions,
     persistSession: config.persistSession,
     worktrees: config.worktrees,
+    wslDistro: config.wsl?.distro ?? '',
     hotkey: config.hotkey ?? '',
     mcpServersJson: Object.keys(config.mcpServers).length
       ? JSON.stringify(config.mcpServers, null, 2)
@@ -179,7 +191,7 @@ export function toAgent(values: AgentFormValues, id?: string): Agent {
       disallowedTools,
       persistSession: values.persistSession,
       worktrees: values.worktrees,
-      wsl: null,
+      wsl: values.wslDistro ? { distro: values.wslDistro } : null,
       notifications: values.notificationsEnabled,
       ...(values.hotkey.trim() ? { hotkey: values.hotkey.trim() } : {}),
       tts: values.ttsEnabled

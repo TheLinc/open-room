@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { agentConfigSchema, CLAUDE_CODE_TOOLS, createDefaultAgent } from '@shared/agent'
-import { parseMcpServers, toAgent, toFormValues, toolPermissionOf } from './agent-form'
+import {
+  agentFormSchema,
+  parseMcpServers,
+  toAgent,
+  toFormValues,
+  toolPermissionOf
+} from './agent-form'
 
 const agent = () => createDefaultAgent('Atlas', 'C:/projects/ci', 'amber')
 
@@ -83,6 +89,40 @@ describe('form round trip', () => {
     // "ask" is the absence of an entry in either list.
     expect(config.allowedTools).not.toContain('Write')
     expect(config.disallowedTools).not.toContain('Write')
+  })
+})
+
+describe('agent form and WSL', () => {
+  it('maps an empty distro to a host agent and a name to a WSL agent', () => {
+    const values = {
+      ...toFormValues(createDefaultAgent('Atlas', 'C:/work', 'cyan'), []),
+      wslDistro: ''
+    }
+    expect(toAgent(values, 'atlas').config.wsl).toBe(null)
+    const wsl = { ...values, wslDistro: 'Ubuntu', workspacePath: '/home/u/proj' }
+    expect(toAgent(wsl, 'atlas').config.wsl).toEqual({ distro: 'Ubuntu' })
+  })
+
+  it('requires a Linux workspace path when a distro is set', () => {
+    const base = toFormValues(createDefaultAgent('Atlas', 'C:/work', 'cyan'), [])
+    const result = agentFormSchema.safeParse({
+      ...base,
+      wslDistro: 'Ubuntu',
+      workspacePath: 'C:/work'
+    })
+    expect(result.success).toBe(false)
+    if (!result.success) {
+      expect(result.error.issues[0].path).toEqual(['workspacePath'])
+      expect(result.error.issues[0].message).toBe(
+        'Use a Linux path inside the distro, like /home/you/project'
+      )
+    }
+    expect(
+      agentFormSchema.safeParse({ ...base, wslDistro: 'Ubuntu', workspacePath: '/home/u' }).success
+    ).toBe(true)
+    expect(
+      agentFormSchema.safeParse({ ...base, wslDistro: '', workspacePath: 'C:/work' }).success
+    ).toBe(true)
   })
 })
 
