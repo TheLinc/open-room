@@ -32,6 +32,9 @@ import type { LoginStatus } from '@shared/login'
 import { ConversationStore } from './conversation-store'
 import { findGit, Git, spawnGit } from './git'
 import { WorktreeManager } from './worktrees'
+import { WslRuntime } from './wsl'
+import { hostSessions, SessionReader, type SessionApi } from './session-reader'
+import type { Agent } from '@shared/agent'
 import { SpeechBus } from './speech-bus'
 import { NotificationSink } from './notification-sink'
 import { VoiceSidecar } from './voice-sidecar'
@@ -71,7 +74,28 @@ const worktrees = new WorktreeManager(
   git
 )
 
-const conversations = new ConversationStore(worktrees)
+// WSL is a Windows-only runtime; elsewhere the control is hidden and every
+// agent is a host agent.
+const wsl = process.platform === 'win32' ? WslRuntime.fromPath() : null
+
+// Sessions of a WSL agent live in its distro's ~/.claude, read through a
+// worker per distro. Host agents call the SDK directly.
+const sessionsScript = app.isPackaged
+  ? join(process.resourcesPath, 'app.asar', 'out', 'main', 'sessions.js')
+  : join(app.getAppPath(), 'out', 'main', 'sessions.js')
+const sessionReaders = new Map<string, SessionReader>()
+const sessionsFor = (agent: Agent): SessionApi => {
+  const distro = agent.config.wsl?.distro
+  if (!distro || !wsl) return hostSessions
+  let reader = sessionReaders.get(distro)
+  if (!reader) {
+    reader = new SessionReader(sessionsScript, () => wsl.configDir(distro))
+    sessionReaders.set(distro, reader)
+  }
+  return reader
+}
+
+const conversations = new ConversationStore(worktrees, sessionsFor)
 
 // One global playback lane for every agent. The sink decides delivery —
 // speech for agents with TTS on, notifications for everyone else and whenever
@@ -586,9 +610,11 @@ app.whenReady().then(async () => {
     () => accountQuota,
     { read: () => accountLogin, recheck: recheckLogin },
     git,
-    worktrees
+    worktrees,
+    wsl
   )
   supervisor.setWorktrees(worktrees)
+  supervisor.setWsl(wsl)
   createWindow()
   // Before any agent can be asked to run: a signed-out account gets the
   // first-run screen instead of a failing agent.
@@ -743,6 +769,7 @@ app.on('before-quit', async (event) => {
   overlay.destroy()
   tray.destroy()
   voice.stop()
+  for (const reader of sessionReaders.values()) reader.stop()
   if (idleReaper) clearInterval(idleReaper)
 
   // Agent subprocesses outlive the app unless they are stopped, so quitting
