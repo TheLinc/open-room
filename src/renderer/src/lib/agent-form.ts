@@ -179,6 +179,7 @@ export function toAgent(values: AgentFormValues, id?: string): Agent {
       disallowedTools,
       persistSession: values.persistSession,
       worktrees: values.worktrees,
+      wsl: null,
       notifications: values.notificationsEnabled,
       ...(values.hotkey.trim() ? { hotkey: values.hotkey.trim() } : {}),
       tts: values.ttsEnabled

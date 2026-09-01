@@ -128,6 +128,31 @@ describe('agentConfigSchema', () => {
     })
     expect(result.success).toBe(false)
   })
+
+  it('parses a config with no wsl field as a host agent', () => {
+    const parsed = agentConfigSchema.parse({
+      id: 'atlas',
+      name: 'Atlas',
+      color: 'cyan',
+      model: 'claude-sonnet-5',
+      workspacePath: 'C:/work',
+      tts: { enabled: false }
+    })
+    expect(parsed.wsl).toBe(null)
+  })
+
+  it('keeps a WSL distro', () => {
+    const parsed = agentConfigSchema.parse({
+      id: 'atlas',
+      name: 'Atlas',
+      color: 'cyan',
+      model: 'claude-sonnet-5',
+      workspacePath: '/home/u/proj',
+      wsl: { distro: 'Ubuntu' },
+      tts: { enabled: false }
+    })
+    expect(parsed.wsl).toEqual({ distro: 'Ubuntu' })
+  })
 })
 
 describe('createDefaultAgent', () => {
@@ -148,5 +173,9 @@ describe('createDefaultAgent', () => {
     const agent = createDefaultAgent('Atlas', 'C:/projects/ci', 'amber')
     expect(agent.context).toContain('speak')
     expect(agent.context).toContain('WORKLOG.md')
+  })
+
+  it('runs on the host unless a WSL distro is set', () => {
+    expect(createDefaultAgent('Atlas', 'C:/work', 'cyan').config.wsl).toBe(null)
   })
 })

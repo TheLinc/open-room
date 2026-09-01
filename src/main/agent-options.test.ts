@@ -24,6 +24,7 @@ function agent(overrides: Partial<AgentConfig> = {}): Agent {
       allowedTools: ['Read'],
       disallowedTools: ['Bash'],
       persistSession: true,
+      wsl: null,
       notifications: true,
       tts: { enabled: false },
       ...overrides

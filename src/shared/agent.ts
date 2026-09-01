@@ -125,6 +125,16 @@ export const agentConfigSchema = z.object({
    * exists to remove. See `src/shared/worktrees.ts`.
    */
   worktrees: z.boolean().default(false),
+  /**
+   * Run this agent's CLI inside a WSL distro. When set, `workspacePath` is a
+   * Linux path inside that distro and every process for the agent (claude,
+   * git, the file lister) runs there. Null means the host. See
+   * `src/shared/wsl.ts`.
+   */
+  wsl: z
+    .object({ distro: z.string().min(1) })
+    .nullable()
+    .default(null),
   /** Optional per-agent push-to-talk binding, e.g. "CommandOrControl+Alt+1". */
   hotkey: z.string().optional(),
 
@@ -197,6 +207,7 @@ export function createDefaultAgent(name: string, workspacePath: string, color: s
       disallowedTools: [],
       persistSession: true,
       worktrees: false,
+      wsl: null,
       notifications: true,
       tts: { enabled: false }
     },
