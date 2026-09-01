@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { permissionDetail } from './permission-detail'
+import { permissionDetail, permissionSummary } from './permission-detail'
 
 describe('permissionDetail', () => {
   it('shows an Edit as before and after', () => {
@@ -85,5 +85,35 @@ describe('permissionDetail', () => {
   it('falls back to none for an unknown tool or a malformed input', () => {
     expect(permissionDetail('mcp__x__y', { a: 1 })).toEqual({ kind: 'none' })
     expect(permissionDetail('Edit', { file_path: 3 })).toEqual({ kind: 'none' })
+  })
+})
+
+describe('permissionSummary', () => {
+  it('is the command itself for Bash, first line only', () => {
+    expect(permissionSummary({ toolName: 'Bash', input: { command: 'git push\necho done' } })).toBe(
+      'git push'
+    )
+  })
+
+  it('names the tool and the path for an edit or a write', () => {
+    expect(
+      permissionSummary({
+        toolName: 'Edit',
+        input: { file_path: 'src/a.ts', old_string: 'x', new_string: 'y' }
+      })
+    ).toBe('Edit src/a.ts')
+    expect(
+      permissionSummary({ toolName: 'Write', input: { file_path: 'b.ts', content: '' } })
+    ).toBe('Write b.ts')
+  })
+
+  it('prefers the display name the SDK gave the tool', () => {
+    expect(
+      permissionSummary({ toolName: 'mcp__x__fetch', input: {}, displayName: 'Fetch a page' })
+    ).toBe('Fetch a page')
+  })
+
+  it('falls back to the tool name when there is nothing else', () => {
+    expect(permissionSummary({ toolName: 'WebSearch', input: { query: 'x' } })).toBe('WebSearch')
   })
 })

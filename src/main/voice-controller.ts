@@ -1,5 +1,6 @@
 import type { Agent } from '@shared/agent'
 import { colorHexFor } from '@shared/agent-colors'
+import { captureTarget } from '@shared/awaiting'
 import { decodePcm } from '@shared/pcm'
 import type { AppSettings } from '@shared/settings'
 import { holdMsFor, type OverlayState } from '@shared/voice-input'
@@ -33,6 +34,8 @@ export type VoiceControllerDeps = {
   ensureMicrophoneAccess: () => Promise<boolean>
   /** Whatever the main window currently has selected. */
   selectedAgentId: () => string | null
+  /** The agent most recently left waiting on a spoken question, if any. */
+  awaitingAgentId: () => string | null
   conversationTitleFor: (agentId: string) => Promise<string>
   startCapture: () => void
   stopCapture: () => void
@@ -90,7 +93,13 @@ export class VoiceController {
     }
 
     this.agents = await this.deps.listAgents()
-    const target = agentId ?? this.deps.selectedAgentId()
+    // The global hotkey goes to the agent waiting on a reply before the one
+    // the main window has selected; the pill names it before anyone speaks.
+    const target = captureTarget({
+      explicit: agentId,
+      awaiting: this.deps.awaitingAgentId(),
+      selected: this.deps.selectedAgentId()
+    })
     if (!target || !this.agents.some((agent) => agent.config.id === target)) {
       this.apply({ type: 'blocked', message: 'No agent selected' })
       return

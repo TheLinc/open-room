@@ -180,7 +180,18 @@ body {
   opacity: 0.5;
 }
 
-.or-pip-attn::after {
+/*
+ * Asking sits between blocked and working: the agent is idle and waiting for
+ * you, but nothing is stuck. A quicker breath than working, slower than a
+ * permission prompt, and a ring that expands at half the rate — the same
+ * vocabulary as blocked, at a lower pitch.
+ */
+.or-pip-asking {
+  animation-duration: 1000ms;
+}
+
+.or-pip-attn::after,
+.or-pip-asking::after {
   content: '';
   position: absolute;
   inset: -4px;
@@ -188,6 +199,11 @@ body {
   border: 1.2px solid var(--or-pip-color);
   opacity: 0.55;
   animation: or-ring 1100ms ease-out infinite;
+}
+
+.or-pip-asking::after {
+  animation-duration: 2200ms;
+  opacity: 0.4;
 }
 
 /* The glyph slot holds one value at a time; changes cross-fade rather than
@@ -211,7 +227,8 @@ body {
   .or-arc,
   .or-blip,
   .or-emit,
-  .or-pip-attn::after {
+  .or-pip-attn::after,
+  .or-pip-asking::after {
     animation: none;
   }
 
@@ -226,6 +243,10 @@ body {
 
   .or-pip-attn {
     animation-duration: 1500ms;
+  }
+
+  .or-pip-asking {
+    animation-duration: 2400ms;
   }
 
   /* Still slower than a working pip, which is 3400ms here. */

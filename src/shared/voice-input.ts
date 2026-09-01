@@ -40,9 +40,23 @@ export type PipEntry = {
   /**
    * `paused` is account quota, not an agent fault — distinct from
    * `needs-attention` because the roster labels that one "needs permission",
-   * which would be a lie for a rate-limited agent.
+   * which would be a lie for a rate-limited agent. `asking` is an agent that
+   * spoke a question or blocker and ended its turn on it: idle, and waiting.
    */
-  state: 'working' | 'needs-attention' | 'paused'
+  state: 'working' | 'needs-attention' | 'asking' | 'paused'
+  /**
+   * The prompt blocking a `needs-attention` agent, enough for the roster to
+   * answer it in place. Absent in every other state.
+   */
+  permission?: {
+    id: string
+    /** One line: the command, the path, or the tool's display name. */
+    summary: string
+    /** Whether "allow for this session" is on offer. */
+    canRemember: boolean
+  }
+  /** The line an `asking` agent spoke, verbatim. Absent in every other state. */
+  question?: string
 }
 
 const HOLD_BASE_MS = 1400

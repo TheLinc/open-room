@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { createSdkMcpServer, tool } from '@anthropic-ai/claude-agent-sdk'
 import { z } from 'zod'
 import type { Agent } from '@shared/agent'
+import { asksForReply } from '@shared/awaiting'
 import { SPEAK_CALLS_PER_TURN, SPEECH_PRIORITIES, type SpeechPriority } from '@shared/speech'
 import type { SpeechBus } from './speech-bus'
 
@@ -26,10 +27,20 @@ export const SPEAK_TOOL_NAME = `mcp__${VOICE_SERVER_NAME}__speak`
 export type TurnSpeechState = {
   calls: number
   spoke: boolean
+  /**
+   * The last question or blocker spoken this turn. When the turn then ends,
+   * the agent is waiting on a reply to it — see `awaiting.ts`.
+   */
+  asked: string | null
 }
 
 export function newTurnSpeechState(): TurnSpeechState {
-  return { calls: 0, spoke: false }
+  return { calls: 0, spoke: false, asked: null }
+}
+
+/** Notes a spoken line that expects an answer; later asks replace earlier. */
+export function recordAsk(turn: TurnSpeechState, priority: SpeechPriority, message: string): void {
+  if (asksForReply(priority)) turn.asked = message
 }
 
 export type SpeechSlot = { allowed: true } | { allowed: false; reason: string }
@@ -97,6 +108,8 @@ export function createSpeakServer(
           if (!slot.allowed) {
             return { content: [{ type: 'text' as const, text: slot.reason }] }
           }
+
+          recordAsk(turn, priority as SpeechPriority, message)
 
           bus.enqueue({
             id: randomUUID(),

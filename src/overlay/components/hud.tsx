@@ -36,7 +36,13 @@ export function Hud({ pips }: { pips: PipEntry[] }): React.JSX.Element {
           hovered ? 'scale-100 opacity-100' : 'pointer-events-none scale-95 opacity-0'
         ].join(' ')}
       >
-        <Roster pips={pips} onSelect={(agentId) => window.overlay.selectAgent(agentId)} />
+        <Roster
+          pips={pips}
+          onSelect={(agentId) => window.overlay.selectAgent(agentId)}
+          onRespond={(requestId, decision) =>
+            void window.overlay.respondPermission(requestId, decision)
+          }
+        />
       </div>
     </div>
   )

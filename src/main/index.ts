@@ -47,6 +47,7 @@ import { trayVoiceToggle, voiceActive } from './tray-voice'
 import { IpcChannel } from '@shared/ipc'
 import type { RateLimitStatus } from '@shared/agent-runtime'
 import { pipsFor } from '@shared/pips'
+import { mostRecentAwaiting } from '@shared/awaiting'
 import { describeQuota, quotaSeverity, shouldNotifyQuota } from '@shared/quota'
 import { decodePcm } from '@shared/pcm'
 import {
@@ -250,7 +251,7 @@ async function pushHud(): Promise<void> {
   lastPips = pipsFor(
     agents,
     supervisor.allRuntimes(),
-    supervisor.blockedAgentIds(),
+    supervisor.pendingRequests(),
     quotaSeverity(accountQuota) === 'reached'
   )
 
@@ -271,7 +272,7 @@ function syncTray(): void {
   tray.setState(
     capturing
       ? 'listening'
-      : lastPips.some((pip) => pip.state === 'needs-attention')
+      : lastPips.some((pip) => pip.state === 'needs-attention' || pip.state === 'asking')
         ? 'attention'
         : lastPips.length > 0
           ? 'working'
@@ -346,6 +347,7 @@ const controller = new VoiceController({
   listAgents: async () => (await store.list()).agents,
   isModelInstalled: async () => (await voice.sttStatus().catch(() => null))?.installed ?? false,
   selectedAgentId: () => selectedAgentId,
+  awaitingAgentId: () => mostRecentAwaiting(supervisor.allRuntimes()),
 
   // Asked on first capture rather than at launch. Prompting for a microphone
   // at startup, for a feature that ships off, is both confusing and a bad

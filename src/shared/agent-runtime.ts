@@ -4,6 +4,7 @@ import type { SlashCommandInfo } from './slash-commands'
 import type { McpServerHealth } from './mcp-health'
 import type { QueuedPromptSummary } from './prompt-queue'
 import type { Isolation } from './worktrees'
+import type { Awaiting } from './awaiting'
 
 /**
  * Runtime state for a running agent, shared across processes.
@@ -179,6 +180,13 @@ export type AgentRuntime = {
    * actually is. Null until init.
    */
   cwd: string | null
+  /**
+   * The question or blocker the agent spoke and then ended its turn on, so
+   * the HUD can show that it is waiting and push-to-talk can aim a reply at
+   * it. Set when such a turn ends; cleared by the next prompt sent to the
+   * agent by any route, or by stopping the session. See `awaiting.ts`.
+   */
+  awaiting: Awaiting | null
   /** Epoch ms of the last activity, for idle teardown. */
   lastActiveAt: number
 }
@@ -237,6 +245,7 @@ export function emptyRuntime(agentId: string): AgentRuntime {
     permissionMode: null,
     isolation: null,
     cwd: null,
+    awaiting: null,
     lastActiveAt: Date.now()
   }
 }

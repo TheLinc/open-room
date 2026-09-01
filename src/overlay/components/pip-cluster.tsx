@@ -21,6 +21,7 @@ export function PipCluster({ pips }: { pips: PipEntry[] }): React.JSX.Element {
           className={[
             'or-pip',
             pip.state === 'needs-attention' ? 'or-pip-attn' : '',
+            pip.state === 'asking' ? 'or-pip-asking' : '',
             pip.state === 'paused' ? 'or-pip-paused' : ''
           ]
             .filter(Boolean)

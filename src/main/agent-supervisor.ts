@@ -29,6 +29,7 @@ import {
 } from '@shared/slash-commands'
 import { replayKey } from '@shared/compaction'
 import { resumeTarget } from '@shared/conversation'
+import { awaitingAfterTurn } from '@shared/awaiting'
 import {
   drain,
   queueActionForResult,
@@ -141,6 +142,8 @@ export type SupervisorEvents = {
 
 type PendingPermission = {
   agentId: string
+  /** What was asked, as broadcast; the HUD renders it while the turn waits. */
+  request: PermissionRequest
   resolve: (result: PermissionResult) => void
   /** Rules the SDK offered that would stop it asking again this session. */
   suggestions?: PermissionUpdate[]
@@ -190,17 +193,16 @@ export class AgentSupervisor {
   }
 
   /**
-   * Agents waiting on a permission decision.
+   * The permission prompts still waiting on a decision.
    *
    * An agent blocked on a prompt still reports `ready`, so its runtime state
    * cannot distinguish it from one with nothing to do. The HUD needs that
    * difference — with the main window closed, this is the only way a stalled
-   * agent is visible at all.
+   * agent is visible at all — and it needs the request itself, so the prompt
+   * can be answered from there without raising the window.
    */
-  blockedAgentIds(): Set<string> {
-    const ids = new Set<string>()
-    for (const pending of this.pendingPermissions.values()) ids.add(pending.agentId)
-    return ids
+  pendingRequests(): PermissionRequest[] {
+    return [...this.pendingPermissions.values()].map((pending) => pending.request)
   }
 
   get runningCount(): number {
@@ -278,10 +280,13 @@ export class AgentSupervisor {
   /** Pushes one prompt into the live session and echoes it to the transcript. */
   private dispatch(session: Session, text: string, images: ImageAttachment[]): void {
     const id = session.agentId
-    this.patch(id, { state: 'working', lastActiveAt: Date.now(), error: null })
+    // Any prompt to this agent answers whatever it was waiting on: the reply
+    // is what clears "waiting for you", whichever route it arrived by.
+    this.patch(id, { state: 'working', lastActiveAt: Date.now(), error: null, awaiting: null })
 
     session.turnSpeech.calls = 0
     session.turnSpeech.spoke = false
+    session.turnSpeech.asked = null
 
     const userMessage: SDKUserInput = {
       type: 'user',
@@ -441,8 +446,26 @@ export class AgentSupervisor {
 
       const id = randomUUID()
 
+      const request: PermissionRequest = {
+        id,
+        agentId,
+        toolName,
+        input,
+        title: opts.title,
+        displayName: opts.displayName,
+        description: opts.description,
+        decisionReason: opts.decisionReason,
+        blockedPath: opts.blockedPath,
+        canRemember: (opts.suggestions?.length ?? 0) > 0
+      }
+
       return new Promise<PermissionResult>((resolve) => {
-        this.pendingPermissions.set(id, { agentId, resolve, suggestions: opts.suggestions })
+        this.pendingPermissions.set(id, {
+          agentId,
+          request,
+          resolve,
+          suggestions: opts.suggestions
+        })
 
         // The turn can be interrupted while the dialog is open; drop the
         // request rather than leaving a dead prompt on screen.
@@ -453,18 +476,7 @@ export class AgentSupervisor {
           }
         })
 
-        this.events.onPermissionRequest({
-          id,
-          agentId,
-          toolName,
-          input,
-          title: opts.title,
-          displayName: opts.displayName,
-          description: opts.description,
-          decisionReason: opts.decisionReason,
-          blockedPath: opts.blockedPath,
-          canRemember: (opts.suggestions?.length ?? 0) > 0
-        })
+        this.events.onPermissionRequest(request)
       })
     }
   }
@@ -667,6 +679,16 @@ export class AgentSupervisor {
         state: message.is_error && !wasInterrupted ? 'error' : 'ready',
         sessionId: message.session_id,
         lastActiveAt: Date.now(),
+        // A turn that spoke a question and then ended is an agent waiting on
+        // the answer; the HUD shows it and push-to-talk aims at it.
+        awaiting: awaitingAfterTurn(
+          {
+            asked: session.turnSpeech.asked,
+            isError: message.is_error,
+            wasInterrupted
+          },
+          Date.now()
+        ),
         usage: {
           // Cumulative across turns in streaming-input sessions, so each
           // result carries the running total — read it, do not accumulate.
@@ -888,7 +910,7 @@ export class AgentSupervisor {
     // because of something set days ago. `queued` is repeated here too: a
     // prompt sent during the await above would have re-queued after the
     // clear further up, and this is the patch that has the last word.
-    this.patch(agentId, { state: 'idle', overrides: {}, queued: [] })
+    this.patch(agentId, { state: 'idle', overrides: {}, queued: [], awaiting: null })
   }
 
   private rejectPendingFor(agentId: string): void {

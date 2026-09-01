@@ -70,3 +70,29 @@ export function permissionDetail(
       return { kind: 'none' }
   }
 }
+
+/**
+ * One line saying what a prompt is for, for a surface with room for one
+ * line: the HUD roster. The command as written, the tool and its path, or
+ * failing both the name the SDK gave the tool. Truncation is the caller's
+ * job; the full request stays in the main window's prompt.
+ */
+export function permissionSummary(request: {
+  toolName: string
+  input: Record<string, unknown>
+  displayName?: string
+}): string {
+  const detail = permissionDetail(request.toolName, request.input)
+  const tool = request.displayName ?? request.toolName
+  switch (detail.kind) {
+    case 'command':
+      return detail.command.split('\n')[0]
+    case 'edit':
+    case 'write':
+      return `${tool} ${detail.path}`
+    case 'path':
+      return `${tool} ${detail.value}`
+    case 'none':
+      return tool
+  }
+}

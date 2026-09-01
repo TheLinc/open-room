@@ -39,6 +39,7 @@ function harness(overrides: Partial<VoiceControllerDeps> = {}) {
     isModelInstalled: async () => true,
     ensureMicrophoneAccess: async () => true,
     selectedAgentId: () => 'atlas',
+    awaitingAgentId: () => null,
     conversationTitleFor: async () => 'CI pipeline',
     startCapture: () => overlay.startCapture(),
     stopCapture: () => overlay.stopCapture(),
@@ -159,6 +160,34 @@ describe('VoiceController', () => {
     await controller.onTrigger('scout')
 
     expect(lastState().agentName).toBe('Scout')
+  })
+
+  it('redirects the global hotkey to the agent waiting on a spoken question', async () => {
+    // The question was heard a moment ago with the window hidden; the answer
+    // should go to whoever asked, not to whichever pane was last open. The
+    // pill shows the redirect before any audio is captured.
+    const scout = agent('scout', 'Scout', 'amber')
+    const { controller, lastState, supervisor } = harness({
+      listAgents: async () => [ATLAS, scout],
+      awaitingAgentId: () => 'scout'
+    })
+
+    await speak(controller)
+
+    expect(lastState().agentName).toBe('Scout')
+    expect(supervisor.send).toHaveBeenCalledWith(scout, 'deploy the branch')
+  })
+
+  it('lets a per-agent hotkey override the waiting agent', async () => {
+    const scout = agent('scout', 'Scout', 'amber')
+    const { controller, lastState } = harness({
+      listAgents: async () => [ATLAS, scout],
+      awaitingAgentId: () => 'scout'
+    })
+
+    await controller.onTrigger('atlas')
+
+    expect(lastState().agentName).toBe('Atlas')
   })
 
   it('transcribes and dispatches to the target agent', async () => {

@@ -1,6 +1,25 @@
 import { describe, expect, it } from 'vitest'
 import { SPEAK_CALLS_PER_TURN } from '@shared/speech'
-import { claimSpeechSlot, newTurnSpeechState, SPEAK_TOOL_NAME } from './speak-tool'
+import { claimSpeechSlot, newTurnSpeechState, recordAsk, SPEAK_TOOL_NAME } from './speak-tool'
+
+describe('recordAsk', () => {
+  it('keeps a question or blocker as what the agent is waiting on', () => {
+    const turn = newTurnSpeechState()
+    expect(turn.asked).toBe(null)
+    recordAsk(turn, 'question', 'Ship it?')
+    expect(turn.asked).toBe('Ship it?')
+    recordAsk(turn, 'blocker', 'Tests are failing, want me to fix them?')
+    expect(turn.asked).toBe('Tests are failing, want me to fix them?')
+  })
+
+  it('ignores progress and done, and leaves an earlier ask standing', () => {
+    const turn = newTurnSpeechState()
+    recordAsk(turn, 'question', 'Ship it?')
+    recordAsk(turn, 'progress', 'Halfway there.')
+    recordAsk(turn, 'done', 'Finished.')
+    expect(turn.asked).toBe('Ship it?')
+  })
+})
 
 describe('claimSpeechSlot', () => {
   it('allows up to the per-turn budget', () => {

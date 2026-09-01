@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { IpcChannel } from '@shared/ipc'
+import type { PermissionDecision } from '@shared/agent-runtime'
 import type {
   MicrophoneDevice,
   OverlayEvent,
@@ -61,6 +62,15 @@ const overlay = {
   selectAgent: (agentId: string): void => {
     ipcRenderer.send(IpcChannel.overlaySelectAgent, agentId)
   },
+
+  /**
+   * Answers a permission prompt from the HUD. The same channel the main
+   * window uses, so main has one handler and one place that decides what a
+   * decision means. Nothing here can approve anything the SDK did not ask
+   * about: the id has to match a request main is currently holding open.
+   */
+  respondPermission: (requestId: string, decision: PermissionDecision): Promise<void> =>
+    ipcRenderer.invoke(IpcChannel.respondPermission, requestId, decision),
 
   /** Pointer entered or left the bubble; pauses dismissal. */
   reportHover: (hovered: boolean): void => {
