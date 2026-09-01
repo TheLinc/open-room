@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import type { Options } from '@anthropic-ai/claude-agent-sdk'
 import type { Agent, AgentConfig } from '@shared/agent'
 import { agentQueryOptions } from './agent-options'
 import { SPEAK_TOOL_NAME, VOICE_SERVER_NAME } from './speak-tool'
@@ -190,5 +191,28 @@ describe('agentQueryOptions working directory', () => {
       'D:/wt/atlas/x7k2'
     )
     expect(options.cwd).toBe('D:/wt/atlas/x7k2')
+  })
+})
+
+describe('agentQueryOptions spawn hook', () => {
+  it('hands the SDK a custom spawner when one is given', () => {
+    // A WSL agent's CLI runs inside the distro; the SDK is unchanged and
+    // only the process it starts differs.
+    const spawner = (() => ({})) as unknown as NonNullable<Options['spawnClaudeCodeProcess']>
+    const options = agentQueryOptions(
+      agent(),
+      null,
+      voiceServer,
+      undefined,
+      {},
+      null,
+      '/home/u/proj',
+      spawner
+    )
+    expect(options.spawnClaudeCodeProcess).toBe(spawner)
+  })
+
+  it('leaves the SDK to spawn the bundled binary when no spawner is given', () => {
+    expect('spawnClaudeCodeProcess' in build()).toBe(false)
   })
 })

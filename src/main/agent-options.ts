@@ -38,7 +38,12 @@ export function agentQueryOptions(
    * Passed in rather than derived here because the decision needs git and
    * the filesystem, and this function is kept pure so it can be asserted on.
    */
-  cwd: string = agent.config.workspacePath
+  cwd: string = agent.config.workspacePath,
+  /**
+   * Replaces how the SDK starts the CLI, for agents whose `claude` runs
+   * inside a WSL distro. The SDK's protocol over stdio is unchanged.
+   */
+  spawnClaudeCodeProcess: Options['spawnClaudeCodeProcess'] = undefined
 ): Options {
   const { config } = agent
   const settings = effectiveSettings(config, overrides)
@@ -90,6 +95,7 @@ export function agentQueryOptions(
     // with ANTHROPIC_API_KEY removed.
     env: buildChildEnv(),
     ...(claudeExecutable ? { pathToClaudeCodeExecutable: claudeExecutable } : {}),
+    ...(spawnClaudeCodeProcess ? { spawnClaudeCodeProcess } : {}),
     includePartialMessages: false,
     canUseTool
   }
