@@ -1,6 +1,13 @@
 import { execFileSync } from 'node:child_process'
 import { describe, expect, it } from 'vitest'
-import { decodeWslOutput, findWsl, WslRuntime, type WslExec, type WslExecResult } from './wsl'
+import {
+  decodeWslOutput,
+  findWsl,
+  wslPlacement,
+  WslRuntime,
+  type WslExec,
+  type WslExecResult
+} from './wsl'
 
 /** Records every argv and answers from a script of results. */
 function recorder(results: Partial<WslExecResult>[] = []) {
@@ -168,5 +175,23 @@ describe.skipIf(!firstDistro)('WslRuntime against a real distro', () => {
     expect(await wsl.pathExists(firstDistro!, '/tmp')).toBe(true)
     expect(await wsl.pathExists(firstDistro!, '/definitely/not/here')).toBe(false)
     expect(await wsl.homeDir(firstDistro!)).toMatch(/^\//)
+  })
+})
+
+describe('wslPlacement', () => {
+  const base = { config: { workspacePath: '/home/u/proj', worktrees: false } } as never
+  it('runs in the Linux workspace', () => {
+    expect(wslPlacement(base)).toEqual({
+      cwd: '/home/u/proj',
+      isolation: { kind: 'workspace' },
+      pending: null
+    })
+  })
+  it('says why worktrees were not used when the agent asked for them', () => {
+    const asked = { config: { workspacePath: '/home/u/proj', worktrees: true } } as never
+    expect(wslPlacement(asked).isolation).toEqual({
+      kind: 'fallback',
+      reason: 'Worktrees are not supported for WSL agents yet'
+    })
   })
 })

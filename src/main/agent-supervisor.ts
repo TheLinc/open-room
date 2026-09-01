@@ -60,6 +60,8 @@ import {
 import { condenseForSpeech, shouldSpeakFallback, speakableAsIs } from './condense'
 import type { Placement, WorktreeManager } from './worktrees'
 import type { WorktreeRecord } from '@shared/worktrees'
+import { wslPlacement, type WslRuntime } from './wsl'
+import { wslLoginHint } from '@shared/wsl'
 
 /**
  * Owns the lifecycle of every running agent.
@@ -167,6 +169,10 @@ export class AgentSupervisor {
   private readonly chosen = new Set<string>()
   /** Null until attached; every session then runs in its workspace. */
   private worktrees: WorktreePlacer | null = null
+  /** Null off Windows or when wsl.exe is missing; WSL agents then fail to start with a reason. */
+  private wsl: WslRuntime | null = null
+  /** Distro per running or starting WSL agent, for the login hint on failure. */
+  private readonly wslDistros = new Map<string, string>()
 
   constructor(
     private readonly events: SupervisorEvents,
@@ -182,6 +188,10 @@ export class AgentSupervisor {
   /** Gives conversations their own git worktrees, for agents that ask. */
   setWorktrees(worktrees: WorktreePlacer | null): void {
     this.worktrees = worktrees
+  }
+
+  setWsl(wsl: WslRuntime | null): void {
+    this.wsl = wsl
   }
 
   runtimeFor(agentId: string): AgentRuntime {
@@ -334,29 +344,52 @@ export class AgentSupervisor {
       return { ok: false, message }
     }
 
-    // Checked before spawning: the CLI's own failure for a missing directory
-    // is far less clear than saying so directly.
-    try {
-      const info = await stat(agent.config.workspacePath)
-      if (!info.isDirectory()) throw new Error('not a directory')
-    } catch {
-      const error = describeAgentError(
-        'workspace-missing',
-        `Workspace folder not found: ${agent.config.workspacePath}`
-      )
-      this.fail(id, error)
-      return { ok: false, message: error.message }
+    const wslConfig = agent.config.wsl
+    if (wslConfig) {
+      this.wslDistros.set(id, wslConfig.distro)
+      if (!this.wsl?.available) {
+        const error = describeAgentError(
+          'unknown',
+          'WSL is not installed or wsl.exe is not on PATH.'
+        )
+        this.fail(id, error)
+        return { ok: false, message: error.message }
+      }
+      if (!(await this.wsl.pathExists(wslConfig.distro, agent.config.workspacePath))) {
+        const error = describeAgentError(
+          'workspace-missing',
+          `Workspace folder not found in ${wslConfig.distro}: ${agent.config.workspacePath}`
+        )
+        this.fail(id, error)
+        return { ok: false, message: error.message }
+      }
+    } else {
+      // Checked before spawning: the CLI's own failure for a missing directory
+      // is far less clear than saying so directly.
+      try {
+        const info = await stat(agent.config.workspacePath)
+        if (!info.isDirectory()) throw new Error('not a directory')
+      } catch {
+        const error = describeAgentError(
+          'workspace-missing',
+          `Workspace folder not found: ${agent.config.workspacePath}`
+        )
+        this.fail(id, error)
+        return { ok: false, message: error.message }
+      }
     }
 
     this.patch(id, { state: 'starting', error: null })
 
-    // Where this session runs: the workspace, or the conversation's own git
-    // worktree. Decided before `query()` because `cwd` is fixed at spawn, and
-    // reported on the runtime so the pane never shows one checkout while the
-    // agent edits another.
-    const placement: Placement = this.worktrees
-      ? await this.worktrees.place(agent, resumeSessionId)
-      : { cwd: agent.config.workspacePath, isolation: { kind: 'workspace' }, pending: null }
+    // Where this session runs: the workspace, the distro's workspace for a
+    // WSL agent, or the conversation's own git worktree. Decided before
+    // `query()` because `cwd` is fixed at spawn, and reported on the runtime
+    // so the pane never shows one checkout while the agent edits another.
+    const placement: Placement = wslConfig
+      ? wslPlacement(agent)
+      : this.worktrees
+        ? await this.worktrees.place(agent, resumeSessionId)
+        : { cwd: agent.config.workspacePath, isolation: { kind: 'workspace' }, pending: null }
     this.patch(id, { isolation: placement.isolation })
 
     const queue = new PushableQueue<SDKUserInput>()
@@ -412,7 +445,8 @@ export class AgentSupervisor {
       this.permissionHandler(agent.config.id),
       this.runtimeFor(agent.config.id).overrides,
       bundledClaudePath(),
-      cwd
+      cwd,
+      agent.config.wsl && this.wsl ? this.wsl.spawnClaude(agent.config.wsl.distro) : undefined
     )
   }
 
@@ -905,6 +939,7 @@ export class AgentSupervisor {
       // Teardown failures are already reflected in the runtime state.
     }
     this.sessions.delete(agentId)
+    this.wslDistros.delete(agentId)
     // Overrides belong to the session that carried them. Keeping them would
     // mean an agent quietly starting its next conversation in plan mode
     // because of something set days ago. `queued` is repeated here too: a
@@ -955,7 +990,12 @@ export class AgentSupervisor {
   }
 
   private fail(agentId: string, error: AgentRuntime['error']): void {
-    this.patch(agentId, { state: 'error', error })
+    const distro = this.wslDistros.get(agentId)
+    const hinted =
+      distro && error?.kind === 'not-authenticated'
+        ? { ...error, hint: wslLoginHint(distro) }
+        : error
+    this.patch(agentId, { state: 'error', error: hinted })
   }
 
   private patch(agentId: string, changes: Partial<AgentRuntime>): void {

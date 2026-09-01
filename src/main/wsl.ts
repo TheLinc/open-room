@@ -1,10 +1,12 @@
 import { existsSync } from 'node:fs'
 import { spawn } from 'node:child_process'
 import type { Options } from '@anthropic-ai/claude-agent-sdk'
+import type { Agent } from '@shared/agent'
 import type { LoginStatus } from '@shared/login'
 import {
   linuxToUnc,
   parseWslDistroList,
+  WSL_WORKTREE_REASON,
   wslClaudeArgv,
   wslExecArgv,
   type WslDistro
@@ -13,6 +15,7 @@ import type { GitRunner } from './git'
 import { parseAuthStatus } from './login-check'
 import { resolveExecutable } from './open-in-editor'
 import { IGNORED_DIRECTORIES, MAX_INDEXED_FILES } from './workspace-index'
+import type { Placement } from './worktrees'
 
 /**
  * Executes the decisions in `src/shared/wsl.ts` against `wsl.exe`.
@@ -195,5 +198,20 @@ export class WslRuntime {
         wslClaudeArgv({ distro, cwd: options.cwd ?? null, env: options.env, args: options.args }),
         { stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true, signal: options.signal }
       )
+  }
+}
+
+/**
+ * Where a WSL agent's session runs: always its Linux workspace. Worktrees
+ * are not offered for WSL agents in this phase, and an agent that asked
+ * for them is told so in the header rather than silently placed.
+ */
+export function wslPlacement(agent: Agent): Placement {
+  return {
+    cwd: agent.config.workspacePath,
+    isolation: agent.config.worktrees
+      ? { kind: 'fallback', reason: WSL_WORKTREE_REASON }
+      : { kind: 'workspace' },
+    pending: null
   }
 }
