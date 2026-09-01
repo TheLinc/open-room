@@ -207,7 +207,7 @@ export function AgentEditor({
     }
     let cancelled = false
     const timer = setTimeout(() => {
-      void window.openRoom.inspectWorkspace(workspacePath).then((info) => {
+      void window.openRoom.inspectWorkspace(workspacePath, null).then((info) => {
         if (!cancelled) setWorkspaceInfo(info)
       })
     }, 300)

@@ -14,6 +14,7 @@ import type { HotkeyFailure } from './hotkeys'
 import type { AppSettings } from './settings'
 import type { MicrophoneDevice } from './voice-input'
 import type { KokoroStatus, SttStatus, SystemVoice } from './voice-rpc'
+import type { WslConfig, WslDistro } from './wsl'
 
 /**
  * The IPC contract between main, preload, and renderer.
@@ -170,7 +171,9 @@ export const IpcChannel = {
   /** A read-only unified diff of one file the agent changed. */
   fileDiff: 'files:diff',
   /** Whether a folder is a git repository, for the editor's worktree switch. */
-  inspectWorkspace: 'agents:inspect-workspace'
+  inspectWorkspace: 'agents:inspect-workspace',
+  /** Installed WSL distros, for the editor's Run in WSL control. Empty off Windows. */
+  listWslDistros: 'wsl:list-distros'
 } as const
 
 /**
@@ -351,5 +354,7 @@ export type OpenRoomApi = {
    */
   fileDiff: (agentId: string, path: string) => Promise<FileDiffResult>
   /** Whether a folder exists and is a git repository. */
-  inspectWorkspace: (path: string) => Promise<WorkspaceInfo>
+  inspectWorkspace: (path: string, wsl: WslConfig | null) => Promise<WorkspaceInfo>
+  /** Installed WSL distros, for the editor's Run in WSL control. Empty off Windows. */
+  listWslDistros: () => Promise<WslDistro[]>
 }

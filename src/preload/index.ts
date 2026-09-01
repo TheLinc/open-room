@@ -16,6 +16,7 @@ import type { AppSettings } from '@shared/settings'
 import type { KokoroStatus, SttStatus, SystemVoice } from '@shared/voice-rpc'
 import type { HotkeyFailure } from '@shared/hotkeys'
 import type { MicrophoneDevice } from '@shared/voice-input'
+import type { WslConfig, WslDistro } from '@shared/wsl'
 import {
   IpcChannel,
   type AgentsSnapshot,
@@ -195,8 +196,10 @@ const openRoom: OpenRoomApi = {
   fileDiff: (agentId: string, path: string): Promise<FileDiffResult> =>
     ipcRenderer.invoke(IpcChannel.fileDiff, agentId, path),
 
-  inspectWorkspace: (path: string): Promise<WorkspaceInfo> =>
-    ipcRenderer.invoke(IpcChannel.inspectWorkspace, path)
+  inspectWorkspace: (path: string, wsl: WslConfig | null): Promise<WorkspaceInfo> =>
+    ipcRenderer.invoke(IpcChannel.inspectWorkspace, path, wsl),
+
+  listWslDistros: (): Promise<WslDistro[]> => ipcRenderer.invoke(IpcChannel.listWslDistros)
 }
 
 /**

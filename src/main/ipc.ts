@@ -21,12 +21,14 @@ import {
   type MutationResult,
   type WorkspaceInfo
 } from '@shared/ipc'
+import { linuxToUnc, type WslConfig, type WslDistro } from '@shared/wsl'
 import { stat } from 'node:fs/promises'
 import { ConfigStore } from './config-store'
 import { openInEditor, resolveTarget } from './open-in-editor'
 import { fileDiff } from './file-diff'
-import type { Git } from './git'
+import { Git } from './git'
 import type { WorktreeManager } from './worktrees'
+import type { WslRuntime } from './wsl'
 import type { AgentSupervisor } from './agent-supervisor'
 import type { ConversationStore } from './conversation-store'
 import type { VoiceSidecar } from './voice-sidecar'
@@ -61,7 +63,8 @@ export function registerIpcHandlers(
   },
   /** Null when git is not on PATH; diffs and worktrees then say so. */
   git: Git | null = null,
-  worktrees: WorktreeManager | null = null
+  worktrees: WorktreeManager | null = null,
+  wsl: WslRuntime | null = null
 ): void {
   /**
    * The checkout the agent's active conversation runs in — its worktree when
@@ -78,6 +81,10 @@ export function registerIpcHandlers(
       ? { cwd: record.path, base: { kind: 'branch-base', commit: record.baseCommit } }
       : { cwd: agent.config.workspacePath, base: { kind: 'head' } }
   }
+
+  /** Git for this agent: inside its distro for a WSL agent, the host's otherwise. */
+  const gitFor = (agent: Agent): Git | null =>
+    agent.config.wsl && wsl?.available ? new Git(wsl.git(agent.config.wsl.distro)) : git
 
   /** A worktree or branch kept back on delete is worth a notification, not a failure. */
   const notifyKept = (message: string | null): void => {
@@ -335,7 +342,11 @@ export function registerIpcHandlers(
 
   ipcMain.handle(IpcChannel.listWorkspaceFiles, async (_e, agentId: string): Promise<string[]> => {
     const agent = await store.read(agentId).catch(() => null)
-    return agent ? workspaceIndex.files((await checkoutFor(agent)).cwd) : []
+    if (!agent) return []
+    const { cwd } = await checkoutFor(agent)
+    return agent.config.wsl && wsl
+      ? wsl.listFiles(agent.config.wsl.distro, cwd)
+      : workspaceIndex.files(cwd)
   })
 
   ipcMain.handle(
@@ -344,20 +355,31 @@ export function registerIpcHandlers(
       try {
         const agent = await store.read(agentId)
         const { cwd, base } = await checkoutFor(agent)
-        return await fileDiff(git, cwd, base, path)
+        return await fileDiff(gitFor(agent), cwd, base, path)
       } catch (error) {
         return { ok: false, message: describeError(error) }
       }
     }
   )
 
-  ipcMain.handle(IpcChannel.inspectWorkspace, async (_e, path: string): Promise<WorkspaceInfo> => {
-    const exists = await stat(path)
-      .then((info) => info.isDirectory())
-      .catch(() => false)
-    const isRepo = exists && git ? await git.isRepo(path).catch(() => false) : false
-    return { exists, git: isRepo }
-  })
+  ipcMain.handle(
+    IpcChannel.inspectWorkspace,
+    async (_e, path: string, wslConfig: WslConfig | null): Promise<WorkspaceInfo> => {
+      if (wslConfig) {
+        if (!wsl?.available) return { exists: false, git: false }
+        const exists = await wsl.pathExists(wslConfig.distro, path)
+        const isRepo = exists
+          ? await new Git(wsl.git(wslConfig.distro)).isRepo(path).catch(() => false)
+          : false
+        return { exists, git: isRepo }
+      }
+      const exists = await stat(path)
+        .then((info) => info.isDirectory())
+        .catch(() => false)
+      const isRepo = exists && git ? await git.isRepo(path).catch(() => false) : false
+      return { exists, git: isRepo }
+    }
+  )
 
   ipcMain.handle(
     IpcChannel.openInEditor,
@@ -368,15 +390,19 @@ export function registerIpcHandlers(
         // {line} substitution, so it is validated here rather than trusted.
         const safeLine =
           Number.isInteger(line) && (line as number) > 0 ? (line as number) : undefined
-        return await openInEditor(
-          settings.editorCommand,
-          resolveTarget(path, (await checkoutFor(agent)).cwd),
-          safeLine
-        )
+        const { cwd } = await checkoutFor(agent)
+        const target = agent.config.wsl
+          ? linuxToUnc(agent.config.wsl.distro, path.startsWith('/') ? path : `${cwd}/${path}`)
+          : resolveTarget(path, cwd)
+        return await openInEditor(settings.editorCommand, target, safeLine)
       } catch (error) {
         return { ok: false, message: describeError(error) }
       }
     }
+  )
+
+  ipcMain.handle(IpcChannel.listWslDistros, async (): Promise<WslDistro[]> =>
+    wsl?.available ? wsl.listDistros() : []
   )
 }
 
