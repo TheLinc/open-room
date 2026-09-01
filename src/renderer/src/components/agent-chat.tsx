@@ -309,6 +309,14 @@ export function AgentChat({
                   · {runtime.usage.numTurns} turns · ${runtime.usage.totalCostUsd.toFixed(4)}
                 </span>
               )}
+              {agent.config.wsl && (
+                <span
+                  className="font-mono"
+                  title="This agent's claude, git and files run inside the distro"
+                >
+                  · WSL · {agent.config.wsl.distro}
+                </span>
+              )}
               {/* Which checkout the agent is editing. A worktree is named by
                   its branch with the path on hover; a fallback says why the
                   agent is in the workspace despite asking for a worktree,
@@ -448,6 +456,7 @@ export function AgentChat({
             </p>
             <p className="max-w-sm text-xs text-muted-foreground">
               It runs in {runtime.cwd ?? agent.config.workspacePath}
+              {agent.config.wsl ? ` inside ${agent.config.wsl.distro}` : ''}
               {agent.config.worktrees && !runtime.cwd
                 ? ' — each new conversation in its own git worktree'
                 : ''}
