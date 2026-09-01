@@ -171,7 +171,12 @@ export class AgentSupervisor {
   private worktrees: WorktreePlacer | null = null
   /** Null off Windows or when wsl.exe is missing; WSL agents then fail to start with a reason. */
   private wsl: WslRuntime | null = null
-  /** Distro per running or starting WSL agent, for the login hint on failure. */
+  /**
+   * Distro per running or starting WSL agent, for the login hint on failure.
+   * Derived from the config at the top of every `start()` and cleared at the
+   * top of every `stop()`, so a reconfigured or preflight-failed agent never
+   * carries a stale distro.
+   */
   private readonly wslDistros = new Map<string, string>()
 
   constructor(
@@ -345,8 +350,9 @@ export class AgentSupervisor {
     }
 
     const wslConfig = agent.config.wsl
+    if (wslConfig) this.wslDistros.set(id, wslConfig.distro)
+    else this.wslDistros.delete(id)
     if (wslConfig) {
-      this.wslDistros.set(id, wslConfig.distro)
       if (!this.wsl?.available) {
         const error = describeAgentError(
           'unknown',
@@ -919,6 +925,7 @@ export class AgentSupervisor {
 
   /** Ends the session and tears down the subprocess. */
   async stop(agentId: string): Promise<void> {
+    this.wslDistros.delete(agentId)
     const session = this.sessions.get(agentId)
     if (!session) {
       this.patch(agentId, { state: 'idle' })
@@ -939,7 +946,6 @@ export class AgentSupervisor {
       // Teardown failures are already reflected in the runtime state.
     }
     this.sessions.delete(agentId)
-    this.wslDistros.delete(agentId)
     // Overrides belong to the session that carried them. Keeping them would
     // mean an agent quietly starting its next conversation in plan mode
     // because of something set days ago. `queued` is repeated here too: a
