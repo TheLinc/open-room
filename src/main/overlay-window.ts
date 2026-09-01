@@ -80,16 +80,17 @@ export class OverlayWindow {
   private pointerInside = false
   private pointerTimer: NodeJS.Timeout | null = null
 
+  /** Registered once for the process; the window it moves is looked up live. */
+  private watchingDisplays = false
+
   create(): void {
-    // Deliberately the primary display rather than whichever screen holds the
-    // cursor: the overlay should appear in one predictable place.
-    const { workArea } = screen.getPrimaryDisplay()
+    const { x, y } = this.placement()
 
     this.window = new BrowserWindow({
       width: WIDTH,
       height: HEIGHT,
-      x: Math.round(workArea.x + (workArea.width - WIDTH) / 2),
-      y: Math.round(workArea.y + workArea.height - HEIGHT - BOTTOM_MARGIN),
+      x,
+      y,
       show: false,
       frame: false,
       transparent: true,
@@ -126,6 +127,18 @@ export class OverlayWindow {
     // forward: true keeps mouse-move flowing to the renderer, which is what
     // makes hover work on a window that clicks pass through.
     this.window.setIgnoreMouseEvents(true, { forward: true })
+
+    // Displays come and go after launch � a monitor sleeping, a dock, a
+    // re-ordered arrangement � and Windows moves windows off a display that
+    // vanishes without moving them back. Field report: the pill turned up on
+    // the wrong monitor. So placement is never trusted to survive: it is
+    // redone on every display change and again on every show.
+    if (!this.watchingDisplays) {
+      this.watchingDisplays = true
+      screen.on('display-added', () => this.place())
+      screen.on('display-removed', () => this.place())
+      screen.on('display-metrics-changed', () => this.place())
+    }
 
     this.window.webContents.on('did-finish-load', () => {
       this.loaded = true
@@ -188,8 +201,37 @@ export class OverlayWindow {
 
     // showInactive rather than show: raising the overlay must never steal
     // focus from whatever the user is actually working in.
-    if (!this.window.isVisible()) this.window.showInactive()
+    if (!this.window.isVisible()) {
+      this.place()
+      this.window.showInactive()
+    }
     this.startPolling()
+  }
+
+  /**
+   * Where the overlay belongs: bottom centre of the primary display.
+   *
+   * Deliberately the primary display rather than whichever screen holds the
+   * cursor or the main window: the overlay should appear in one predictable
+   * place.
+   */
+  private placement(): { x: number; y: number } {
+    const { workArea } = screen.getPrimaryDisplay()
+    return {
+      x: Math.round(workArea.x + (workArea.width - WIDTH) / 2),
+      y: Math.round(workArea.y + workArea.height - HEIGHT - BOTTOM_MARGIN)
+    }
+  }
+
+  /** Moves the window back to where it belongs, if anything has moved it. */
+  private place(): void {
+    if (!this.window || this.window.isDestroyed()) return
+
+    const wanted = this.placement()
+    const current = this.window.getBounds()
+    if (current.x === wanted.x && current.y === wanted.y) return
+
+    this.window.setBounds(wanted)
   }
 
   /** Open the microphone. */
