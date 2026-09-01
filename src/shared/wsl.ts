@@ -20,7 +20,7 @@ const SHARE_HOST = '\\\\wsl.localhost\\'
 
 /** A rooted Linux path. `//x` is a UNC-looking string, not a Linux path. */
 export function isLinuxAbsolutePath(path: string): boolean {
-  return /^\/(?!\/)/.test(path) || path === '/'
+  return /^\/(?!\/)/.test(path)
 }
 
 /** `/home/u/x` in `Ubuntu` -> `\\wsl.localhost\Ubuntu\home\u\x`. */

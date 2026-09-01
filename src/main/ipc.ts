@@ -82,9 +82,14 @@ export function registerIpcHandlers(
       : { cwd: agent.config.workspacePath, base: { kind: 'head' } }
   }
 
-  /** Git for this agent: inside its distro for a WSL agent, the host's otherwise. */
+  /**
+   * Git for this agent: inside its distro for a WSL agent, the host's
+   * otherwise. A WSL agent never falls back to host git — that would run a
+   * Windows git against a Linux path and fail with a confusing ENOENT
+   * instead of reporting that WSL is unavailable.
+   */
   const gitFor = (agent: Agent): Git | null =>
-    agent.config.wsl && wsl?.available ? new Git(wsl.git(agent.config.wsl.distro)) : git
+    agent.config.wsl ? (wsl ? new Git(wsl.git(agent.config.wsl.distro)) : null) : git
 
   /** A worktree or branch kept back on delete is worth a notification, not a failure. */
   const notifyKept = (message: string | null): void => {
@@ -365,7 +370,7 @@ export function registerIpcHandlers(
   ipcMain.handle(
     IpcChannel.inspectWorkspace,
     async (_e, path: string, wslConfig: WslConfig | null): Promise<WorkspaceInfo> => {
-      if (wslConfig) {
+      if (typeof wslConfig?.distro === 'string' && wslConfig.distro !== '') {
         if (!wsl?.available) return { exists: false, git: false }
         const exists = await wsl.pathExists(wslConfig.distro, path)
         const isRepo = exists
@@ -392,7 +397,10 @@ export function registerIpcHandlers(
           Number.isInteger(line) && (line as number) > 0 ? (line as number) : undefined
         const { cwd } = await checkoutFor(agent)
         const target = agent.config.wsl
-          ? linuxToUnc(agent.config.wsl.distro, path.startsWith('/') ? path : `${cwd}/${path}`)
+          ? linuxToUnc(
+              agent.config.wsl.distro,
+              path.startsWith('/') ? path : `${cwd.replace(/\/+$/, '')}/${path}`
+            )
           : resolveTarget(path, cwd)
         return await openInEditor(settings.editorCommand, target, safeLine)
       } catch (error) {

@@ -48,6 +48,7 @@ function fakeChild(
 
 describe('SessionReader', () => {
   it('spawns the worker with CLAUDE_CONFIG_DIR set and answers a list', async () => {
+    vi.stubEnv('ANTHROPIC_API_KEY', 'sk-should-not-cross')
     const spawnChild = vi.fn(() => fakeChild(() => [{ sessionId: 's1' }]))
     const reader = new SessionReader(
       'out/main/sessions.js',
@@ -66,7 +67,11 @@ describe('SessionReader', () => {
     expect(script).toBe('out/main/sessions.js')
     expect(env.CLAUDE_CONFIG_DIR).toBe('\\\\wsl.localhost\\Ubuntu\\home\\u\\.claude')
     expect(env.ELECTRON_RUN_AS_NODE).toBe('1')
+    // The worker's environment is built from buildChildEnv, which strips the
+    // API key so a session read can never bill against it.
+    expect(env.ANTHROPIC_API_KEY).toBeUndefined()
     reader.stop()
+    vi.unstubAllEnvs()
   })
 
   it('answers empty without spawning when the config dir is unknown', async () => {

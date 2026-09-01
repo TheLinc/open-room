@@ -196,7 +196,6 @@ export function AgentEditor({
   const worktrees = form.watch('worktrees')
   const workspacePath = form.watch('workspacePath')
   const wslDistro = form.watch('wslDistro')
-  const wslConfig = wslDistro ? { distro: wslDistro } : null
 
   const [platform, setPlatform] = useState<AppInfo['platform'] | null>(null)
   useEffect(() => {
@@ -222,6 +221,7 @@ export function AgentEditor({
     }
     let cancelled = false
     const timer = setTimeout(() => {
+      const wslConfig = wslDistro ? { distro: wslDistro } : null
       void window.openRoom.inspectWorkspace(workspacePath, wslConfig).then((info) => {
         if (!cancelled) setWorkspaceInfo(info)
       })

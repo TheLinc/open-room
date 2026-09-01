@@ -14,6 +14,7 @@ import {
   type SessionRequest,
   type SessionResponse
 } from '@shared/session-rpc'
+import { buildChildEnv } from './agent-errors'
 
 /**
  * The five session operations ConversationStore needs, so a WSL agent's
@@ -135,7 +136,7 @@ export class SessionReader implements SessionApi {
   private ensureWorker(configDir: string): Worker {
     if (this.worker) return this.worker
     const child = this.spawnChild(this.scriptPath, {
-      ...(process.env as Record<string, string>),
+      ...buildChildEnv(),
       ELECTRON_RUN_AS_NODE: '1',
       CLAUDE_CONFIG_DIR: configDir
     })
