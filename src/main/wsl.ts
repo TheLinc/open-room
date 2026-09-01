@@ -28,6 +28,10 @@ import type { Placement } from './worktrees'
 export type WslExecResult = { code: number; stdout: Buffer; stderr: string }
 export type WslExec = (args: string[], timeoutMs?: number) => Promise<WslExecResult>
 
+/** The outcome of probing a directory inside a distro; see `probeDir`. */
+export type DirProbe =
+  { kind: 'dir' } | { kind: 'missing' } | { kind: 'unreachable'; detail: string }
+
 const DEFAULT_TIMEOUT_MS = 15_000
 /** A cold distro can take several seconds to start; first calls get longer. */
 const PROBE_TIMEOUT_MS = 30_000
@@ -94,10 +98,23 @@ export class WslRuntime {
     return result.code === 0 ? parseWslDistroList(decodeWslOutput(result.stdout)) : []
   }
 
-  async pathExists(distro: string, path: string): Promise<boolean> {
-    if (!this.run) return false
+  /**
+   * Tells a missing directory apart from WSL itself being unreachable
+   * (service down, distro removed, `wsl.exe` timing out): `test -d` exits 1
+   * for the former and something else entirely for the latter, and the two
+   * used to be indistinguishable to the caller.
+   */
+  async probeDir(distro: string, path: string): Promise<DirProbe> {
+    if (!this.run) return { kind: 'unreachable', detail: 'WSL is not available' }
     const result = await this.run(wslExecArgv(distro, null, ['test', '-d', path]), PROBE_TIMEOUT_MS)
-    return result.code === 0
+    if (result.code === 0) return { kind: 'dir' }
+    if (result.code === 1) return { kind: 'missing' }
+    const detail = result.stderr.trim() || `wsl.exe exited with code ${result.code}`
+    return { kind: 'unreachable', detail }
+  }
+
+  async pathExists(distro: string, path: string): Promise<boolean> {
+    return (await this.probeDir(distro, path)).kind === 'dir'
   }
 
   /** `$HOME` inside the distro, cached: it does not change while the app runs. */
@@ -120,7 +137,11 @@ export class WslRuntime {
     return home ? linuxToUnc(distro, `${home}/.claude`) : null
   }
 
-  /** The distro's own login, checked the way the host's is. */
+  /**
+   * The distro's own login, checked the way the host's is. Not called yet
+   * anywhere in the app; it exists as the hook for a future per-distro
+   * login surface.
+   */
   async checkLogin(distro: string): Promise<LoginStatus> {
     if (!this.run) return { state: 'unknown' }
     const result = await this.run(

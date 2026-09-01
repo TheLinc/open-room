@@ -361,10 +361,19 @@ export class AgentSupervisor {
         this.fail(id, error)
         return { ok: false, message: error.message }
       }
-      if (!(await this.wsl.pathExists(wslConfig.distro, agent.config.workspacePath))) {
+      const probe = await this.wsl.probeDir(wslConfig.distro, agent.config.workspacePath)
+      if (probe.kind === 'missing') {
         const error = describeAgentError(
           'workspace-missing',
           `Workspace folder not found in ${wslConfig.distro}: ${agent.config.workspacePath}`
+        )
+        this.fail(id, error)
+        return { ok: false, message: error.message }
+      }
+      if (probe.kind === 'unreachable') {
+        const error = describeAgentError(
+          'unknown',
+          `Could not reach WSL distro ${wslConfig.distro}: ${probe.detail}`
         )
         this.fail(id, error)
         return { ok: false, message: error.message }

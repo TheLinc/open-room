@@ -75,6 +75,34 @@ describe('WslRuntime', () => {
     expect(calls[0]).toEqual(['-d', 'Ubuntu', '--exec', 'test', '-d', '/home/u/proj'])
   })
 
+  it('probeDir tells a directory, a missing one, and an unreachable distro apart', async () => {
+    const { run } = recorder([{ code: 0 }, { code: 1 }, { code: 255, stderr: 'HCS error\n' }])
+    const wsl = new WslRuntime('wsl.exe', run)
+    expect(await wsl.probeDir('Ubuntu', '/home/u/proj')).toEqual({ kind: 'dir' })
+    expect(await wsl.probeDir('Ubuntu', '/nope')).toEqual({ kind: 'missing' })
+    expect(await wsl.probeDir('Ubuntu', '/x')).toEqual({
+      kind: 'unreachable',
+      detail: 'HCS error'
+    })
+  })
+
+  it('probeDir falls back to the exit code when wsl.exe wrote nothing to stderr', async () => {
+    const { run } = recorder([{ code: 255 }])
+    const wsl = new WslRuntime('wsl.exe', run)
+    expect(await wsl.probeDir('Ubuntu', '/x')).toEqual({
+      kind: 'unreachable',
+      detail: 'wsl.exe exited with code 255'
+    })
+  })
+
+  it('probeDir reports unreachable without a runner, rather than a false "missing"', async () => {
+    const wsl = new WslRuntime(null, null)
+    expect(await wsl.probeDir('Ubuntu', '/x')).toEqual({
+      kind: 'unreachable',
+      detail: 'WSL is not available'
+    })
+  })
+
   it('resolves and caches the home directory, and derives the config dir as UNC', async () => {
     const { calls, run } = recorder([{ stdout: Buffer.from('/home/u\n') }])
     const wsl = new WslRuntime('wsl.exe', run)
