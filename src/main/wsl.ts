@@ -106,9 +106,9 @@ export class WslRuntime {
       PROBE_TIMEOUT_MS
     )
     const home = result.code === 0 ? decodeWslOutput(result.stdout).trim() : ''
-    const value = home.startsWith('/') ? home : null
-    this.homes.set(distro, value)
-    return value
+    if (!home.startsWith('/')) return null
+    this.homes.set(distro, home)
+    return home
   }
 
   /** Where the distro's CLI keeps its sessions, as a path Windows can read. */

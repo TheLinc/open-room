@@ -78,6 +78,14 @@ describe('WslRuntime', () => {
     expect(await wsl.configDir('Ubuntu')).toBe('\\\\wsl.localhost\\Ubuntu\\home\\u\\.claude')
   })
 
+  it('does not cache a failed home probe, so a cold distro is retried', async () => {
+    const { calls, run } = recorder([{ code: 1 }, { stdout: Buffer.from('/home/u') }])
+    const wsl = new WslRuntime('wsl.exe', run)
+    expect(await wsl.homeDir('Ubuntu')).toBe(null)
+    expect(await wsl.homeDir('Ubuntu')).toBe('/home/u')
+    expect(calls).toHaveLength(2)
+  })
+
   it('runs git inside the distro at the given directory', async () => {
     const { calls, run } = recorder([{ code: 0, stdout: Buffer.from('M a.ts\n') }])
     const wsl = new WslRuntime('wsl.exe', run)
