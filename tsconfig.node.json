@@ -5,6 +5,7 @@
     "src/main/**/*",
     "src/preload/**/*",
     "src/voice/**/*",
+    "src/sessions/**/*",
     "src/shared/**/*",
     "vitest.config.ts"
   ],

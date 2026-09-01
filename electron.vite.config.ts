@@ -17,7 +17,9 @@ export default defineConfig({
         // process, spawned with Electron's binary in Node mode.
         input: {
           index: resolve('src/main/index.ts'),
-          voice: resolve('src/voice/index.ts')
+          voice: resolve('src/voice/index.ts'),
+          // The sessions worker: the SDK's session readers under a different CLAUDE_CONFIG_DIR.
+          sessions: resolve('src/sessions/index.ts')
         }
       }
     }
