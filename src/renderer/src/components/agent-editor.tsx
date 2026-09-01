@@ -12,8 +12,9 @@ import {
 } from '@shared/agent'
 import { checkAgentName } from '@shared/phonetics'
 import type { HotkeyFailure } from '@shared/hotkeys'
-import type { WorkspaceInfo } from '@shared/ipc'
+import type { AppInfo, WorkspaceInfo } from '@shared/ipc'
 import { explainAccelerator } from '@shared/accelerator'
+import { uncToLinux, type WslDistro } from '@shared/wsl'
 import { HotkeyInput } from '@/components/hotkey-input'
 import { useStaticDialog } from '@/hooks/use-static-dialog'
 import type { KokoroStatus, SystemVoice } from '@shared/voice-rpc'
@@ -194,6 +195,20 @@ export function AgentEditor({
   const persistSession = form.watch('persistSession')
   const worktrees = form.watch('worktrees')
   const workspacePath = form.watch('workspacePath')
+  const wslDistro = form.watch('wslDistro')
+  const wslConfig = wslDistro ? { distro: wslDistro } : null
+
+  const [platform, setPlatform] = useState<AppInfo['platform'] | null>(null)
+  useEffect(() => {
+    void window.openRoom.getAppInfo().then((info) => setPlatform(info.platform))
+  }, [])
+
+  // The distro list is Windows-only data, fetched once the platform is known.
+  const [distros, setDistros] = useState<WslDistro[]>([])
+  useEffect(() => {
+    if (platform !== 'win32') return
+    void window.openRoom.listWslDistros().then(setDistros)
+  }, [platform])
 
   // Whether the chosen folder is a git repository decides whether the
   // worktree switch can mean anything, so the answer is shown beside it
@@ -207,7 +222,7 @@ export function AgentEditor({
     }
     let cancelled = false
     const timer = setTimeout(() => {
-      void window.openRoom.inspectWorkspace(workspacePath, null).then((info) => {
+      void window.openRoom.inspectWorkspace(workspacePath, wslConfig).then((info) => {
         if (!cancelled) setWorkspaceInfo(info)
       })
     }, 300)
@@ -215,7 +230,7 @@ export function AgentEditor({
       cancelled = true
       clearTimeout(timer)
     }
-  }, [workspacePath])
+  }, [workspacePath, wslDistro])
 
   const nameWarnings = useMemo(
     () => checkAgentName(watchedName ?? '', existingNames),
@@ -250,7 +265,15 @@ export function AgentEditor({
 
   const pickWorkspace = async (): Promise<void> => {
     const picked = await window.openRoom.pickWorkspace()
-    if (picked) form.setValue('workspacePath', picked, { shouldValidate: true, shouldDirty: true })
+    if (!picked) return
+    const linux = wslDistro ? uncToLinux(picked) : null
+    form.setValue('workspacePath', linux ? linux.path : picked, {
+      shouldValidate: true,
+      shouldDirty: true
+    })
+    if (linux && linux.distro !== wslDistro) {
+      form.setValue('wslDistro', linux.distro, { shouldValidate: true, shouldDirty: true })
+    }
   }
 
   return (
@@ -359,10 +382,53 @@ export function AgentEditor({
                       </Button>
                     </div>
                     <FieldDescription>
-                      The agent runs here, exactly as Claude Code would in that directory.
+                      {wslDistro
+                        ? 'A Linux path inside the distro, like /home/you/project. Browse can pick it under \\\\wsl.localhost.'
+                        : 'The agent runs here, exactly as Claude Code would in that directory.'}
                     </FieldDescription>
                     <FieldError errors={[form.formState.errors.workspacePath]} />
                   </Field>
+
+                  {platform === 'win32' && (
+                    <Field>
+                      <FieldLabel htmlFor="wslDistro">Run in WSL</FieldLabel>
+                      <Controller
+                        control={form.control}
+                        name="wslDistro"
+                        render={({ field }) => (
+                          <Select
+                            value={field.value || UNSET}
+                            onValueChange={(next) => field.onChange(next === UNSET ? '' : next)}
+                          >
+                            <SelectTrigger id="wslDistro">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value={UNSET}>Off</SelectItem>
+                              {distros.map((d) => (
+                                <SelectItem key={d.name} value={d.name}>
+                                  {d.name}
+                                  {d.isDefault ? ' (default)' : ''}
+                                </SelectItem>
+                              ))}
+                              {wslDistro && !distros.some((d) => d.name === wslDistro) && (
+                                <SelectItem value={wslDistro}>
+                                  {wslDistro} (not installed)
+                                </SelectItem>
+                              )}
+                            </SelectContent>
+                          </Select>
+                        )}
+                      />
+                      <FieldDescription>
+                        {wslDistro
+                          ? `Claude Code, git and the agent's files all live inside ${wslDistro}. The workspace is a Linux path, and the distro has its own Claude Code sign-in.`
+                          : distros.length === 0
+                            ? 'No WSL distros were found on this machine.'
+                            : 'Run this agent inside a Linux distro instead of on Windows.'}
+                      </FieldDescription>
+                    </Field>
+                  )}
 
                   <Field orientation="horizontal">
                     <div className="flex flex-col gap-1">
@@ -381,6 +447,11 @@ export function AgentEditor({
                             : 'That folder does not exist yet.'}
                         </FieldDescription>
                       )}
+                      {wslDistro && (
+                        <FieldDescription className="text-amber-500">
+                          Not available for WSL agents yet.
+                        </FieldDescription>
+                      )}
                     </div>
                     <Controller
                       control={form.control}
@@ -390,6 +461,7 @@ export function AgentEditor({
                           id="worktrees"
                           checked={field.value}
                           onCheckedChange={field.onChange}
+                          disabled={Boolean(wslDistro)}
                         />
                       )}
                     />
