@@ -57,6 +57,8 @@ import {
   type TurnSpeechState
 } from './speak-tool'
 import { condenseForSpeech, shouldSpeakFallback, speakableAsIs } from './condense'
+import type { Placement, WorktreeManager } from './worktrees'
+import type { WorktreeRecord } from '@shared/worktrees'
 
 /**
  * Owns the lifecycle of every running agent.
@@ -98,7 +100,16 @@ type Session = {
    * control round trip.
    */
   autoCompactFetched: boolean
+  /**
+   * A worktree created for this session that no conversation owns yet. The
+   * session id that will own it arrives on the init message; if the session
+   * dies before then, the worktree is removed rather than stranded.
+   */
+  pendingWorktree: WorktreeRecord | null
 }
+
+/** The slice of `WorktreeManager` the supervisor drives. */
+export type WorktreePlacer = Pick<WorktreeManager, 'place' | 'commit' | 'abandon'>
 
 /** The shape `query()` accepts on its input stream. */
 type SDKUserInput = {
@@ -151,6 +162,8 @@ export class AgentSupervisor {
    * next prompt would resume the very conversation the user just left.
    */
   private readonly chosen = new Set<string>()
+  /** Null until attached; every session then runs in its workspace. */
+  private worktrees: WorktreePlacer | null = null
 
   constructor(
     private readonly events: SupervisorEvents,
@@ -161,6 +174,11 @@ export class AgentSupervisor {
 
   setOptions(options: SupervisorOptions): void {
     this.options = options
+  }
+
+  /** Gives conversations their own git worktrees, for agents that ask. */
+  setWorktrees(worktrees: WorktreePlacer | null): void {
+    this.worktrees = worktrees
   }
 
   runtimeFor(agentId: string): AgentRuntime {
@@ -327,6 +345,15 @@ export class AgentSupervisor {
 
     this.patch(id, { state: 'starting', error: null })
 
+    // Where this session runs: the workspace, or the conversation's own git
+    // worktree. Decided before `query()` because `cwd` is fixed at spawn, and
+    // reported on the runtime so the pane never shows one checkout while the
+    // agent edits another.
+    const placement: Placement = this.worktrees
+      ? await this.worktrees.place(agent, resumeSessionId)
+      : { cwd: agent.config.workspacePath, isolation: { kind: 'workspace' }, pending: null }
+    this.patch(id, { isolation: placement.isolation })
+
     const queue = new PushableQueue<SDKUserInput>()
 
     const turnSpeech = newTurnSpeechState()
@@ -336,7 +363,7 @@ export class AgentSupervisor {
       // enforce its per-turn budget against the live session.
       const q = query({
         prompt: queue.stream(),
-        options: this.optionsFor(agent, resumeSessionId, turnSpeech)
+        options: this.optionsFor(agent, resumeSessionId, turnSpeech, placement.cwd)
       })
       const session: Session = {
         agentId: id,
@@ -350,13 +377,16 @@ export class AgentSupervisor {
         commands: { loaded: false, terminal: [] },
         seen: new Set(),
         queued: [],
-        autoCompactFetched: false
+        autoCompactFetched: false,
+        pendingWorktree: placement.pending
       }
       session.pump = this.pump(session)
       this.sessions.set(id, session)
       return { ok: true }
     } catch (error) {
       queue.close()
+      // The session never existed, so nothing can own the worktree made for it.
+      if (placement.pending) void this.worktrees?.abandon(agent, placement.pending)
       const classified = classifyThrownError(error)
       this.fail(id, classified)
       return { ok: false, message: classified.message }
@@ -366,7 +396,8 @@ export class AgentSupervisor {
   private optionsFor(
     agent: Agent,
     resumeSessionId: string | null,
-    turnSpeech: TurnSpeechState
+    turnSpeech: TurnSpeechState,
+    cwd: string
   ): Options {
     return agentQueryOptions(
       agent,
@@ -375,7 +406,8 @@ export class AgentSupervisor {
       createSpeakServer(agent, this.speech, turnSpeech),
       this.permissionHandler(agent.config.id),
       this.runtimeFor(agent.config.id).overrides,
-      bundledClaudePath()
+      bundledClaudePath(),
+      cwd
     )
   }
 
@@ -449,7 +481,15 @@ export class AgentSupervisor {
     // them mounted would show the previous conversation's messages under the
     // newly selected one; persisted history is reloaded from disk instead.
     this.events.onTranscriptCleared(agentId)
-    this.patch(agentId, { activeConversationId: sessionId, sessionId, error: null })
+    // The checkout belongs to the conversation just left; the next start
+    // reports its own.
+    this.patch(agentId, {
+      activeConversationId: sessionId,
+      sessionId,
+      error: null,
+      isolation: null,
+      cwd: null
+    })
   }
 
   respondToPermission(requestId: string, decision: PermissionDecision): void {
@@ -497,6 +537,12 @@ export class AgentSupervisor {
       this.patch(id, { queued: [] })
       session.queue.close()
       this.sessions.delete(id)
+      // A session that ended before its init message never got an id, so the
+      // worktree made for it has no conversation to belong to.
+      if (session.pendingWorktree) {
+        void this.worktrees?.abandon(session.agent, session.pendingWorktree)
+        session.pendingWorktree = null
+      }
     }
   }
 
@@ -534,8 +580,16 @@ export class AgentSupervisor {
 
       if (message.subtype === 'init') {
         // What the CLI is actually running, which can differ from what was
-        // asked for; see permissionModeNotice.
-        this.patch(id, { permissionMode: message.permissionMode ?? null })
+        // asked for; see permissionModeNotice. `cwd` likewise: read off the
+        // CLI rather than assumed from the placement.
+        this.patch(id, { permissionMode: message.permissionMode ?? null, cwd: message.cwd })
+
+        // The session now has an id, so the worktree made for it has an owner.
+        if (session.pendingWorktree) {
+          const record = session.pendingWorktree
+          session.pendingWorktree = null
+          void this.worktrees?.commit(id, sessionId, record)
+        }
 
         // Per-turn statuses are free; the error text behind a failure is a
         // control round trip, asked for only when a server is newly wrong.

@@ -31,7 +31,14 @@ export function agentQueryOptions(
    * platform package is missing, in which case the SDK is left to its own
    * resolution and reports the failure itself.
    */
-  claudeExecutable: string | null = null
+  claudeExecutable: string | null = null,
+  /**
+   * Where the session runs. The workspace by default; a conversation's git
+   * worktree when the agent isolates conversations — see `WorktreeManager`.
+   * Passed in rather than derived here because the decision needs git and
+   * the filesystem, and this function is kept pure so it can be asserted on.
+   */
+  cwd: string = agent.config.workspacePath
 ): Options {
   const { config } = agent
   const settings = effectiveSettings(config, overrides)
@@ -56,7 +63,7 @@ export function agentQueryOptions(
      * files are read regardless, and need their own mechanisms.
      */
     settingSources: [],
-    cwd: config.workspacePath,
+    cwd,
     model: settings.model,
     ...(settings.effort ? { effort: settings.effort } : {}),
     ...(config.fallbackModel ? { fallbackModel: config.fallbackModel } : {}),

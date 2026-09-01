@@ -166,8 +166,37 @@ export const IpcChannel = {
   focusAgent: 'app:focus-agent',
 
   listWorkspaceFiles: 'agents:list-workspace-files',
-  openInEditor: 'files:open-in-editor'
+  openInEditor: 'files:open-in-editor',
+  /** A read-only unified diff of one file the agent changed. */
+  fileDiff: 'files:diff',
+  /** Whether a folder is a git repository, for the editor's worktree switch. */
+  inspectWorkspace: 'agents:inspect-workspace'
 } as const
+
+/**
+ * The diff behind a "Files changed" row. `base` says what the file is being
+ * compared with: `HEAD` in the workspace, or the commit a worktree
+ * conversation branched from — so committed work in the worktree shows too.
+ */
+export type FileDiffResult =
+  | {
+      ok: true
+      base: 'head' | 'branch-base'
+      /** Raw `git diff` output, rendered by the pane's own parser. */
+      diff: string
+      binary: boolean
+      /** Over the size cap; `diff` is empty and the pane says so. */
+      tooLarge: boolean
+      /** Nothing differs from the base (already reverted, or identical). */
+      empty: boolean
+    }
+  | { ok: false; message: string }
+
+export type WorkspaceInfo = {
+  exists: boolean
+  /** Inside a git working tree, so per-conversation worktrees can be offered. */
+  git: boolean
+}
 
 export type IpcChannelName = (typeof IpcChannel)[keyof typeof IpcChannel]
 
@@ -316,4 +345,11 @@ export type OpenRoomApi = {
 
   /** Opens a path (relative to the agent's workspace, or absolute) in the user's editor. */
   openInEditor: (agentId: string, path: string, line?: number) => Promise<MutationResult>
+  /**
+   * The current diff of one file the agent changed, in the agent's active
+   * conversation's checkout. Read-only; the editor owns accept and revert.
+   */
+  fileDiff: (agentId: string, path: string) => Promise<FileDiffResult>
+  /** Whether a folder exists and is a git repository. */
+  inspectWorkspace: (path: string) => Promise<WorkspaceInfo>
 }

@@ -7,6 +7,7 @@ import {
 } from '@anthropic-ai/claude-agent-sdk'
 import type { Agent } from '@shared/agent'
 import { resolvePageRange, type Conversation, type ConversationPage } from '@shared/conversation'
+import type { WorktreeMap, WorktreeRecord } from '@shared/worktrees'
 
 /**
  * Reads and manages an agent's conversations.
@@ -18,6 +19,11 @@ import { resolvePageRange, type Conversation, type ConversationPage } from '@sha
  * Sessions are scoped to an agent by **tag**, not by title. Titles are the
  * user's to rename, so keying off them would make a renamed conversation
  * vanish from its agent. Tags are separate metadata and survive a rename.
+ *
+ * A session's files live under a project key derived from its `cwd`, so every
+ * call here takes a `dir`. A conversation that ran in its own git worktree
+ * has that worktree as its `dir`, looked up from the agent's worktree
+ * records; everything else is the workspace.
  */
 
 export const AGENT_TAG_PREFIX = 'open-room:'
@@ -26,43 +32,68 @@ export function agentTag(agentId: string): string {
   return `${AGENT_TAG_PREFIX}${agentId}`
 }
 
+/** What the store needs to know about worktrees; `WorktreeManager` provides it. */
+export type WorktreeLookup = {
+  records(agentId: string): Promise<WorktreeMap>
+  recordFor(agentId: string, sessionId: string): Promise<WorktreeRecord | null>
+}
+
 export class ConversationStore {
+  constructor(private readonly worktrees: WorktreeLookup | null = null) {}
+
   /**
    * Conversations belonging to this agent, newest first.
    *
    * A workspace may also hold sessions from terminal Claude Code or from
    * another agent pointed at the same folder; the tag filter keeps those out,
    * since mixing personas would break the model the UI presents.
+   *
+   * Worktree sessions are found two ways on purpose. `includeWorktrees` has
+   * the SDK walk `git worktree list`, which covers every worktree still
+   * attached to the repository; the recorded paths are listed as well, so a
+   * conversation whose worktree was pruned by hand does not vanish from the
+   * switcher — its transcript is still on disk, keyed by that path.
    */
   async list(agent: Agent): Promise<Conversation[]> {
     if (!agent.config.persistSession) return []
 
-    const sessions = await listSessions({
-      dir: agent.config.workspacePath,
-      limit: 100,
-      includeWorktrees: false
-    }).catch(() => [])
+    const dirs = new Set<string>([agent.config.workspacePath])
+    const records = this.worktrees ? await this.worktrees.records(agent.config.id) : {}
+    for (const record of Object.values(records)) dirs.add(record.path)
 
-    return sessions
-      .filter((session) => session.tag === agentTag(agent.config.id))
-      .map((session) => ({
-        sessionId: session.sessionId,
-        // `firstPrompt` is preferred over `summary` deliberately. The SDK's
-        // summary tracks the latest prompt, so a conversation renames itself
-        // as it goes and two conversations can end up sharing a title. How a
-        // conversation started is both stable and how people recall it.
-        title: session.customTitle || session.firstPrompt || session.summary || 'Untitled',
-        lastModified: session.lastModified,
-        createdAt: session.createdAt
-      }))
-      .sort((a, b) => b.lastModified - a.lastModified)
+    const seen = new Set<string>()
+    const conversations: Conversation[] = []
+    for (const dir of dirs) {
+      const sessions = await listSessions({
+        dir,
+        limit: 100,
+        includeWorktrees: dir === agent.config.workspacePath
+      }).catch(() => [])
+
+      for (const session of sessions) {
+        if (session.tag !== agentTag(agent.config.id) || seen.has(session.sessionId)) continue
+        seen.add(session.sessionId)
+        conversations.push({
+          sessionId: session.sessionId,
+          // `firstPrompt` is preferred over `summary` deliberately. The SDK's
+          // summary tracks the latest prompt, so a conversation renames itself
+          // as it goes and two conversations can end up sharing a title. How a
+          // conversation started is both stable and how people recall it.
+          title: session.customTitle || session.firstPrompt || session.summary || 'Untitled',
+          lastModified: session.lastModified,
+          createdAt: session.createdAt
+        })
+      }
+    }
+
+    return conversations.sort((a, b) => b.lastModified - a.lastModified)
   }
 
   /** Marks a session as this agent's, so `list` can find it later. */
   async claim(agent: Agent, sessionId: string): Promise<void> {
     if (!agent.config.persistSession) return
     await tagSession(sessionId, agentTag(agent.config.id), {
-      dir: agent.config.workspacePath
+      dir: await this.dirFor(agent, sessionId)
     }).catch(() => {
       // A session that cannot be tagged still works; it just will not appear
       // in the switcher. Not worth failing a turn over.
@@ -83,7 +114,7 @@ export class ConversationStore {
     options: { limit: number; offset?: number }
   ): Promise<ConversationPage> {
     const all = await getSessionMessages(sessionId, {
-      dir: agent.config.workspacePath
+      dir: await this.dirFor(agent, sessionId)
     }).catch(() => [])
 
     const total = all.length
@@ -93,11 +124,11 @@ export class ConversationStore {
   }
 
   async rename(agent: Agent, sessionId: string, title: string): Promise<void> {
-    await renameSession(sessionId, title, { dir: agent.config.workspacePath })
+    await renameSession(sessionId, title, { dir: await this.dirFor(agent, sessionId) })
   }
 
   async remove(agent: Agent, sessionId: string): Promise<void> {
-    await deleteSession(sessionId, { dir: agent.config.workspacePath })
+    await deleteSession(sessionId, { dir: await this.dirFor(agent, sessionId) })
   }
 
   async removeAll(agent: Agent): Promise<void> {
@@ -107,5 +138,13 @@ export class ConversationStore {
     for (const conversation of conversations) {
       await this.remove(agent, conversation.sessionId).catch(() => {})
     }
+  }
+
+  /** The project directory a session's files are keyed by. */
+  async dirFor(agent: Agent, sessionId: string): Promise<string> {
+    const record = this.worktrees
+      ? await this.worktrees.recordFor(agent.config.id, sessionId)
+      : null
+    return record?.path ?? agent.config.workspacePath
   }
 }

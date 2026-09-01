@@ -44,6 +44,7 @@ export const agentFormSchema = z
     permissionMode: z.enum(['default', 'plan', 'auto']),
     toolPermissions: z.record(z.string(), z.enum(['ask', 'allow', 'deny'])),
     persistSession: z.boolean(),
+    worktrees: z.boolean(),
     hotkey: z.string(),
     mcpServersJson: z
       .string()
@@ -131,6 +132,7 @@ export function toFormValues(agent: Agent, tools: readonly string[]): AgentFormV
     permissionMode: config.permissionMode,
     toolPermissions,
     persistSession: config.persistSession,
+    worktrees: config.worktrees,
     hotkey: config.hotkey ?? '',
     mcpServersJson: Object.keys(config.mcpServers).length
       ? JSON.stringify(config.mcpServers, null, 2)
@@ -176,6 +178,7 @@ export function toAgent(values: AgentFormValues, id?: string): Agent {
       allowedTools,
       disallowedTools,
       persistSession: values.persistSession,
+      worktrees: values.worktrees,
       notifications: values.notificationsEnabled,
       ...(values.hotkey.trim() ? { hotkey: values.hotkey.trim() } : {}),
       tts: values.ttsEnabled

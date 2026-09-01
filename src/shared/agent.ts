@@ -117,6 +117,14 @@ export const agentConfigSchema = z.object({
 
   /** false = nothing written to disk, and no conversation history or resume. */
   persistSession: z.boolean().default(true),
+  /**
+   * Run each new conversation in its own git worktree of the workspace.
+   *
+   * Off by default: it only means anything for a git repository, and two
+   * agents (or an agent and the user) editing one checkout is the hazard it
+   * exists to remove. See `src/shared/worktrees.ts`.
+   */
+  worktrees: z.boolean().default(false),
   /** Optional per-agent push-to-talk binding, e.g. "CommandOrControl+Alt+1". */
   hotkey: z.string().optional(),
 
@@ -188,6 +196,7 @@ export function createDefaultAgent(name: string, workspacePath: string, color: s
       allowedTools: ['Read', 'Glob', 'Grep'],
       disallowedTools: [],
       persistSession: true,
+      worktrees: false,
       notifications: true,
       tts: { enabled: false }
     },

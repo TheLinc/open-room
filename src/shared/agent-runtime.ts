@@ -3,6 +3,7 @@ import type { SessionOverrides } from './session-overrides'
 import type { SlashCommandInfo } from './slash-commands'
 import type { McpServerHealth } from './mcp-health'
 import type { QueuedPromptSummary } from './prompt-queue'
+import type { Isolation } from './worktrees'
 
 /**
  * Runtime state for a running agent, shared across processes.
@@ -165,6 +166,19 @@ export type AgentRuntime = {
    * without `supportsAutoMode` comes back as `default`. Null until init.
    */
   permissionMode: string | null
+  /**
+   * Which checkout the live session is editing: the workspace, a
+   * conversation's git worktree, or the workspace because a worktree was
+   * asked for and could not be provided (with the reason). Decided in main
+   * before `query()` starts; null until a session has been placed.
+   */
+  isolation: Isolation | null
+  /**
+   * The working directory the CLI reports on its init message. Read rather
+   * than assumed, so the pane and the `@` picker describe where the agent
+   * actually is. Null until init.
+   */
+  cwd: string | null
   /** Epoch ms of the last activity, for idle teardown. */
   lastActiveAt: number
 }
@@ -221,6 +235,8 @@ export function emptyRuntime(agentId: string): AgentRuntime {
     mcpServers: [],
     queued: [],
     permissionMode: null,
+    isolation: null,
+    cwd: null,
     lastActiveAt: Date.now()
   }
 }

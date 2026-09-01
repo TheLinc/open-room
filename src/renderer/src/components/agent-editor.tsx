@@ -12,6 +12,7 @@ import {
 } from '@shared/agent'
 import { checkAgentName } from '@shared/phonetics'
 import type { HotkeyFailure } from '@shared/hotkeys'
+import type { WorkspaceInfo } from '@shared/ipc'
 import { explainAccelerator } from '@shared/accelerator'
 import { HotkeyInput } from '@/components/hotkey-input'
 import { useStaticDialog } from '@/hooks/use-static-dialog'
@@ -191,6 +192,30 @@ export function AgentEditor({
    */
   const voiceReady = voiceProvider !== 'kokoro' || kokoro.installed
   const persistSession = form.watch('persistSession')
+  const worktrees = form.watch('worktrees')
+  const workspacePath = form.watch('workspacePath')
+
+  // Whether the chosen folder is a git repository decides whether the
+  // worktree switch can mean anything, so the answer is shown beside it
+  // rather than discovered on the first conversation. Debounced: the path is
+  // typed as well as picked.
+  const [workspaceInfo, setWorkspaceInfo] = useState<WorkspaceInfo | null>(null)
+  useEffect(() => {
+    if (!workspacePath.trim()) {
+      setWorkspaceInfo(null)
+      return
+    }
+    let cancelled = false
+    const timer = setTimeout(() => {
+      void window.openRoom.inspectWorkspace(workspacePath).then((info) => {
+        if (!cancelled) setWorkspaceInfo(info)
+      })
+    }, 300)
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
+  }, [workspacePath])
 
   const nameWarnings = useMemo(
     () => checkAgentName(watchedName ?? '', existingNames),
@@ -337,6 +362,37 @@ export function AgentEditor({
                       The agent runs here, exactly as Claude Code would in that directory.
                     </FieldDescription>
                     <FieldError errors={[form.formState.errors.workspacePath]} />
+                  </Field>
+
+                  <Field orientation="horizontal">
+                    <div className="flex flex-col gap-1">
+                      <FieldLabel htmlFor="worktrees">
+                        Isolate conversations in git worktrees
+                      </FieldLabel>
+                      <FieldDescription>
+                        {worktrees
+                          ? 'Each new conversation gets its own branch and checkout under ~/.open-room/worktrees, so the workspace itself is never edited. Deleting a conversation removes its worktree only if it is clean.'
+                          : 'Conversations run directly in the workspace folder.'}
+                      </FieldDescription>
+                      {worktrees && workspaceInfo && !workspaceInfo.git && (
+                        <FieldDescription className="text-amber-500">
+                          {workspaceInfo.exists
+                            ? 'Not a git repository — conversations will run in the folder itself until it is one.'
+                            : 'That folder does not exist yet.'}
+                        </FieldDescription>
+                      )}
+                    </div>
+                    <Controller
+                      control={form.control}
+                      name="worktrees"
+                      render={({ field }) => (
+                        <Switch
+                          id="worktrees"
+                          checked={field.value}
+                          onCheckedChange={field.onChange}
+                        />
+                      )}
+                    />
                   </Field>
 
                   <Field>

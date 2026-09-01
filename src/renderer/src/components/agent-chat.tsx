@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { CircleAlert, ListPlus, Loader2, Pencil, Send, Square, X } from 'lucide-react'
+import { CircleAlert, GitBranch, ListPlus, Loader2, Pencil, Send, Square, X } from 'lucide-react'
 import type { Agent } from '@shared/agent'
 import { colorHexFor } from '@shared/agent-colors'
 import {
@@ -309,6 +309,22 @@ export function AgentChat({
                   · {runtime.usage.numTurns} turns · ${runtime.usage.totalCostUsd.toFixed(4)}
                 </span>
               )}
+              {/* Which checkout the agent is editing. A worktree is named by
+                  its branch with the path on hover; a fallback says why the
+                  agent is in the workspace despite asking for a worktree,
+                  because silently editing the wrong checkout is the failure
+                  this exists to prevent. */}
+              {runtime.isolation?.kind === 'worktree' && (
+                <span className="flex items-center gap-1" title={runtime.isolation.path}>
+                  · <GitBranch className="size-3" />
+                  <span className="truncate font-mono">{runtime.isolation.branch}</span>
+                </span>
+              )}
+              {runtime.isolation?.kind === 'fallback' && (
+                <span className="text-amber-500" title={runtime.isolation.reason}>
+                  · in workspace — {runtime.isolation.reason}
+                </span>
+              )}
             </p>
           </div>
         </div>
@@ -400,6 +416,7 @@ export function AgentChat({
                   {isTurnEnd && (
                     <FilesChanged
                       agentId={agent.config.id}
+                      cwd={runtime.cwd ?? agent.config.workspacePath}
                       files={filesChangedIn(
                         turnBefore(historyVisible, i + 1).map((e) => e.message)
                       )}
@@ -430,7 +447,10 @@ export function AgentChat({
               Nothing yet. Ask {agent.config.name} to do something.
             </p>
             <p className="max-w-sm text-xs text-muted-foreground">
-              It runs in {agent.config.workspacePath}
+              It runs in {runtime.cwd ?? agent.config.workspacePath}
+              {agent.config.worktrees && !runtime.cwd
+                ? ' — each new conversation in its own git worktree'
+                : ''}
             </p>
           </div>
         ) : (
@@ -450,6 +470,7 @@ export function AgentChat({
                   {isTurnEnd && (
                     <FilesChanged
                       agentId={agent.config.id}
+                      cwd={runtime.cwd ?? agent.config.workspacePath}
                       files={filesChangedIn(turnBefore(visible, i).map((e) => e.message))}
                     />
                   )}

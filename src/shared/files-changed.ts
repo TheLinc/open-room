@@ -77,3 +77,22 @@ export function turnBefore(entries: TranscriptEntry[], resultIndex: number): Tra
   while (start > 0 && !isPrompt(entries[start - 1])) start -= 1
   return entries.slice(start, resultIndex)
 }
+
+/**
+ * How a changed file is labelled: relative to the conversation's checkout
+ * when it is inside it, otherwise as the agent wrote it.
+ *
+ * The tool input is usually an absolute path, and a worktree lives under
+ * `~/.open-room/worktrees/<agent>/<slug>/…` — a label nobody can read at a
+ * glance. Display only: actions still use the full path. Case-insensitive
+ * on the root because Windows and macOS filesystems are.
+ */
+export function displayPath(path: string, cwd: string): string {
+  const file = path.split('\\').join('/')
+  const root = cwd.split('\\').join('/').replace(/\/+$/, '')
+  const inside =
+    root !== '' &&
+    file.toLowerCase().startsWith(root.toLowerCase() + '/') &&
+    file.length > root.length + 1
+  return inside ? file.slice(root.length + 1) : path
+}

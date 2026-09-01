@@ -51,6 +51,10 @@ describe('agentConfigSchema', () => {
     expect(parsed.allowedTools).toEqual([])
     expect(parsed.disallowedTools).toEqual([])
     expect(parsed.persistSession).toBe(true)
+    // Worktree isolation is opt-in: it only means anything for a git
+    // repository, and a config written before the field existed must keep
+    // running in its workspace.
+    expect(parsed.worktrees).toBe(false)
     expect(parsed.tts).toEqual({ enabled: false })
     expect(parsed.mcpServers).toEqual({})
   })

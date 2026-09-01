@@ -7,7 +7,7 @@ import {
   session,
   systemPreferences
 } from 'electron'
-import { join } from 'path'
+import { dirname, join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import {
@@ -30,6 +30,8 @@ import { AgentSupervisor } from './agent-supervisor'
 import { checkLogin } from './login-check'
 import type { LoginStatus } from '@shared/login'
 import { ConversationStore } from './conversation-store'
+import { findGit, Git, spawnGit } from './git'
+import { WorktreeManager } from './worktrees'
 import { SpeechBus } from './speech-bus'
 import { NotificationSink } from './notification-sink'
 import { VoiceSidecar } from './voice-sidecar'
@@ -58,7 +60,17 @@ import {
 // throwaway directory, and for anyone who keeps dotfiles somewhere else.
 const store = new ConfigStore(process.env.OPEN_ROOM_HOME || undefined)
 
-const conversations = new ConversationStore()
+// Git is optional. Without it, worktree agents fall back to their workspace
+// with a visible reason and the files-changed diff says it is unavailable.
+const gitPath = findGit()
+const git = gitPath ? new Git(spawnGit(gitPath)) : null
+const worktrees = new WorktreeManager(
+  join(dirname(store.agentsDir), 'worktrees'),
+  (id) => store.agentDir(id),
+  git
+)
+
+const conversations = new ConversationStore(worktrees)
 
 // One global playback lane for every agent. The sink decides delivery —
 // speech for agents with TTS on, notifications for everyone else and whenever
@@ -570,8 +582,11 @@ app.whenReady().then(async () => {
       void refreshWake()
     },
     () => accountQuota,
-    { read: () => accountLogin, recheck: recheckLogin }
+    { read: () => accountLogin, recheck: recheckLogin },
+    git,
+    worktrees
   )
+  supervisor.setWorktrees(worktrees)
   createWindow()
   // Before any agent can be asked to run: a signed-out account gets the
   // first-run screen instead of a failing agent.

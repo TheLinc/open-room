@@ -23,6 +23,7 @@ import {
   type MutationResult,
   type OpenRoomApi
 } from '@shared/ipc'
+import type { FileDiffResult, WorkspaceInfo } from '@shared/ipc'
 
 /**
  * The only bridge between renderer and main. Every method here must map to a
@@ -189,7 +190,13 @@ const openRoom: OpenRoomApi = {
   },
 
   openInEditor: (agentId: string, path: string, line?: number): Promise<MutationResult> =>
-    ipcRenderer.invoke(IpcChannel.openInEditor, agentId, path, line)
+    ipcRenderer.invoke(IpcChannel.openInEditor, agentId, path, line),
+
+  fileDiff: (agentId: string, path: string): Promise<FileDiffResult> =>
+    ipcRenderer.invoke(IpcChannel.fileDiff, agentId, path),
+
+  inspectWorkspace: (path: string): Promise<WorkspaceInfo> =>
+    ipcRenderer.invoke(IpcChannel.inspectWorkspace, path)
 }
 
 /**

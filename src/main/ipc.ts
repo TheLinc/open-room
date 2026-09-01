@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, Notification } from 'electron'
 import { agentConfigSchema, slugifyAgentName, type Agent } from '@shared/agent'
 import type {
   AgentRuntime,
@@ -13,9 +13,20 @@ import { appSettingsSchema, type AppSettings } from '@shared/settings'
 import { sanitizeOverrides } from '@shared/session-overrides'
 import { acceptImage, type ImageAttachment } from '@shared/attachments'
 import type { LoginStatus } from '@shared/login'
-import { IpcChannel, type AgentsSnapshot, type AppInfo, type MutationResult } from '@shared/ipc'
+import {
+  IpcChannel,
+  type AgentsSnapshot,
+  type AppInfo,
+  type FileDiffResult,
+  type MutationResult,
+  type WorkspaceInfo
+} from '@shared/ipc'
+import { stat } from 'node:fs/promises'
 import { ConfigStore } from './config-store'
 import { openInEditor, resolveTarget } from './open-in-editor'
+import { fileDiff } from './file-diff'
+import type { Git } from './git'
+import type { WorktreeManager } from './worktrees'
 import type { AgentSupervisor } from './agent-supervisor'
 import type { ConversationStore } from './conversation-store'
 import type { VoiceSidecar } from './voice-sidecar'
@@ -47,8 +58,33 @@ export function registerIpcHandlers(
   login: { read: () => LoginStatus; recheck: () => Promise<LoginStatus> } = {
     read: () => ({ state: 'unknown' }),
     recheck: async () => ({ state: 'unknown' })
-  }
+  },
+  /** Null when git is not on PATH; diffs and worktrees then say so. */
+  git: Git | null = null,
+  worktrees: WorktreeManager | null = null
 ): void {
+  /**
+   * The checkout the agent's active conversation runs in — its worktree when
+   * it has one, the workspace otherwise. The `@` picker, open-in-editor and
+   * the diff all resolve against this so they describe the same files the
+   * agent is editing.
+   */
+  const checkoutFor = async (
+    agent: Agent
+  ): Promise<{ cwd: string; base: { kind: 'head' } | { kind: 'branch-base'; commit: string } }> => {
+    const active = supervisor.runtimeFor(agent.config.id).activeConversationId
+    const record = active && worktrees ? await worktrees.recordFor(agent.config.id, active) : null
+    return record
+      ? { cwd: record.path, base: { kind: 'branch-base', commit: record.baseCommit } }
+      : { cwd: agent.config.workspacePath, base: { kind: 'head' } }
+  }
+
+  /** A worktree or branch kept back on delete is worth a notification, not a failure. */
+  const notifyKept = (message: string | null): void => {
+    if (!message || !Notification.isSupported()) return
+    new Notification({ title: 'Conversation deleted', body: message }).show()
+  }
+
   ipcMain.handle(IpcChannel.getAppInfo, (): AppInfo => {
     return {
       name: app.getName(),
@@ -223,7 +259,10 @@ export function registerIpcHandlers(
           await supervisor.stop(agentId)
           supervisor.setActiveConversation(agentId, null)
         }
+        // The transcript goes first: it is keyed by the worktree's path, and
+        // releasing the worktree first would leave it unreachable.
         await conversations.remove(agent, sessionId)
+        if (worktrees) notifyKept((await worktrees.release(agent, sessionId)).message)
       })
   )
 
@@ -234,7 +273,14 @@ export function registerIpcHandlers(
         const agent = await store.read(agentId)
         await supervisor.stop(agentId)
         supervisor.setActiveConversation(agentId, null)
+        const owned = worktrees ? Object.keys(await worktrees.records(agentId)) : []
         await conversations.removeAll(agent)
+        const kept: string[] = []
+        for (const sessionId of owned) {
+          const { message } = await worktrees!.release(agent, sessionId)
+          if (message) kept.push(message)
+        }
+        notifyKept(kept.length ? kept.join('\n') : null)
       })
   )
 
@@ -289,7 +335,28 @@ export function registerIpcHandlers(
 
   ipcMain.handle(IpcChannel.listWorkspaceFiles, async (_e, agentId: string): Promise<string[]> => {
     const agent = await store.read(agentId).catch(() => null)
-    return agent ? workspaceIndex.files(agent.config.workspacePath) : []
+    return agent ? workspaceIndex.files((await checkoutFor(agent)).cwd) : []
+  })
+
+  ipcMain.handle(
+    IpcChannel.fileDiff,
+    async (_e, agentId: string, path: string): Promise<FileDiffResult> => {
+      try {
+        const agent = await store.read(agentId)
+        const { cwd, base } = await checkoutFor(agent)
+        return await fileDiff(git, cwd, base, path)
+      } catch (error) {
+        return { ok: false, message: describeError(error) }
+      }
+    }
+  )
+
+  ipcMain.handle(IpcChannel.inspectWorkspace, async (_e, path: string): Promise<WorkspaceInfo> => {
+    const exists = await stat(path)
+      .then((info) => info.isDirectory())
+      .catch(() => false)
+    const isRepo = exists && git ? await git.isRepo(path).catch(() => false) : false
+    return { exists, git: isRepo }
   })
 
   ipcMain.handle(
@@ -303,7 +370,7 @@ export function registerIpcHandlers(
           Number.isInteger(line) && (line as number) > 0 ? (line as number) : undefined
         return await openInEditor(
           settings.editorCommand,
-          resolveTarget(path, agent.config.workspacePath),
+          resolveTarget(path, (await checkoutFor(agent)).cwd),
           safeLine
         )
       } catch (error) {

@@ -170,3 +170,24 @@ describe('agentQueryOptions executable', () => {
     expect('pathToClaudeCodeExecutable' in build()).toBe(false)
   })
 })
+
+describe('agentQueryOptions working directory', () => {
+  it('runs in the workspace unless told otherwise', () => {
+    expect(build().cwd).toBe('C:/work')
+  })
+
+  it('runs in the given directory when a conversation has its own worktree', () => {
+    // The placement decision needs git and the filesystem, so it is made by
+    // WorktreeManager and handed in; this only has to honour it.
+    const options = agentQueryOptions(
+      agent(),
+      null,
+      voiceServer,
+      undefined,
+      {},
+      null,
+      'D:/wt/atlas/x7k2'
+    )
+    expect(options.cwd).toBe('D:/wt/atlas/x7k2')
+  })
+})
