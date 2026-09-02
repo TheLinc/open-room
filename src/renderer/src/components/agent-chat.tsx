@@ -1,12 +1,12 @@
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
+  ArrowUp,
   CircleAlert,
   GitBranch,
   ListPlus,
   Loader2,
   Paperclip,
   Pencil,
-  Send,
   Square,
   X
 } from 'lucide-react'
@@ -47,6 +47,7 @@ import { MAX_RETAINED_ENTRIES } from '@/hooks/use-sessions'
 import { FilePicker } from '@/components/file-picker'
 import { applyMention, filterFiles, mentionAt } from '@shared/file-mentions'
 import { addFile, appendMentions, type FileAttachment } from '@shared/file-attachments'
+import { textMeasurer, wrapsAt } from '@/lib/composer'
 import { FilesChanged } from '@/components/files-changed'
 import { filesChangedIn, isPrompt, turnBefore } from '@shared/files-changed'
 import { trimOverlap } from '@shared/history-overlap'
@@ -94,6 +95,7 @@ export function AgentChat({
   } | null>(null)
   const dragDepth = useRef(0)
   const fileInput = useRef<HTMLInputElement>(null)
+  const composerBox = useRef<HTMLDivElement>(null)
   const bottom = useRef<HTMLDivElement>(null)
   const scroller = useRef<HTMLDivElement>(null)
   const pinned = useRef(true)
@@ -252,6 +254,30 @@ export function AgentChat({
     void attach(picked.filter((f) => f.type.startsWith('image/')))
     attachPaths(picked.filter((f) => !f.type.startsWith('image/')))
   }
+
+  // Whether the draft still fits on one row beside the buttons, measured
+  // against the row layout's width whichever layout is on screen — reading
+  // the rendered height back instead would oscillate (see lib/composer.ts).
+  const [multiline, setMultiline] = useState(false)
+  useLayoutEffect(() => {
+    const box = composerBox.current
+    const field = input.current
+    if (!box || !field) return
+    const measure = (): void => {
+      const style = getComputedStyle(field)
+      const font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`
+      // What the row layout reserves beside the text: the box's padding,
+      // two size-8 buttons, two gap-1 gaps, the textarea's own padding,
+      // and a couple of pixels so a borderline draft wraps rather than
+      // clipping its last character.
+      const reserved = 16 + 64 + 8 + 12 + 2
+      setMultiline(wrapsAt(draft, box.clientWidth - reserved, textMeasurer(font)))
+    }
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(box)
+    return () => observer.disconnect()
+  }, [draft])
 
   const submit = async (override?: string): Promise<void> => {
     const typed = (override ?? draft).trim()
@@ -550,7 +576,7 @@ export function AgentChat({
           onRemoveFile={(i) => setFiles((prev) => prev.filter((_, j) => j !== i))}
         />
         {attachError && <p className="pt-2 text-xs text-destructive">{attachError}</p>}
-        <div className="relative flex items-end gap-2 pt-2">
+        <div className="relative pt-2">
           {pickerOpen && (
             <CommandPicker
               commands={matches}
@@ -580,93 +606,110 @@ export function AgentChat({
               e.target.value = ''
             }}
           />
-          <Button
-            size="icon"
-            variant="outline"
-            title="Attach files"
-            aria-label="Attach files"
-            onClick={() => fileInput.current?.click()}
+          {/* One box, two layouts. Row: attach · text · send, vertically
+              centred. Wrapped: the textarea takes the whole first row
+              (order-first + basis-full under flex-wrap) and the buttons
+              fall to a bottom row, send pushed right by its ml-auto. The
+              box carries the border and focus ring; the textarea is bare. */}
+          <div
+            ref={composerBox}
+            className="flex flex-wrap items-center gap-1 rounded-2xl border border-input px-2 py-1.5 transition-colors focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50 dark:bg-input/30"
           >
-            <Paperclip />
-          </Button>
-          <Textarea
-            ref={input}
-            value={draft}
-            onChange={(e) => {
-              setDraft(e.target.value)
-              setCaret(e.currentTarget.selectionStart ?? 0)
-            }}
-            onKeyUp={(e) => setCaret(e.currentTarget.selectionStart ?? 0)}
-            onClick={(e) => setCaret(e.currentTarget.selectionStart ?? 0)}
-            onPaste={(e) => {
-              const files = imageFiles(e.clipboardData?.items)
-              if (files.length === 0) return
-              e.preventDefault()
-              void attach(files)
-            }}
-            onKeyDown={(e) => {
-              if (filePickerOpen && fileMatches.length > 0) {
-                if (e.key === 'ArrowDown') {
-                  e.preventDefault()
-                  setFileSelected((i) => (i + 1) % fileMatches.length)
-                  return
-                }
-                if (e.key === 'ArrowUp') {
-                  e.preventDefault()
-                  setFileSelected((i) => (i - 1 + fileMatches.length) % fileMatches.length)
-                  return
-                }
-                if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) {
-                  e.preventDefault()
-                  pickFile(fileMatches[Math.min(fileSelected, fileMatches.length - 1)])
-                  return
-                }
-              }
-              if (filePickerOpen && e.key === 'Escape') {
+            <Button
+              size="icon"
+              variant="ghost"
+              className="size-8 shrink-0 rounded-full"
+              title="Attach files"
+              aria-label="Attach files"
+              onClick={() => fileInput.current?.click()}
+            >
+              <Paperclip />
+            </Button>
+            <Textarea
+              ref={input}
+              value={draft}
+              onChange={(e) => {
+                setDraft(e.target.value)
+                setCaret(e.currentTarget.selectionStart ?? 0)
+              }}
+              onKeyUp={(e) => setCaret(e.currentTarget.selectionStart ?? 0)}
+              onClick={(e) => setCaret(e.currentTarget.selectionStart ?? 0)}
+              onPaste={(e) => {
+                const files = imageFiles(e.clipboardData?.items)
+                if (files.length === 0) return
                 e.preventDefault()
-                if (mention) setDismissedMention({ start: mention.start, query: mention.query })
-                return
-              }
-              if (pickerOpen && matches.length > 0) {
-                if (e.key === 'ArrowDown') {
+                void attach(files)
+              }}
+              onKeyDown={(e) => {
+                if (filePickerOpen && fileMatches.length > 0) {
+                  if (e.key === 'ArrowDown') {
+                    e.preventDefault()
+                    setFileSelected((i) => (i + 1) % fileMatches.length)
+                    return
+                  }
+                  if (e.key === 'ArrowUp') {
+                    e.preventDefault()
+                    setFileSelected((i) => (i - 1 + fileMatches.length) % fileMatches.length)
+                    return
+                  }
+                  if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) {
+                    e.preventDefault()
+                    pickFile(fileMatches[Math.min(fileSelected, fileMatches.length - 1)])
+                    return
+                  }
+                }
+                if (filePickerOpen && e.key === 'Escape') {
                   e.preventDefault()
-                  setSelected((i) => (i + 1) % matches.length)
+                  if (mention) setDismissedMention({ start: mention.start, query: mention.query })
                   return
                 }
-                if (e.key === 'ArrowUp') {
+                if (pickerOpen && matches.length > 0) {
+                  if (e.key === 'ArrowDown') {
+                    e.preventDefault()
+                    setSelected((i) => (i + 1) % matches.length)
+                    return
+                  }
+                  if (e.key === 'ArrowUp') {
+                    e.preventDefault()
+                    setSelected((i) => (i - 1 + matches.length) % matches.length)
+                    return
+                  }
+                  if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) {
+                    e.preventDefault()
+                    pick(matches[Math.min(selected, matches.length - 1)])
+                    return
+                  }
+                }
+                if (pickerOpen && e.key === 'Escape') {
                   e.preventDefault()
-                  setSelected((i) => (i - 1 + matches.length) % matches.length)
+                  setDraft('')
                   return
                 }
-                if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) {
+                // Enter sends; Shift+Enter is a newline, matching every chat
+                // input people already use.
+                if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault()
-                  pick(matches[Math.min(selected, matches.length - 1)])
-                  return
+                  void submit()
                 }
-              }
-              if (pickerOpen && e.key === 'Escape') {
-                e.preventDefault()
-                setDraft('')
-                return
-              }
-              // Enter sends; Shift+Enter is a newline, matching every chat
-              // input people already use.
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault()
-                void submit()
-              }
-            }}
-            placeholder={`Ask ${agent.config.name} to do something…`}
-            className="max-h-40 min-h-[44px] resize-none"
-          />
-          <Button
-            onClick={() => void submit()}
-            disabled={!draft.trim() && images.length === 0 && files.length === 0}
-            size="icon"
-            title={busy ? 'Queue for after this turn' : 'Send'}
-          >
-            {busy ? <ListPlus /> : <Send />}
-          </Button>
+              }}
+              placeholder={`Ask ${agent.config.name} to do something…`}
+              className={cn(
+                'max-h-40 min-h-0 min-w-24 flex-1 resize-none rounded-none border-0 bg-transparent p-1.5 shadow-none focus-visible:border-transparent focus-visible:ring-0 dark:bg-transparent',
+                multiline && 'order-first basis-full'
+              )}
+            />
+            <Button
+              onClick={() => void submit()}
+              disabled={!draft.trim() && images.length === 0 && files.length === 0}
+              size="icon"
+              className="ml-auto size-8 shrink-0 rounded-full"
+              title={busy ? 'Queue for after this turn' : 'Send'}
+            >
+              {/* ArrowUp, not the paper plane: the plane's diagonal mass
+                  reads off-center in a circle however exactly it is placed. */}
+              {busy ? <ListPlus /> : <ArrowUp />}
+            </Button>
+          </div>
         </div>
       </div>
     </div>
