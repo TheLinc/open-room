@@ -1,5 +1,15 @@
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { CircleAlert, GitBranch, ListPlus, Loader2, Pencil, Send, Square, X } from 'lucide-react'
+import {
+  CircleAlert,
+  GitBranch,
+  ListPlus,
+  Loader2,
+  Paperclip,
+  Pencil,
+  Send,
+  Square,
+  X
+} from 'lucide-react'
 import type { Agent } from '@shared/agent'
 import { colorHexFor } from '@shared/agent-colors'
 import {
@@ -28,13 +38,15 @@ import { CommandPicker } from '@/components/command-picker'
 import {
   filterCommands,
   isCommandResult,
+  parseCommand,
   pickAction,
   submitAction,
   type SlashCommandInfo
 } from '@shared/slash-commands'
 import { MAX_RETAINED_ENTRIES } from '@/hooks/use-sessions'
 import { FilePicker } from '@/components/file-picker'
-import { applyMention, filterFiles, mentionAt, mentionFor } from '@shared/file-mentions'
+import { applyMention, filterFiles, mentionAt } from '@shared/file-mentions'
+import { addFile, appendMentions, type FileAttachment } from '@shared/file-attachments'
 import { FilesChanged } from '@/components/files-changed'
 import { filesChangedIn, isPrompt, turnBefore } from '@shared/files-changed'
 import { trimOverlap } from '@shared/history-overlap'
@@ -69,6 +81,7 @@ export function AgentChat({
   const [draft, setDraft] = useState('')
   const [sendError, setSendError] = useState<string | null>(null)
   const [images, setImages] = useState<ImageAttachment[]>([])
+  const [files, setFiles] = useState<FileAttachment[]>([])
   const [attachError, setAttachError] = useState<string | null>(null)
   const [dragging, setDragging] = useState(false)
   const [caret, setCaret] = useState(0)
@@ -80,6 +93,7 @@ export function AgentChat({
     query: string
   } | null>(null)
   const dragDepth = useRef(0)
+  const fileInput = useRef<HTMLInputElement>(null)
   const bottom = useRef<HTMLDivElement>(null)
   const scroller = useRef<HTMLDivElement>(null)
   const pinned = useRef(true)
@@ -202,9 +216,9 @@ export function AgentChat({
     })
   }
 
-  const attach = async (files: File[]): Promise<void> => {
+  const attach = async (picked: File[]): Promise<void> => {
     let count = images.length
-    for (const file of files) {
+    for (const file of picked) {
       const result = await readImage(file, count)
       if (!result.ok) {
         setAttachError(result.reason)
@@ -216,28 +230,60 @@ export function AgentChat({
     setAttachError(null)
   }
 
+  /**
+   * Non-image files become chips rather than `@` text in the draft. The chip
+   * is display only — on send it serializes back into the same mention a
+   * drop used to type. A file with no real path (a synthesized File) cannot
+   * be referenced and says so instead of attaching a chip that lies.
+   */
+  const attachPaths = (picked: File[]): void => {
+    for (const file of picked) {
+      const path = window.openRoom.pathForFile(file)
+      if (path === '') {
+        setAttachError(`${file.name || 'That item'} has no file path to reference.`)
+        continue
+      }
+      setFiles((prev) => addFile(prev, path))
+    }
+  }
+
+  /** Both halves of an attach gesture: images inline, everything else a chip. */
+  const attachAny = (picked: File[]): void => {
+    void attach(picked.filter((f) => f.type.startsWith('image/')))
+    attachPaths(picked.filter((f) => !f.type.startsWith('image/')))
+  }
+
   const submit = async (override?: string): Promise<void> => {
-    const text = (override ?? draft).trim()
-    if (!text && images.length === 0) return
+    const typed = (override ?? draft).trim()
+    if (!typed && images.length === 0 && files.length === 0) return
 
     // An unrecognised command is refused rather than sent as prose: the CLI
     // would answer "Unknown command" either way, but a typo that produces a
     // reply looks like it did something.
-    const action = submitAction(text, runtime.commands)
+    const action = submitAction(typed, runtime.commands)
     if (action.kind === 'reject') {
       setSendError(`No command "/${action.name}". Start with a space to send it as text.`)
       return
     }
 
+    // A slash command runs locally in the CLI, so a mention appended to it
+    // would arrive as the command's arguments. File chips stay pending and
+    // ride with the next real prompt instead.
+    const isCommand = parseCommand(typed) !== null
+    const sentFiles = isCommand ? [] : files
+    const text = appendMentions(typed, sentFiles, agent.config.workspacePath)
+
     const sent = images
     setDraft('')
     setImages([])
+    if (!isCommand) setFiles([])
     setSendError(null)
     const result = await window.openRoom.sendPrompt(agent.config.id, text, sent)
     if (!result.ok) {
       setSendError(result.message)
-      setDraft(text)
+      setDraft(typed)
       setImages(sent)
+      setFiles((prev) => sentFiles.reduce((list, f) => addFile(list, f.path), prev))
     }
   }
 
@@ -265,17 +311,7 @@ export function AgentChat({
         dragDepth.current = 0
         setDragging(false)
         void attach(imageFiles(e.dataTransfer.items))
-
-        const others = Array.from(e.dataTransfer.files).filter((f) => !f.type.startsWith('image/'))
-        const mentions = others
-          .map((f) => window.openRoom.pathForFile(f))
-          .filter((p) => p !== '')
-          .map((p) => mentionFor(p, agent.config.workspacePath))
-        if (mentions.length > 0) {
-          setDraft(
-            (prev) => (prev && !prev.endsWith(' ') ? `${prev} ` : prev) + mentions.join(' ') + ' '
-          )
-        }
+        attachPaths(Array.from(e.dataTransfer.files).filter((f) => !f.type.startsWith('image/')))
       }}
     >
       <header className="flex items-center justify-between gap-4 border-b border-border px-6 py-3">
@@ -509,7 +545,9 @@ export function AgentChat({
         <QueuedPrompts agentId={agent.config.id} queued={runtime.queued} />
         <AttachmentChips
           images={images}
+          files={files}
           onRemove={(i) => setImages((prev) => prev.filter((_, j) => j !== i))}
+          onRemoveFile={(i) => setFiles((prev) => prev.filter((_, j) => j !== i))}
         />
         {attachError && <p className="pt-2 text-xs text-destructive">{attachError}</p>}
         <div className="relative flex items-end gap-2 pt-2">
@@ -529,6 +567,28 @@ export function AgentChat({
               onHover={setFileSelected}
             />
           )}
+          {/* Hidden picker behind the paperclip: same treatment as a drop,
+              so images inline and everything else becomes a chip. Clearing
+              value lets the same file be picked twice in a row. */}
+          <input
+            ref={fileInput}
+            type="file"
+            multiple
+            hidden
+            onChange={(e) => {
+              attachAny(Array.from(e.target.files ?? []))
+              e.target.value = ''
+            }}
+          />
+          <Button
+            size="icon"
+            variant="outline"
+            title="Attach files"
+            aria-label="Attach files"
+            onClick={() => fileInput.current?.click()}
+          >
+            <Paperclip />
+          </Button>
           <Textarea
             ref={input}
             value={draft}
@@ -601,7 +661,7 @@ export function AgentChat({
           />
           <Button
             onClick={() => void submit()}
-            disabled={!draft.trim() && images.length === 0}
+            disabled={!draft.trim() && images.length === 0 && files.length === 0}
             size="icon"
             title={busy ? 'Queue for after this turn' : 'Send'}
           >
