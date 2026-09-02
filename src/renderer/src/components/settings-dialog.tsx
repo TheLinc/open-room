@@ -42,14 +42,20 @@ function deviceLabel(label: string): string {
   return label.replace(/\s*\([0-9a-f]{4}:[0-9a-f]{4}\)\s*$/i, '').trim()
 }
 
+/** A control a link elsewhere can open this dialog pointed at. */
+export type SettingsHighlight = 'voice-input'
+
 export function SettingsDialog({
   open,
   onOpenChange,
-  hotkeyFailures
+  hotkeyFailures,
+  highlight = null
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   hotkeyFailures: HotkeyFailure[]
+  /** Scroll this control into view and flash it once the dialog opens. */
+  highlight?: SettingsHighlight | null
 }): React.JSX.Element {
   const { settings, save, error } = useSettings()
   const staticDialog = useStaticDialog()
@@ -103,6 +109,27 @@ export function SettingsDialog({
   const entry = findEntry(STT_MODEL_ID)
   const installed = stt?.installed ?? false
   const globalFailure = hotkeyFailures.find((failure) => failure.agentId === null)
+
+  // The highlighted control scrolls into view and flashes once the settings
+  // have loaded — the dialog shows "Loading…" until then, so the row the ref
+  // points at does not exist on the frame the dialog opens.
+  const highlightRef = useRef<HTMLDivElement>(null)
+  const [flashing, setFlashing] = useState(false)
+  const settingsLoaded = Boolean(settings)
+  useEffect(() => {
+    if (!open || !highlight || !settingsLoaded) return
+    const frame = requestAnimationFrame(() => {
+      highlightRef.current?.scrollIntoView({ block: 'center' })
+      setFlashing(true)
+    })
+    // Matches the animation's length, so a later re-open can flash again.
+    const timer = setTimeout(() => setFlashing(false), 2000)
+    return () => {
+      cancelAnimationFrame(frame)
+      clearTimeout(timer)
+      setFlashing(false)
+    }
+  }, [open, highlight, settingsLoaded])
 
   /**
    * Which switch is waiting on the model download offer. The switches used
@@ -251,7 +278,14 @@ export function SettingsDialog({
             <section className="space-y-4">
               <h3 className="text-sm font-medium">Voice input</h3>
 
-              <div className="flex items-start justify-between gap-4">
+              <div
+                ref={highlightRef}
+                className={
+                  flashing
+                    ? 'settings-highlight flex items-start justify-between gap-4'
+                    : 'flex items-start justify-between gap-4'
+                }
+              >
                 <div className="space-y-1">
                   <Label htmlFor="voice-input">Enable push-to-talk</Label>
                   <p className="text-xs text-muted-foreground">

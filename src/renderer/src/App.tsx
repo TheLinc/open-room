@@ -6,7 +6,7 @@ import { useConversations } from '@/hooks/use-conversations'
 import { AgentSidebar } from '@/components/agent-sidebar'
 import { AgentChat } from '@/components/agent-chat'
 import { AgentEditor } from '@/components/agent-editor'
-import { SettingsDialog } from '@/components/settings-dialog'
+import { SettingsDialog, type SettingsHighlight } from '@/components/settings-dialog'
 import { QuotaBanner } from '@/components/quota-banner'
 import { FirstRun } from '@/components/first-run'
 import type { LoginStatus } from '@shared/login'
@@ -22,6 +22,10 @@ function App(): React.JSX.Element {
   const [editorOpen, setEditorOpen] = useState(false)
   const [editingNew, setEditingNew] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  // Set when a "Turn it on in Settings" link opens the dialog, so it can
+  // point at the control the link named. Cleared on close, so opening
+  // settings normally never replays the flash.
+  const [settingsHighlight, setSettingsHighlight] = useState<SettingsHighlight | null>(null)
 
   // The account, not any agent: while no login is usable the whole window is
   // the first-run screen. Signed-in and unknown both show the app — unknown
@@ -153,12 +157,23 @@ function App(): React.JSX.Element {
           hotkeyFailures.find((failure) => failure.agentId === selected?.config.id) ?? null
         }
         voiceInputEnabled={settings?.voiceInputEnabled ?? true}
+        onOpenVoiceSettings={() => {
+          setSettingsHighlight('voice-input')
+          setSettingsOpen(true)
+        }}
       />
 
+      {/* Rendered after the editor so its portal stacks above it — the
+          editor's link opens this on top without closing the half-edited
+          form underneath. */}
       <SettingsDialog
         open={settingsOpen}
-        onOpenChange={setSettingsOpen}
+        onOpenChange={(next) => {
+          setSettingsOpen(next)
+          if (!next) setSettingsHighlight(null)
+        }}
         hotkeyFailures={hotkeyFailures}
+        highlight={settingsHighlight}
       />
     </div>
   )

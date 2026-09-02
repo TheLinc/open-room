@@ -292,3 +292,22 @@
 .dialog-attention {
   animation: dialog-attention 180ms ease-out;
 }
+
+/* Marks the control a "Turn it on in Settings" link pointed at, once the
+   dialog has scrolled it into view. Holds briefly, then fades: the target
+   needs finding once, not labelling forever. */
+@keyframes settings-highlight {
+  0%,
+  55% {
+    box-shadow: 0 0 0 2px var(--ring);
+    background: color-mix(in oklab, var(--ring) 14%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 2px transparent;
+    background: transparent;
+  }
+}
+.settings-highlight {
+  border-radius: var(--radius);
+  animation: settings-highlight 2s ease-out;
+}

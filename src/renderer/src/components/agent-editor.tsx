@@ -137,6 +137,8 @@ type Props = {
   hotkeyFailure?: HotkeyFailure | null
   /** False when voice input is off, so this field cannot do anything yet. */
   voiceInputEnabled?: boolean
+  /** Opens the settings dialog pointed at the voice input switch. */
+  onOpenVoiceSettings?: () => void
 }
 
 export function AgentEditor({
@@ -147,7 +149,8 @@ export function AgentEditor({
   onSaved,
   onDeleted,
   hotkeyFailure,
-  voiceInputEnabled = true
+  voiceInputEnabled = true,
+  onOpenVoiceSettings
 }: Props): React.JSX.Element {
   const isNew = agent === undefined
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -865,8 +868,17 @@ export function AgentEditor({
                     />
                     {!voiceInputEnabled ? (
                       <FieldDescription className="text-amber-500">
-                        Voice input is off, so this shortcut will not do anything yet. Turn it on in
-                        Settings.
+                        Voice input is off, so this shortcut will not do anything yet. Turn it on in{' '}
+                        {/* type="button": this sits inside the editor's form,
+                            and the default type would submit it. */}
+                        <button
+                          type="button"
+                          className="cursor-pointer underline underline-offset-2"
+                          onClick={onOpenVoiceSettings}
+                        >
+                          Settings
+                        </button>
+                        .
                       </FieldDescription>
                     ) : explainAccelerator(watchedHotkey ?? '') ? (
                       <FieldDescription className="text-destructive">
