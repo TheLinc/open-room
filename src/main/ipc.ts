@@ -360,7 +360,10 @@ export function registerIpcHandlers(
       try {
         const agent = await store.read(agentId)
         const { cwd, base } = await checkoutFor(agent)
-        return await fileDiff(gitFor(agent), cwd, base, path)
+        // The checkout decides the path style: a WSL agent's is posix
+        // whatever the host is.
+        const style = !agent.config.wsl && process.platform === 'win32' ? 'win32' : 'posix'
+        return await fileDiff(gitFor(agent), cwd, base, path, style)
       } catch (error) {
         return { ok: false, message: describeError(error) }
       }
