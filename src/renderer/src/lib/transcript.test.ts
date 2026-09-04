@@ -1,6 +1,29 @@
 import { describe, expect, it } from 'vitest'
 import type { TranscriptEntry } from '@shared/agent-runtime'
-import { isRenderable } from './transcript'
+import { isRenderable, resultRow } from './transcript'
+
+describe('resultRow', () => {
+  it('labels a successful turn as complete, muted', () => {
+    expect(resultRow(entry({ type: 'result', subtype: 'success', is_error: false }))).toEqual({
+      label: 'Turn complete',
+      tone: 'muted'
+    })
+  })
+
+  it('labels a genuine failure with its subtype, in the error tone', () => {
+    expect(
+      resultRow(entry({ type: 'result', subtype: 'error_during_execution', is_error: true }))
+    ).toEqual({ label: 'Ended: error_during_execution', tone: 'error' })
+  })
+
+  it('labels a turn the user stopped as stopped, muted: a deliberate stop is not a fault', () => {
+    const stopped = {
+      ...entry({ type: 'result', subtype: 'error_during_execution', is_error: true }),
+      interrupted: true
+    }
+    expect(resultRow(stopped)).toEqual({ label: 'Stopped', tone: 'muted' })
+  })
+})
 
 /**
  * `AgentSupervisor` appends every SDK message to the transcript before it

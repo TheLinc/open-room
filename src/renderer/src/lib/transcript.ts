@@ -39,6 +39,21 @@ export function isRenderable(entry: TranscriptEntry): boolean {
  * genuine replayed input. The content must be *entirely* these tags: a
  * person who types one has still said it, and should see what they sent.
  */
+/**
+ * What the row that closes a turn says, and in which tone.
+ *
+ * An interrupt arrives as `error_during_execution` with `is_error: true`,
+ * so the row used to print "Ended: error_during_execution" in red after
+ * every press of Stop. The supervisor stamps `interrupted` on that entry,
+ * and a deliberate stop is shown as exactly that.
+ */
+export function resultRow(entry: TranscriptEntry): { label: string; tone: 'error' | 'muted' } {
+  const message = entry.message as { subtype?: string; is_error?: boolean }
+  if (entry.interrupted) return { label: 'Stopped', tone: 'muted' }
+  if (message.is_error) return { label: `Ended: ${message.subtype}`, tone: 'error' }
+  return { label: 'Turn complete', tone: 'muted' }
+}
+
 export function isCommandEcho(entry: TranscriptEntry): boolean {
   const content = (entry.message as { message?: { content?: unknown } } | null)?.message?.content
   if (typeof content !== 'string') return false

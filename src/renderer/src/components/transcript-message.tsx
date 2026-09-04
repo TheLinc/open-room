@@ -2,7 +2,7 @@ import { memo } from 'react'
 import { Brain, ChevronRight, CircleAlert, Layers, Terminal, Wrench } from 'lucide-react'
 import type { TranscriptEntry } from '@shared/agent-runtime'
 import { cn } from '@/lib/utils'
-import { isCommandEcho } from '@/lib/transcript'
+import { isCommandEcho, resultRow } from '@/lib/transcript'
 import { isSyntheticAssistant, parseCommand } from '@shared/slash-commands'
 import { isInjectedSummary } from '@shared/compaction'
 import { MarkdownText } from './markdown'
@@ -259,18 +259,19 @@ export const TranscriptMessage = memo(function TranscriptMessage({
   }
 
   if (message.type === 'result') {
+    const row = resultRow(entry)
     return (
       <div
         className={cn(
           'flex items-center gap-2 rounded-md border px-3 py-1.5 text-xs',
-          message.is_error
+          row.tone === 'error'
             ? 'border-destructive/40 bg-destructive/5 text-destructive'
             : 'border-border/60 text-muted-foreground'
         )}
       >
         <Terminal className="size-3.5 shrink-0" />
         <span>
-          {message.is_error ? `Ended: ${message.subtype}` : 'Turn complete'}
+          {row.label}
           {typeof message.num_turns === 'number' && ` · ${message.num_turns} turns`}
           {typeof message.total_cost_usd === 'number' && ` · $${message.total_cost_usd.toFixed(4)}`}
         </span>

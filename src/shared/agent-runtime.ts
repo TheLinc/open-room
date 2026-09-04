@@ -201,6 +201,12 @@ export type TranscriptEntry = {
   seq: number
   receivedAt: number
   message: unknown
+  /**
+   * Set on a result that ended a turn the user stopped. The SDK reports an
+   * interrupt as an error result, indistinguishable from a failure on the
+   * message alone; only the supervisor knows the stop was asked for.
+   */
+  interrupted?: boolean
 }
 
 /**

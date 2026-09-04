@@ -30,7 +30,12 @@ import {
 import { replayKey } from '@shared/compaction'
 import { resumeTarget } from '@shared/conversation'
 import { awaitingAfterTurn } from '@shared/awaiting'
-import { pumpFailureIsFault, stopNeedsInterrupt } from '@shared/stop-plan'
+import {
+  INTERRUPT_GRACE_MS,
+  pumpFailureIsFault,
+  settledWithin,
+  stopNeedsInterrupt
+} from '@shared/stop-plan'
 import { sessionScoped } from '@shared/permission-scope'
 import {
   drain,
@@ -97,6 +102,8 @@ type Session = {
    * not a fault to show on an agent the user just stopped.
    */
   stopping: boolean
+  /** Resolved when the current turn ends, by a result or by the stream closing. */
+  turnWaiters: Array<() => void>
   /** Reset each turn; caps how often an agent may speak and records whether it did. */
   turnSpeech: TurnSpeechState
   /** Where the picker's command list stands; see `commandListUpdate`. */
@@ -435,6 +442,7 @@ export class AgentSupervisor {
         seq: 0,
         interrupting: false,
         stopping: false,
+        turnWaiters: [],
         turnSpeech,
         commands: { loaded: false, terminal: [] },
         seen: new Set(),
@@ -606,6 +614,7 @@ export class AgentSupervisor {
       session.queued = []
       this.patch(id, { queued: [] })
       session.queue.close()
+      this.endTurn(session)
       this.sessions.delete(id)
       // A session that ended before its init message never got an id, so the
       // worktree made for it has no conversation to belong to.
@@ -634,7 +643,9 @@ export class AgentSupervisor {
       agentId: id,
       seq: session.seq,
       receivedAt: Date.now(),
-      message
+      message,
+      // The row for an interrupted result would otherwise read as a crash.
+      ...(message.type === 'result' && session.interrupting ? { interrupted: true } : {})
     })
 
     if (message.type === 'system' && 'session_id' in message) {
@@ -715,6 +726,7 @@ export class AgentSupervisor {
       // A slash command the CLI ran locally closes with a result of its own:
       // zero turns, zero usage. Reading those into the running totals would
       // wipe them, and its output is not something to read aloud.
+      this.endTurn(session)
       if (isCommandResult(message)) {
         const wasInterrupted = session.interrupting
         session.interrupting = false
@@ -922,6 +934,14 @@ export class AgentSupervisor {
     }
   }
 
+  /**
+   * Ends the turn and keeps the session: the pane's Stop button.
+   *
+   * The acknowledgement is not the end of the turn, so this waits for the
+   * result, bounded, and closes the process if it never comes. A user who
+   * pressed Stop wants the agent stopped, not a choice about process
+   * lifetimes; the escalation is the app's to make.
+   */
   async interrupt(agentId: string): Promise<void> {
     const session = this.sessions.get(agentId)
     if (!session) return
@@ -931,14 +951,32 @@ export class AgentSupervisor {
     // settleQueue so there is one owner of clearing the queue.
     this.settleQueue(session, 'clear')
 
+    const ended = this.turnEnded(session)
     session.interrupting = true
     try {
       await session.query.interrupt()
-      this.patch(agentId, { state: 'ready', error: null })
     } catch {
       // An interrupt racing the end of a turn is not an error worth surfacing.
       session.interrupting = false
+      return
     }
+
+    if ((await settledWithin(ended, INTERRUPT_GRACE_MS)) === 'timeout') {
+      await this.stop(agentId)
+      return
+    }
+    this.patch(agentId, { error: null })
+  }
+
+  /** A promise for the end of the current turn, however it ends. */
+  private turnEnded(session: Session): Promise<void> {
+    return new Promise((resolve) => session.turnWaiters.push(resolve))
+  }
+
+  private endTurn(session: Session): void {
+    const waiters = session.turnWaiters
+    session.turnWaiters = []
+    for (const resolve of waiters) resolve()
   }
 
   /** Ends the session and tears down the subprocess. */
@@ -972,10 +1010,13 @@ export class AgentSupervisor {
     }
 
     session.queue.close()
-    try {
-      await session.pump
-    } catch {
-      // Teardown failures are already reflected in the runtime state.
+    // A closed input lets the CLI exit on its own; one that will not exit
+    // within the grace is closed by force, which the SDK escalates from
+    // SIGTERM to SIGKILL. Teardown failures are already reflected in the
+    // runtime state, so the pump's rejection is not re-raised here.
+    if ((await settledWithin(session.pump, INTERRUPT_GRACE_MS)) === 'timeout') {
+      session.query.close()
+      await settledWithin(session.pump, INTERRUPT_GRACE_MS)
     }
     this.sessions.delete(agentId)
     // Overrides belong to the session that carried them. Keeping them would

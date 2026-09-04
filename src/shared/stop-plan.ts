@@ -17,6 +17,36 @@ export function stopNeedsInterrupt(state: AgentState): boolean {
 }
 
 /**
+ * How long an acknowledged interrupt gets to actually end the turn.
+ *
+ * `query.interrupt()` resolves when the CLI acknowledges, not when the turn
+ * ends, and a background task the CLI resumed can keep it running after the
+ * acknowledgement (T3 Code's Claude adapter records the same finding and
+ * kills the process outright for it). Past this window the process is closed
+ * instead, which the SDK escalates from SIGTERM to SIGKILL.
+ */
+export const INTERRUPT_GRACE_MS = 5000
+
+/**
+ * Waits for a promise, but not forever: `'timeout'` is the signal to
+ * escalate. A rejection counts as settled, since the wait is over either way
+ * and the failure is reported wherever the promise is consumed.
+ */
+export function settledWithin(
+  promise: Promise<unknown>,
+  ms: number
+): Promise<'settled' | 'timeout'> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve('timeout'), ms)
+    const settle = (): void => {
+      clearTimeout(timer)
+      resolve('settled')
+    }
+    promise.then(settle, settle)
+  })
+}
+
+/**
  * Whether the message stream throwing is something to show the user.
  *
  * Measured: closing a session whose last turn was interrupted makes the SDK

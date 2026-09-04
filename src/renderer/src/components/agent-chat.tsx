@@ -6,11 +6,17 @@ import {
   ListPlus,
   Loader2,
   Mic,
+  MoreHorizontal,
   Paperclip,
   Pencil,
-  Square,
-  X
+  Square
 } from 'lucide-react'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger
+} from '@/components/ui/dropdown-menu'
 import type { CaptureSnapshot } from '@shared/ipc'
 import type { Agent } from '@shared/agent'
 import { colorHexFor } from '@shared/agent-colors'
@@ -423,20 +429,17 @@ export function AgentChat({
             sessionPermissionMode={runtime.permissionMode}
             onChange={(patch) => void window.openRoom.setOverrides(agent.config.id, patch)}
           />
+          {/* Stop means "end this turn", and it is the only stop a user has to
+              choose. It interrupts, and main escalates to closing the process
+              if the CLI does not actually stop. Ending the session, which
+              frees the process at the cost of a respawn on the next prompt,
+              is a resource decision and lives in the menu as "End session". */}
           {runtime.state === 'working' && (
             <Button
               variant="outline"
               size="sm"
+              title="Stop this turn. The session stays loaded for the next prompt."
               onClick={() => void window.openRoom.interruptAgent(agent.config.id)}
-            >
-              <X /> Interrupt
-            </Button>
-          )}
-          {runtime.state !== 'idle' && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => void window.openRoom.stopAgent(agent.config.id)}
             >
               <Square /> Stop
             </Button>
@@ -444,6 +447,26 @@ export function AgentChat({
           <Button variant="outline" size="sm" onClick={onEdit}>
             <Pencil /> Edit
           </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon-sm" aria-label="More" title="More">
+                <MoreHorizontal />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem
+                disabled={runtime.state === 'idle'}
+                onSelect={() => void window.openRoom.stopAgent(agent.config.id)}
+              >
+                <div className="flex flex-col gap-0.5">
+                  <span>End session</span>
+                  <span className="text-xs text-muted-foreground">
+                    Frees the agent&apos;s process. The next prompt resumes from disk.
+                  </span>
+                </div>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </header>
 
