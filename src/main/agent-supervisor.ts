@@ -30,6 +30,7 @@ import {
 import { replayKey } from '@shared/compaction'
 import { resumeTarget } from '@shared/conversation'
 import { awaitingAfterTurn } from '@shared/awaiting'
+import { pumpFailureIsFault, stopNeedsInterrupt } from '@shared/stop-plan'
 import {
   drain,
   queueActionForResult,
@@ -89,6 +90,12 @@ type Session = {
    * "needs attention" because someone pressed Stop is wrong.
    */
   interrupting: boolean
+  /**
+   * Set by stop() before it closes the queue. The SDK re-raises an
+   * interrupted turn's error result when the stream then ends, and that is
+   * not a fault to show on an agent the user just stopped.
+   */
+  stopping: boolean
   /** Reset each turn; caps how often an agent may speak and records whether it did. */
   turnSpeech: TurnSpeechState
   /** Where the picker's command list stands; see `commandListUpdate`. */
@@ -426,6 +433,7 @@ export class AgentSupervisor {
         pump: Promise.resolve(),
         seq: 0,
         interrupting: false,
+        stopping: false,
         turnSpeech,
         commands: { loaded: false, terminal: [] },
         seen: new Set(),
@@ -587,7 +595,7 @@ export class AgentSupervisor {
       // stop() closed the queue.
       this.patch(id, { state: 'idle' })
     } catch (error) {
-      this.fail(id, classifyThrownError(error))
+      if (pumpFailureIsFault(session)) this.fail(id, classifyThrownError(error))
     } finally {
       // A turn can end here too — a crash or the stream simply closing — not
       // only through a `result` message, so this is a queue-settling point
@@ -947,6 +955,20 @@ export class AgentSupervisor {
 
     session.queued = []
     this.patch(agentId, { queued: [] })
+
+    // Closing the queue alone lets the CLI finish the turn it is on before it
+    // exits, so a Stop mid-turn used to wait for the whole reply. Interrupt
+    // first; the result it produces is read as deliberate, not as a fault.
+    session.stopping = true
+    if (stopNeedsInterrupt(this.runtimeFor(agentId).state)) {
+      session.interrupting = true
+      try {
+        await session.query.interrupt()
+      } catch {
+        // The turn ended on its own while the interrupt was in flight.
+        session.interrupting = false
+      }
+    }
 
     session.queue.close()
     try {
