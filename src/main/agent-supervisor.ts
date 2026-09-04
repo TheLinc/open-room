@@ -985,6 +985,19 @@ export class AgentSupervisor {
     this.patch(agentId, { state: 'idle', overrides: {}, queued: [], awaiting: null })
   }
 
+  /**
+   * Ends the session and drops every trace of the agent: for deletion.
+   *
+   * Measured before this existed: deleting a working agent removed its
+   * directory in 2 ms and left its CLI subprocess running a turn, with a
+   * runtime still listed as `working` for an agent nothing could open.
+   */
+  async forget(agentId: string): Promise<void> {
+    await this.stop(agentId)
+    this.runtimes.delete(agentId)
+    this.chosen.delete(agentId)
+  }
+
   private rejectPendingFor(agentId: string): void {
     for (const [id, pending] of this.pendingPermissions) {
       if (pending.agentId !== agentId) continue

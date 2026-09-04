@@ -136,7 +136,12 @@ export function registerIpcHandlers(
   })
 
   ipcMain.handle(IpcChannel.deleteAgent, async (_e, id: string): Promise<MutationResult> => {
-    return guard(() => store.delete(id))
+    // The session goes first: deleting the directory under a running CLI
+    // left it working for an agent that no longer existed.
+    return guard(async () => {
+      await supervisor.forget(id)
+      await store.delete(id)
+    })
   })
 
   ipcMain.handle(IpcChannel.pickWorkspace, async (event): Promise<string | null> => {
