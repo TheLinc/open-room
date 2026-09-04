@@ -27,6 +27,7 @@ function harness(overrides: Partial<VoiceControllerDeps> = {}) {
   const sidecar = { transcribe: vi.fn().mockResolvedValue('deploy the branch') }
   // `send` takes the Agent object, not an id — see AgentSupervisor.send.
   const supervisor = { send: vi.fn().mockResolvedValue({ ok: true }) }
+  const sideQuestions = { ask: vi.fn().mockResolvedValue({ ok: true, answer: 'It is deployed.' }) }
   const registerEscape = vi.fn()
   const unregisterEscape = vi.fn()
 
@@ -34,6 +35,7 @@ function harness(overrides: Partial<VoiceControllerDeps> = {}) {
     overlay,
     sidecar,
     supervisor,
+    sideQuestions,
     readSettings: async () => ({ ...DEFAULT_SETTINGS, voiceInputEnabled: true }),
     listAgents: async () => [ATLAS],
     isModelInstalled: async () => true,
@@ -51,15 +53,91 @@ function harness(overrides: Partial<VoiceControllerDeps> = {}) {
 
   const lastState = () => overlay.send.mock.calls.at(-1)?.[0]
 
-  return { controller, overlay, sidecar, supervisor, registerEscape, unregisterEscape, lastState }
+  return {
+    controller,
+    overlay,
+    sidecar,
+    supervisor,
+    sideQuestions,
+    registerEscape,
+    unregisterEscape,
+    lastState
+  }
 }
 
 /** Trigger, stop, and hand over a second of audio. */
-async function speak(controller: VoiceController): Promise<void> {
-  await controller.onTrigger(null)
+async function speak(controller: VoiceController, aside = false): Promise<void> {
+  await controller.onTrigger(null, { aside })
   controller.onEvent({ type: 'stopRequested' })
   await controller.onAudio(new Float32Array(16_000))
 }
+
+describe('VoiceController side questions and queued prompts', () => {
+  it('shows a dispatched prompt as queued when the agent was busy', async () => {
+    const { controller, supervisor, lastState } = harness()
+    supervisor.send.mockResolvedValue({ ok: true, queued: true })
+
+    await speak(controller)
+    await vi.waitFor(() => expect(lastState().queued).toBe(true))
+
+    expect(lastState().phase).toBe('dispatched')
+  })
+
+  it('answers a capture opened as a side question instead of sending it', async () => {
+    const { controller, supervisor, sideQuestions, lastState } = harness()
+
+    await speak(controller, true)
+    await vi.waitFor(() => expect(lastState().phase).toBe('answered'))
+
+    expect(sideQuestions.ask).toHaveBeenCalledWith(ATLAS, 'deploy the branch')
+    expect(supervisor.send).not.toHaveBeenCalled()
+    expect(lastState().aside).toBe(true)
+    expect(lastState().answer).toBe('It is deployed.')
+    expect(lastState().transcript).toBe('deploy the branch')
+  })
+
+  it('shows the question while the answer is on its way', async () => {
+    const { controller, sideQuestions, lastState } = harness()
+    sideQuestions.ask.mockReturnValue(new Promise(() => {}))
+
+    await speak(controller, true)
+
+    expect(lastState().phase).toBe('asking')
+    expect(lastState().transcript).toBe('deploy the branch')
+  })
+
+  it('shows and dispatches a prompt that arrived whole from the wake listener', async () => {
+    const { controller, supervisor, lastState } = harness()
+
+    await controller.onSpoken('atlas', 'run the tests', false)
+
+    expect(supervisor.send).toHaveBeenCalledWith(ATLAS, 'run the tests')
+    expect(lastState().phase).toBe('dispatched')
+    expect(lastState().agentName).toBe('Atlas')
+    expect(lastState().conversationTitle).toBe('CI pipeline')
+    expect(lastState().transcript).toBe('run the tests')
+  })
+
+  it('answers a side question that arrived whole from the wake listener', async () => {
+    const { controller, sideQuestions, supervisor, lastState } = harness()
+
+    await controller.onSpoken('atlas', 'is it green', true)
+    await vi.waitFor(() => expect(lastState().phase).toBe('answered'))
+
+    expect(sideQuestions.ask).toHaveBeenCalledWith(ATLAS, 'is it green')
+    expect(supervisor.send).not.toHaveBeenCalled()
+  })
+
+  it('reports a side question that could not be answered', async () => {
+    const { controller, sideQuestions, lastState } = harness()
+    sideQuestions.ask.mockResolvedValue({ ok: false, message: 'No answer came back' })
+
+    await controller.onSpoken('atlas', 'is it green', true)
+    await vi.waitFor(() => expect(lastState().phase).toBe('error'))
+
+    expect(lastState().message).toMatch(/no answer/i)
+  })
+})
 
 describe('VoiceController preconditions', () => {
   it('refuses to open a capture when no model is installed', async () => {
@@ -283,6 +361,22 @@ describe('VoiceController dismissal', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     return () => vi.useRealTimers()
+  })
+
+  it('holds a queued bubble longer than a plain one, since it carries a second line to read', async () => {
+    const plain = harness()
+    await speak(plain.controller)
+    vi.advanceTimersByTime(2_000)
+    expect(plain.lastState().phase).toBe('hidden')
+
+    const queued = harness()
+    queued.supervisor.send.mockResolvedValue({ ok: true, queued: true })
+    await speak(queued.controller)
+    await vi.waitFor(() => expect(queued.lastState().queued).toBe(true))
+    vi.advanceTimersByTime(2_000)
+    expect(queued.lastState().phase).toBe('dispatched')
+    vi.advanceTimersByTime(3_000)
+    expect(queued.lastState().phase).toBe('hidden')
   })
 
   it('dismisses the dispatched bubble on its own', async () => {

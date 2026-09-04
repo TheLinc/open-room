@@ -27,13 +27,17 @@ export function Pill({
   const { ref, hovered } = useHitBox(false)
   const color = state.agentColor || '#71717a'
   const dispatched = state.phase === 'dispatched'
+  const asking = state.phase === 'asking'
+  const answered = state.phase === 'answered'
+  // The bubbles with a second line: a prompt, a question, or an answer.
+  const wide = dispatched || asking || answered
 
   const glyph =
     state.phase === 'listening' ? (
       <MicGlyph />
     ) : state.phase === 'transcribing' ? (
       <MicGlyph dim />
-    ) : dispatched ? (
+    ) : dispatched || answered ? (
       <TickGlyph />
     ) : (
       <CircleGlyph color={color} />
@@ -42,7 +46,7 @@ export function Pill({
   const trailing =
     state.phase === 'listening' ? (
       <Waveform level={level} color={color} running />
-    ) : state.phase === 'transcribing' ? (
+    ) : state.phase === 'transcribing' || asking ? (
       <Shimmer color={color} />
     ) : state.phase === 'speaking' ? (
       <Arcs color={color} />
@@ -59,7 +63,7 @@ export function Pill({
         'or-surface or-enter flex flex-col gap-1.5 px-3.5 py-2 leading-normal',
         // Only the dispatched bubble has a second line, and only it needs a
         // predictable width for the transcript to truncate against.
-        dispatched ? 'w-[320px] rounded-xl' : 'rounded-full',
+        wide ? 'w-[320px] rounded-xl' : 'rounded-full',
         state.phase === 'speaking' ? 'or-emit' : ''
       ]
         .filter(Boolean)
@@ -92,7 +96,16 @@ export function Pill({
         {trailing ? <span className="ml-auto flex items-center">{trailing}</span> : null}
       </div>
 
-      {dispatched && state.transcript ? (
+      {/* A side question is labelled as one, since the words are not going
+          into the conversation and the user should see that they were
+          heard that way. */}
+      {state.aside && wide ? (
+        <div className="text-[9px] leading-normal tracking-wide text-slate-100/50 uppercase">
+          Side question
+        </div>
+      ) : null}
+
+      {wide && state.transcript ? (
         <div
           className={[
             'text-[10px] leading-[1.5] text-slate-100/85 italic',
@@ -113,6 +126,21 @@ export function Pill({
           }
         >
           “{state.transcript}”
+        </div>
+      ) : null}
+
+      {/* The answer is read, not glanced at: full width, wrapped, no fade. */}
+      {answered && state.answer ? (
+        <div className="text-[10.5px] leading-[1.45] text-slate-100">{state.answer}</div>
+      ) : null}
+
+      {asking ? <div className="text-[10px] leading-normal text-slate-100/70">Asking…</div> : null}
+
+      {/* A tick over a prompt waiting behind a two-minute task would say
+          "delivered"; the pane that lists the queue is usually hidden. */}
+      {dispatched && state.queued ? (
+        <div className="text-[10px] leading-normal text-slate-100/70">
+          Queued behind the current task
         </div>
       ) : null}
 

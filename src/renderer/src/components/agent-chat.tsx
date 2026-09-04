@@ -31,6 +31,7 @@ import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { TranscriptMessage } from '@/components/transcript-message'
+import { AsideCard } from '@/components/aside-card'
 import { isRenderable } from '@/lib/transcript'
 import { readImage, imageFiles } from '@/lib/attachments'
 import { AttachmentChips } from '@/components/attachment-chips'
@@ -606,6 +607,10 @@ export function AgentChat({
             {sendError}
           </p>
         )}
+        <AsideCard
+          aside={runtime.aside}
+          onDismiss={() => void window.openRoom.dismissAside(agent.config.id)}
+        />
         <QueuedPrompts agentId={agent.config.id} queued={runtime.queued} />
         <AttachmentChips
           images={images}

@@ -34,6 +34,30 @@ export type WakeMatch = {
    * than as a prompt.
    */
   prompt: string
+  /**
+   * The words after the name opened with a side-question marker ("by the
+   * way", "quick question"), so `prompt` is a question to answer now and
+   * keep out of the conversation, not an instruction to queue behind it.
+   * The plain wake phrase stays an instruction: busy-state cannot tell
+   * "also update the README" from "what's the status", so the user says
+   * which.
+   */
+  aside: boolean
+}
+
+/**
+ * Lexical, not phonetic: these are common words Whisper transcribes
+ * reliably, and a phonetic match would let "buy the weigh" through.
+ */
+const ASIDE_MARKERS = [['by', 'the', 'way'], ['btw'], ['quick', 'question'], ['side', 'question']]
+
+function stripAside(rest: string[]): { aside: boolean; rest: string[] } {
+  for (const marker of ASIDE_MARKERS) {
+    if (marker.every((word, i) => rest[i] === word)) {
+      return { aside: true, rest: rest.slice(marker.length) }
+    }
+  }
+  return { aside: false, rest }
 }
 
 /**
@@ -91,7 +115,8 @@ export function matchWake(transcript: string, agents: WakeCandidate[]): WakeMatc
 
     for (const agent of agents) {
       if (!soundsLike(candidate, agent.name)) continue
-      return { agentId: agent.id, prompt: rest.slice(length).join(' ') }
+      const after = stripAside(rest.slice(length))
+      return { agentId: agent.id, prompt: after.rest.join(' '), aside: after.aside }
     }
   }
 

@@ -25,7 +25,17 @@ export type VoiceControllerDeps = {
   sidecar: { transcribe: (samples: Float32Array) => Promise<string> }
   /** `AgentSupervisor.send` takes the Agent object, not an id. */
   supervisor: {
-    send: (agent: Agent, text: string) => Promise<{ ok: true } | { ok: false; message: string }>
+    send: (
+      agent: Agent,
+      text: string
+    ) => Promise<{ ok: true; queued?: boolean } | { ok: false; message: string }>
+  }
+  /** Answers a side question from the conversation without joining it. */
+  sideQuestions: {
+    ask: (
+      agent: Agent,
+      question: string
+    ) => Promise<{ ok: true; answer: string } | { ok: false; message: string }>
   }
   readSettings: () => Promise<AppSettings>
   listAgents: () => Promise<Agent[]>
@@ -49,6 +59,8 @@ const ERROR_HOLD_MS = 2000
 
 /** Grace period after the pointer leaves a held bubble. */
 const UNHOVER_HOLD_MS = 800
+/** Extra time a "queued behind the current task" line stays readable. */
+const QUEUED_HOLD_EXTRA_MS = 2000
 
 export class VoiceController {
   private state: CaptureState = IDLE_CAPTURE
@@ -63,7 +75,7 @@ export class VoiceController {
    * The hotkey fired. `agentId` is null for the global binding, which means
    * whichever agent the main window has selected.
    */
-  async onTrigger(agentId: string | null): Promise<void> {
+  async onTrigger(agentId: string | null, options: { aside?: boolean } = {}): Promise<void> {
     // Press-again ends a capture. The reducer ignores a `trigger` during one —
     // there is no sane arbitration between two captures — so the translation
     // happens here, before any precondition is re-checked. Re-checking them
@@ -110,7 +122,23 @@ export class VoiceController {
     // message landing somewhere unexpected.
     this.titles.set(target, await this.deps.conversationTitleFor(target))
 
-    this.apply({ type: 'trigger', agentId: target })
+    this.apply({ type: 'trigger', agentId: target, aside: options.aside === true })
+  }
+
+  /**
+   * A prompt the wake listener heard whole ("hey Atlas, run the tests").
+   *
+   * It used to go straight to the supervisor with nothing on screen, so a
+   * prompt queued behind a running turn looked like nothing had happened.
+   * Now it takes the same dispatched or asking path as a capture, pill
+   * included. No microphone precondition applies: the words are already
+   * here, and the wake listener only runs when wake words are on.
+   */
+  async onSpoken(agentId: string, text: string, aside: boolean): Promise<void> {
+    this.agents = await this.deps.listAgents()
+    if (!this.agents.some((agent) => agent.config.id === agentId)) return
+    this.titles.set(agentId, await this.deps.conversationTitleFor(agentId))
+    this.apply({ type: 'spoken', agentId, text, aside })
   }
 
   /** A finished capture, straight from the overlay. */
@@ -185,6 +213,9 @@ export class VoiceController {
       case 'dispatch':
         void this.dispatch(this.state.agentId, this.state.transcript)
         break
+      case 'ask':
+        void this.ask(this.state.agentId, this.state.transcript)
+        break
 
       case 'hide':
         this.deps.overlay.hide()
@@ -210,6 +241,19 @@ export class VoiceController {
     // A tick over a prompt that never reached an agent is the one outcome
     // worse than showing the failure.
     if (!result.ok) this.apply({ type: 'failed', message: result.message })
+    // A tick over a prompt that is waiting behind a two-minute task is the
+    // next worst: say so, since the pane that shows the queue is hidden.
+    else if (result.queued) this.apply({ type: 'queued' })
+  }
+
+  /** Answers the transcript as a side question, spoken and shown, never sent. */
+  private async ask(agentId: string | null, question: string): Promise<void> {
+    const agent = this.agents.find((candidate) => candidate.config.id === agentId)
+    if (!agent) return
+
+    const result = await this.deps.sideQuestions.ask(agent, question)
+    if (result.ok) this.apply({ type: 'answered', text: result.answer })
+    else this.apply({ type: 'failed', message: result.message })
   }
 
   /** The dispatched bubble and error lines dismiss themselves; nothing else does. */
@@ -217,12 +261,19 @@ export class VoiceController {
     this.clearDismiss()
     if (this.hovered) return
 
-    const holds = this.state.phase === 'dispatched' || this.state.phase === 'error'
+    const { phase } = this.state
+    const holds = phase === 'dispatched' || phase === 'answered' || phase === 'error'
     if (!holds) return
 
+    // An answer is read, not glanced at, so it holds for its own length; a
+    // queued prompt carries a second line that needs the same courtesy.
     const ms =
       override ??
-      (this.state.phase === 'dispatched' ? holdMsFor(this.state.transcript) : ERROR_HOLD_MS)
+      (phase === 'dispatched'
+        ? holdMsFor(this.state.transcript) + (this.state.queued ? QUEUED_HOLD_EXTRA_MS : 0)
+        : phase === 'answered'
+          ? holdMsFor(this.state.answer)
+          : ERROR_HOLD_MS)
 
     this.dismissTimer = setTimeout(() => this.apply({ type: 'dismiss' }), ms)
   }
@@ -243,7 +294,10 @@ export class VoiceController {
       agentColor: colorHexFor(agent?.config.color ?? ''),
       conversationTitle: this.state.agentId ? (this.titles.get(this.state.agentId) ?? '') : '',
       transcript: this.state.transcript,
-      message: this.state.message
+      message: this.state.message,
+      aside: this.state.aside,
+      queued: this.state.queued,
+      answer: this.state.answer
     }
   }
 }

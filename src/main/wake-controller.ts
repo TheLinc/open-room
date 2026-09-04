@@ -19,14 +19,17 @@ export type WakeControllerDeps = {
     muteWake: (muted: boolean) => void
   }
   sidecar: { listen: (samples: Float32Array) => Promise<ListenResult> }
-  supervisor: {
-    send: (agent: Agent, text: string) => Promise<{ ok: true } | { ok: false; message: string }>
-  }
+  /**
+   * The words after the wake phrase, to the voice controller rather than
+   * the supervisor, so the pill shows them and says whether they were
+   * queued. `aside` marks a side question ("hey Atlas, by the way, ...").
+   */
+  dispatchSpoken: (agentId: string, text: string, aside: boolean) => Promise<void>
   listAgents: () => Promise<Agent[]>
   /** What the SpeechBus is saying right now, for the echo check. */
   nowSpeaking: () => string | null
   /** A bare "hey <name>" opens a capture instead of sending an empty prompt. */
-  startCapture: (agentId: string) => void
+  startCapture: (agentId: string, aside: boolean) => void
 }
 
 /**
@@ -103,12 +106,11 @@ export class WakeController {
     // Addressed, but with nothing to do yet. Opening a capture is the useful
     // reading — the user said a name and is about to say what they want.
     if (!match.prompt) {
-      this.deps.startCapture(match.agentId)
+      this.deps.startCapture(match.agentId, match.aside)
       return
     }
 
-    const agent = agents.find((candidate) => candidate.config.id === match.agentId)
-    if (agent) await this.deps.supervisor.send(agent, match.prompt)
+    await this.deps.dispatchSpoken(match.agentId, match.prompt, match.aside)
   }
 
   dispose(): void {

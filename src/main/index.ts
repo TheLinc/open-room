@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import {
   app,
   shell,
@@ -43,6 +44,7 @@ import { OverlayWindow } from './overlay-window'
 import { HotkeyManager, bindingsFor, type HotkeyFailure } from './hotkey-manager'
 import { VoiceController } from './voice-controller'
 import { WakeController } from './wake-controller'
+import { SideQuestions } from './side-question'
 import { wakeAction } from './wake-refresh'
 import { MicrophoneTest } from './microphone-test'
 import { AppTray } from './tray'
@@ -351,6 +353,31 @@ async function toggleVoiceInput(): Promise<void> {
 
 const hotkeys = new HotkeyManager((agentId) => void controller.onTrigger(agentId))
 
+// "Hey Atlas, by the way, ..." is answered from the conversation without
+// joining it: a forked, unpersisted, tool-less query, spoken back.
+const sideQuestions = new SideQuestions({
+  conversationFor: (agentId) => {
+    const runtime = supervisor.runtimeFor(agentId)
+    return { sessionId: runtime.sessionId ?? runtime.activeConversationId, cwd: runtime.cwd }
+  },
+  say: (agentId, text) => {
+    void store.list().then(({ agents }) => {
+      const agent = agents.find((candidate) => candidate.config.id === agentId)
+      if (!agent) return
+      speech.enqueue({
+        id: randomUUID(),
+        agentId,
+        agentName: agent.config.name,
+        text,
+        // The user asked and is waiting; nothing an agent volunteers outranks that.
+        priority: 'question',
+        queuedAt: Date.now()
+      })
+    })
+  },
+  onAside: (agentId, aside) => supervisor.noteAside(agentId, aside)
+})
+
 const controller = new VoiceController({
   // Wrapped so the tray learns about a capture. Everything else about the
   // overlay is the window's own business.
@@ -377,6 +404,7 @@ const controller = new VoiceController({
   },
   sidecar: voice,
   supervisor,
+  sideQuestions,
   readSettings: () => store.readSettings(),
   listAgents: async () => (await store.list()).agents,
   isModelInstalled: async () => (await voice.sttStatus().catch(() => null))?.installed ?? false,
@@ -416,12 +444,14 @@ const controller = new VoiceController({
 const wake = new WakeController({
   overlay,
   sidecar: voice,
-  supervisor,
+  // Through the voice controller rather than the supervisor, so the pill
+  // shows the prompt and says when it was queued behind a running turn.
+  dispatchSpoken: (agentId, text, aside) => controller.onSpoken(agentId, text, aside),
   listAgents: async () => (await store.list()).agents,
   nowSpeaking: () => speech.speakingText,
   // A bare "hey <name>" is an address with nothing to do yet, so it opens a
   // capture — the same one the hotkey opens — rather than sending nothing.
-  startCapture: (agentId) => void controller.onTrigger(agentId)
+  startCapture: (agentId, aside) => void controller.onTrigger(agentId, { aside })
 })
 
 // Suppressing the listener while the app speaks is the cheaper of the two

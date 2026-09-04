@@ -6,7 +6,16 @@
  */
 
 export type OverlayPhase =
-  'hidden' | 'listening' | 'transcribing' | 'dispatched' | 'speaking' | 'error'
+  | 'hidden'
+  | 'listening'
+  | 'transcribing'
+  | 'dispatched'
+  /** A side question is being answered; the pill shows the question. */
+  | 'asking'
+  /** The side question's answer, spoken and shown. */
+  | 'answered'
+  | 'speaking'
+  | 'error'
 
 export type OverlayState = {
   phase: OverlayPhase
@@ -19,6 +28,12 @@ export type OverlayState = {
   transcript: string
   /** Shown in the `error` phase. */
   message: string
+  /** The capture is a side question: answered now, kept out of the conversation. */
+  aside: boolean
+  /** A dispatched prompt is waiting behind the turn the agent is on. */
+  queued: boolean
+  /** Shown in the `answered` phase. */
+  answer: string
 }
 
 export const HIDDEN_OVERLAY: OverlayState = {
@@ -28,7 +43,10 @@ export const HIDDEN_OVERLAY: OverlayState = {
   agentColor: '',
   conversationTitle: '',
   transcript: '',
-  message: ''
+  message: '',
+  aside: false,
+  queued: false,
+  answer: ''
 }
 
 /** One entry in the working-agent HUD. */

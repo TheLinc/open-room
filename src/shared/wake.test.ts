@@ -7,11 +7,48 @@ const AGENTS: WakeCandidate[] = [
   { id: 'code-review', name: 'Code Review' }
 ]
 
+describe('matchWake side questions', () => {
+  const agents = [{ id: 'atlas', name: 'Atlas' }]
+
+  it('marks "by the way" after the name as a side question and strips it', () => {
+    expect(matchWake('hey Atlas, by the way, what is the status?', agents)).toEqual({
+      agentId: 'atlas',
+      prompt: 'what is the status',
+      aside: true
+    })
+  })
+
+  it('accepts "quick question" as the marker too', () => {
+    expect(matchWake('hey atlas quick question are the tests green', agents)).toEqual({
+      agentId: 'atlas',
+      prompt: 'are the tests green',
+      aside: true
+    })
+  })
+
+  it('returns an empty side question for the marker alone, so a capture can open', () => {
+    expect(matchWake('hey Atlas, by the way', agents)).toEqual({
+      agentId: 'atlas',
+      prompt: '',
+      aside: true
+    })
+  })
+
+  it('is not a side question without the marker, so an instruction stays an instruction', () => {
+    expect(matchWake('hey Atlas run the tests by the way', agents)).toEqual({
+      agentId: 'atlas',
+      prompt: 'run the tests by the way',
+      aside: false
+    })
+  })
+})
+
 describe('matchWake', () => {
   it('finds the agent and returns the rest as the prompt', () => {
     expect(matchWake('Hey Derek, run the tests', AGENTS)).toEqual({
       agentId: 'derek',
-      prompt: 'run the tests'
+      prompt: 'run the tests',
+      aside: false
     })
   })
 
@@ -33,7 +70,8 @@ describe('matchWake', () => {
   it('matches a multi-word name and strips all of it from the prompt', () => {
     expect(matchWake('Hey Code Review, look at the diff', AGENTS)).toEqual({
       agentId: 'code-review',
-      prompt: 'look at the diff'
+      prompt: 'look at the diff',
+      aside: false
     })
   })
 
@@ -47,7 +85,7 @@ describe('matchWake', () => {
   })
 
   it('returns an empty prompt for a bare address', () => {
-    expect(matchWake('Hey Derek', AGENTS)).toEqual({ agentId: 'derek', prompt: '' })
+    expect(matchWake('Hey Derek', AGENTS)).toEqual({ agentId: 'derek', prompt: '', aside: false })
   })
 
   it('requires the prefix, so a bare name does nothing', () => {

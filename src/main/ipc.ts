@@ -192,6 +192,10 @@ export function registerIpcHandlers(
     }
   )
 
+  ipcMain.handle(IpcChannel.dismissAside, (_e, agentId: string): void => {
+    supervisor.dismissAside(agentId)
+  })
+
   ipcMain.handle(IpcChannel.dropQueuedPrompt, (_e, agentId: string, id: string): void => {
     supervisor.dropQueued(agentId, id)
   })

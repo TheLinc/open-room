@@ -9,7 +9,17 @@ import type { OverlayPhase } from '@shared/voice-input'
  */
 
 export type CaptureEvent =
-  | { type: 'trigger'; agentId: string }
+  | { type: 'trigger'; agentId: string; aside?: boolean }
+  /**
+   * A prompt that arrived whole from the wake listener ("hey Atlas, run the
+   * tests"), with no microphone to open. It takes the same dispatched or
+   * asking path as a capture so the pill shows it, which it used not to.
+   */
+  | { type: 'spoken'; agentId: string; text: string; aside: boolean }
+  /** The dispatched prompt went into the queue behind a running turn. */
+  | { type: 'queued' }
+  /** The side question's answer. */
+  | { type: 'answered'; text: string }
   | { type: 'blocked'; message: string }
   | { type: 'speechStarted' }
   | { type: 'silence' }
@@ -27,16 +37,30 @@ export type CaptureState = {
   agentId: string | null
   transcript: string
   message: string
+  /** Set at trigger time: the words are a side question, not an instruction. */
+  aside: boolean
+  queued: boolean
+  answer: string
 }
 
 export type CaptureCommand =
-  'start-audio' | 'stop-audio' | 'discard-audio' | 'transcribe' | 'dispatch' | 'hide'
+  | 'start-audio'
+  | 'stop-audio'
+  | 'discard-audio'
+  | 'transcribe'
+  | 'dispatch'
+  /** Answer the transcript as a side question rather than sending it. */
+  | 'ask'
+  | 'hide'
 
 export const IDLE_CAPTURE: CaptureState = {
   phase: 'hidden',
   agentId: null,
   transcript: '',
-  message: ''
+  message: '',
+  aside: false,
+  queued: false,
+  answer: ''
 }
 
 type Result = { state: CaptureState; commands: CaptureCommand[] }
@@ -52,9 +76,37 @@ export function reduce(state: CaptureState, event: CaptureEvent): Result {
       if (isActive(state.phase)) return { state, commands: [] }
 
       return {
-        state: { phase: 'listening', agentId: event.agentId, transcript: '', message: '' },
+        state: {
+          ...IDLE_CAPTURE,
+          phase: 'listening',
+          agentId: event.agentId,
+          aside: event.aside === true
+        },
         commands: ['start-audio']
       }
+
+    case 'spoken':
+      // The microphone is taken; the wake listener's segment came from the
+      // same microphone and cannot have been a second person.
+      if (isActive(state.phase)) return { state, commands: [] }
+      return {
+        state: {
+          ...IDLE_CAPTURE,
+          phase: event.aside ? 'asking' : 'dispatched',
+          agentId: event.agentId,
+          transcript: event.text,
+          aside: event.aside
+        },
+        commands: [event.aside ? 'ask' : 'dispatch']
+      }
+
+    case 'queued':
+      if (state.phase !== 'dispatched') return { state, commands: [] }
+      return { state: { ...state, queued: true }, commands: [] }
+
+    case 'answered':
+      if (state.phase !== 'asking') return { state, commands: [] }
+      return { state: { ...state, phase: 'answered', answer: event.text }, commands: [] }
 
     case 'blocked':
       // A precondition failed before anything opened, so there is no audio to
@@ -107,6 +159,9 @@ export function reduce(state: CaptureState, event: CaptureEvent): Result {
         return { state: { ...state, phase: 'error', message: 'Nothing heard' }, commands: [] }
       }
 
+      if (state.aside) {
+        return { state: { ...state, phase: 'asking', transcript: text }, commands: ['ask'] }
+      }
       return {
         state: { ...state, phase: 'dispatched', transcript: text },
         commands: ['dispatch']

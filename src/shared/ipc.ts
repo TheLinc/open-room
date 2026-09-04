@@ -70,6 +70,8 @@ export const IpcChannel = {
   interruptAgent: 'session:interrupt',
   /** Removes one prompt waiting for the current turn to end. */
   dropQueuedPrompt: 'session:drop-queued',
+  /** renderer → main, close the side question card on an agent's pane. */
+  dismissAside: 'session:dismiss-aside',
   setOverrides: 'session:set-overrides',
   stopAgent: 'session:stop',
   listRuntimes: 'session:runtimes',
@@ -245,6 +247,8 @@ export type OpenRoomApi = {
   interruptAgent: (agentId: string) => Promise<MutationResult>
   /** Removes one prompt waiting for the current turn to end. */
   dropQueuedPrompt: (agentId: string, id: string) => Promise<void>
+  /** Clears `AgentRuntime.aside`, the side question card. */
+  dismissAside: (agentId: string) => Promise<void>
   /**
    * Changes model, effort or permission mode for this session only.
    *

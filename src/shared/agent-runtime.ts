@@ -187,6 +187,13 @@ export type AgentRuntime = {
    * agent by any route, or by stopping the session. See `awaiting.ts`.
    */
   awaiting: Awaiting | null
+  /**
+   * The most recent side question ("hey Atlas, by the way, ...") and its
+   * answer, or null while the answer is on its way. Kept off the transcript
+   * on purpose: it was answered from the conversation, not in it. Cleared by
+   * the next prompt and by dismissing the card.
+   */
+  aside: Aside | null
   /** Epoch ms of the last activity, for idle teardown. */
   lastActiveAt: number
 }
@@ -195,6 +202,14 @@ export type AgentRuntime = {
  * One transcript entry. `message` is the SDK's own message object, passed
  * through untouched so the renderer can show exactly what Claude Code would.
  */
+export type Aside = {
+  question: string
+  /** Null while the answer is on its way. */
+  answer: string | null
+  /** Epoch ms of the question. */
+  at: number
+}
+
 export type TranscriptEntry = {
   agentId: string
   /** Monotonic per agent; the renderer uses it for keys and ordering. */
@@ -252,6 +267,7 @@ export function emptyRuntime(agentId: string): AgentRuntime {
     isolation: null,
     cwd: null,
     awaiting: null,
+    aside: null,
     lastActiveAt: Date.now()
   }
 }

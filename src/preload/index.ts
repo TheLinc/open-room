@@ -71,6 +71,9 @@ const openRoom: OpenRoomApi = {
   dropQueuedPrompt: (agentId: string, id: string): Promise<void> =>
     ipcRenderer.invoke(IpcChannel.dropQueuedPrompt, agentId, id),
 
+  dismissAside: (agentId: string): Promise<void> =>
+    ipcRenderer.invoke(IpcChannel.dismissAside, agentId),
+
   setOverrides: (agentId: string, patch: SessionOverridePatch): Promise<MutationResult> =>
     ipcRenderer.invoke(IpcChannel.setOverrides, agentId, patch),
 

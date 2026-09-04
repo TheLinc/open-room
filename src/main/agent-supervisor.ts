@@ -250,7 +250,7 @@ export class AgentSupervisor {
     agent: Agent,
     text: string,
     images: ImageAttachment[] = []
-  ): Promise<{ ok: true } | { ok: false; message: string }> {
+  ): Promise<{ ok: true; queued?: boolean } | { ok: false; message: string }> {
     const id = agent.config.id
     const existing = this.sessions.get(id)
 
@@ -270,7 +270,10 @@ export class AgentSupervisor {
     if (existing && shouldQueue(this.runtimeFor(id).state)) {
       session.queued = [...session.queued, { id: randomUUID(), text, images }]
       this.patch(id, { queued: summarise(session.queued) })
-      return { ok: true }
+      // Said explicitly so a voice prompt can show "queued" rather than a
+      // tick: the pane that lists the queue is usually hidden when someone
+      // is talking to an agent.
+      return { ok: true, queued: true }
     }
 
     this.dispatch(session, text, images)
@@ -312,7 +315,14 @@ export class AgentSupervisor {
     const id = session.agentId
     // Any prompt to this agent answers whatever it was waiting on: the reply
     // is what clears "waiting for you", whichever route it arrived by.
-    this.patch(id, { state: 'working', lastActiveAt: Date.now(), error: null, awaiting: null })
+    this.patch(id, {
+      state: 'working',
+      lastActiveAt: Date.now(),
+      error: null,
+      awaiting: null,
+      // A new prompt supersedes the side question's card.
+      aside: null
+    })
 
     session.turnSpeech.calls = 0
     session.turnSpeech.spoke = false
@@ -966,6 +976,17 @@ export class AgentSupervisor {
       return
     }
     this.patch(agentId, { error: null })
+  }
+
+  /** Records a side question and, later, its answer, for the pane's card. */
+  noteAside(agentId: string, aside: { question: string; answer: string | null }): void {
+    const current = this.runtimeFor(agentId).aside
+    const at = current && current.question === aside.question ? current.at : Date.now()
+    this.patch(agentId, { aside: { ...aside, at } })
+  }
+
+  dismissAside(agentId: string): void {
+    if (this.runtimeFor(agentId).aside) this.patch(agentId, { aside: null })
   }
 
   /** A promise for the end of the current turn, however it ends. */

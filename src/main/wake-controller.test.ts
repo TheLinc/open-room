@@ -13,13 +13,13 @@ function harness(overrides: Partial<WakeControllerDeps> = {}) {
   const sidecar = {
     listen: vi.fn().mockResolvedValue({ speech: true, text: 'Hey Derek, run the tests' })
   }
-  const supervisor = { send: vi.fn().mockResolvedValue({ ok: true }) }
+  const dispatchSpoken = vi.fn().mockResolvedValue(undefined)
   const startCapture = vi.fn()
 
   const controller = new WakeController({
     overlay,
     sidecar,
-    supervisor,
+    dispatchSpoken,
     listAgents: async () => [DEREK, ATLAS],
     nowSpeaking: () => null,
     startCapture,
@@ -29,87 +29,106 @@ function harness(overrides: Partial<WakeControllerDeps> = {}) {
   // Listening, as it would be whenever a segment actually arrives.
   controller.start()
 
-  return { controller, overlay, sidecar, supervisor, startCapture }
+  return { controller, overlay, sidecar, dispatchSpoken, startCapture }
 }
 
 const SEGMENT = new Float32Array(16_000)
 
 describe('WakeController', () => {
-  it('dispatches the words after the wake phrase', async () => {
-    const { controller, supervisor } = harness()
+  it('hands the words after the wake phrase to the voice controller, so the pill shows them', async () => {
+    const { controller, dispatchSpoken } = harness()
 
     await controller.onSegment(SEGMENT)
 
-    expect(supervisor.send).toHaveBeenCalledWith(DEREK, 'run the tests')
+    expect(dispatchSpoken).toHaveBeenCalledWith('derek', 'run the tests', false)
+  })
+
+  it('routes a side question as one', async () => {
+    const { controller, dispatchSpoken, sidecar } = harness()
+    sidecar.listen.mockResolvedValue({ speech: true, text: 'Hey Derek, by the way, is it green?' })
+
+    await controller.onSegment(SEGMENT)
+
+    expect(dispatchSpoken).toHaveBeenCalledWith('derek', 'is it green', true)
+  })
+
+  it('opens a side-question capture for the bare marker', async () => {
+    const { controller, dispatchSpoken, startCapture, sidecar } = harness()
+    sidecar.listen.mockResolvedValue({ speech: true, text: 'Hey Derek, quick question' })
+
+    await controller.onSegment(SEGMENT)
+
+    expect(startCapture).toHaveBeenCalledWith('derek', true)
+    expect(dispatchSpoken).not.toHaveBeenCalled()
   })
 
   it('ignores a segment the gate rejected, without transcribing it', async () => {
-    const { controller, supervisor, sidecar } = harness()
+    const { controller, dispatchSpoken, sidecar } = harness()
     sidecar.listen.mockResolvedValue({ speech: false })
 
     await controller.onSegment(SEGMENT)
 
-    expect(supervisor.send).not.toHaveBeenCalled()
+    expect(dispatchSpoken).not.toHaveBeenCalled()
   })
 
   it('ignores speech that is not addressed to an agent', async () => {
-    const { controller, supervisor, sidecar } = harness()
+    const { controller, dispatchSpoken, sidecar } = harness()
     sidecar.listen.mockResolvedValue({ speech: true, text: 'what time is the meeting' })
 
     await controller.onSegment(SEGMENT)
 
-    expect(supervisor.send).not.toHaveBeenCalled()
+    expect(dispatchSpoken).not.toHaveBeenCalled()
   })
 
   it('cannot be triggered by an agent speaking', async () => {
     // The SpeechBus emits a bare name prefix, which is not a wake phrase.
-    const { controller, supervisor, sidecar } = harness()
+    const { controller, dispatchSpoken, sidecar } = harness()
     sidecar.listen.mockResolvedValue({ speech: true, text: 'Derek — the build is green' })
 
     await controller.onSegment(SEGMENT)
 
-    expect(supervisor.send).not.toHaveBeenCalled()
+    expect(dispatchSpoken).not.toHaveBeenCalled()
   })
 
   it('drops a segment that echoes what is being spoken', async () => {
     // Belt and braces behind the mute: this is the audio already in flight
     // when playback started.
-    const { controller, supervisor, sidecar } = harness({
+    const { controller, dispatchSpoken, sidecar } = harness({
       nowSpeaking: () => 'Derek — hey Derek run the tests now'
     })
     sidecar.listen.mockResolvedValue({ speech: true, text: 'hey Derek run the tests' })
 
     await controller.onSegment(SEGMENT)
 
-    expect(supervisor.send).not.toHaveBeenCalled()
+    expect(dispatchSpoken).not.toHaveBeenCalled()
   })
 
   it('opens a capture for a bare address rather than sending nothing', async () => {
-    const { controller, supervisor, startCapture, sidecar } = harness()
+    const { controller, dispatchSpoken, startCapture, sidecar } = harness()
     sidecar.listen.mockResolvedValue({ speech: true, text: 'Hey Derek' })
 
     await controller.onSegment(SEGMENT)
 
-    expect(startCapture).toHaveBeenCalledWith('derek')
-    expect(supervisor.send).not.toHaveBeenCalled()
+    expect(startCapture).toHaveBeenCalledWith('derek', false)
+    expect(dispatchSpoken).not.toHaveBeenCalled()
   })
 
   it('addresses the agent that was named, not the selected one', async () => {
-    const { controller, supervisor, sidecar } = harness()
+    const { controller, dispatchSpoken, sidecar } = harness()
     sidecar.listen.mockResolvedValue({ speech: true, text: 'Hey Atlas, deploy the branch' })
 
     await controller.onSegment(SEGMENT)
 
-    expect(supervisor.send).toHaveBeenCalledWith(ATLAS, 'deploy the branch')
+    expect(dispatchSpoken).toHaveBeenCalledWith('atlas', 'deploy the branch', false)
   })
 
   it('ignores a segment that arrives after listening stopped', async () => {
-    const { controller, supervisor } = harness()
+    const { controller, dispatchSpoken } = harness()
 
     controller.stop()
     await controller.onSegment(SEGMENT)
 
-    expect(supervisor.send).not.toHaveBeenCalled()
+    expect(dispatchSpoken).not.toHaveBeenCalled()
   })
 
   it('mutes the listener while the app speaks and unmutes after', async () => {
