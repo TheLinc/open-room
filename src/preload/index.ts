@@ -24,7 +24,7 @@ import {
   type MutationResult,
   type OpenRoomApi
 } from '@shared/ipc'
-import type { FileDiffResult, WorkspaceInfo } from '@shared/ipc'
+import type { CaptureSnapshot, FileDiffResult, WorkspaceInfo } from '@shared/ipc'
 
 /**
  * The only bridge between renderer and main. Every method here must map to a
@@ -177,6 +177,13 @@ const openRoom: OpenRoomApi = {
 
   onSettingsChanged: (listener: (settings: AppSettings) => void): (() => void) =>
     subscribe(IpcChannel.settingsChanged, (payload) => listener(payload as AppSettings)),
+
+  triggerVoiceCapture: (agentId: string): void => {
+    ipcRenderer.send(IpcChannel.triggerVoiceCapture, agentId)
+  },
+
+  onCaptureChanged: (listener: (capture: CaptureSnapshot) => void): (() => void) =>
+    subscribe(IpcChannel.captureChanged, (payload) => listener(payload as CaptureSnapshot)),
 
   listWorkspaceFiles: (agentId: string): Promise<string[]> =>
     ipcRenderer.invoke(IpcChannel.listWorkspaceFiles, agentId),

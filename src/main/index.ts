@@ -358,6 +358,16 @@ const controller = new VoiceController({
     send: (state) => {
       overlay.send(state)
 
+      // The pane's mic button draws from this. A capture cannot exist before
+      // the window loads (it takes a click or a keypress), so no replay is
+      // needed the way the overlay's own state is replayed.
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send(IpcChannel.captureChanged, {
+          phase: state.phase,
+          agentId: state.agentId
+        })
+      }
+
       const open = state.phase === 'listening' || state.phase === 'transcribing'
       if (open === capturing) return
       capturing = open
@@ -653,6 +663,12 @@ app.whenReady().then(async () => {
 
   ipcMain.on(IpcChannel.overlayHover, (_event, hovered: boolean) => {
     controller.setHovered(hovered)
+  })
+
+  // The pane's mic button: the same toggle as a per-agent hotkey, aimed
+  // explicitly. onTrigger re-checks every precondition itself.
+  ipcMain.on(IpcChannel.triggerVoiceCapture, (_event, agentId: unknown) => {
+    if (typeof agentId === 'string' && agentId !== '') void controller.onTrigger(agentId)
   })
 
   ipcMain.on(IpcChannel.overlayWakeSegment, (_event, pcm: string) => {

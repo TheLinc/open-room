@@ -12,7 +12,7 @@ import type { SessionOverridePatch } from './session-overrides'
 import type { LoginStatus } from './login'
 import type { HotkeyFailure } from './hotkeys'
 import type { AppSettings } from './settings'
-import type { MicrophoneDevice } from './voice-input'
+import type { MicrophoneDevice, OverlayPhase } from './voice-input'
 import type { KokoroStatus, SttStatus, SystemVoice } from './voice-rpc'
 import type { WslConfig, WslDistro } from './wsl'
 
@@ -147,6 +147,10 @@ export const IpcChannel = {
   overlayStopMeter: 'overlay:stop-meter',
   /** overlay → main, one RMS reading from the metering stream. */
   overlayLevel: 'overlay:level',
+  /** renderer → main, the pane's mic button: open a capture for this agent. */
+  triggerVoiceCapture: 'voice:trigger-capture',
+  /** main → renderer, which agent a capture is on and what phase it is in. */
+  captureChanged: 'voice:capture-changed',
   /** renderer → main, start or stop the microphone test in settings. */
   setMicrophoneTest: 'voice:set-microphone-test',
   /** main → renderer, a level to draw, or null once the test has stopped. */
@@ -199,6 +203,12 @@ export type WorkspaceInfo = {
   exists: boolean
   /** Inside a git working tree, so per-conversation worktrees can be offered. */
   git: boolean
+}
+
+/** What the main window knows about a voice capture: enough for a mic button. */
+export type CaptureSnapshot = {
+  phase: OverlayPhase
+  agentId: string | null
 }
 
 export type IpcChannelName = (typeof IpcChannel)[keyof typeof IpcChannel]
@@ -340,6 +350,16 @@ export type OpenRoomApi = {
    * the next save writes the value back.
    */
   onSettingsChanged: (listener: (settings: AppSettings) => void) => () => void
+
+  /**
+   * The pane's mic button. The same toggle as the push-to-talk hotkey —
+   * one call starts a capture aimed at this agent, another stops it and
+   * sends — and main re-checks every precondition, so the renderer's gating
+   * is a courtesy, not the guard.
+   */
+  triggerVoiceCapture: (agentId: string) => void
+  /** Which agent a capture is on and its phase, so the mic button can show it. */
+  onCaptureChanged: (listener: (capture: CaptureSnapshot) => void) => () => void
 
   /** Posix-relative paths under the agent's workspace, for the @ picker. */
   listWorkspaceFiles: (agentId: string) => Promise<string[]>

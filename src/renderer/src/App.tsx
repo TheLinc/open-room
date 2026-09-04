@@ -116,6 +116,11 @@ function App(): React.JSX.Element {
                   permissions={sessions.permissionsFor(selected.config.id)}
                   conversations={conversations}
                   onEdit={openEdit}
+                  voiceEnabled={Boolean(settings?.voiceInputEnabled || settings?.wakeWordEnabled)}
+                  onOpenVoiceSettings={() => {
+                    setSettingsHighlight('voice-input')
+                    setSettingsOpen(true)
+                  }}
                 />
               ) : (
                 <div className="flex flex-1 flex-col items-center justify-center gap-4 p-8 text-center">

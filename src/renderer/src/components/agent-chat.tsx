@@ -5,11 +5,13 @@ import {
   GitBranch,
   ListPlus,
   Loader2,
+  Mic,
   Paperclip,
   Pencil,
   Square,
   X
 } from 'lucide-react'
+import type { CaptureSnapshot } from '@shared/ipc'
 import type { Agent } from '@shared/agent'
 import { colorHexFor } from '@shared/agent-colors'
 import {
@@ -60,6 +62,10 @@ type Props = {
   permissions: PermissionRequest[]
   conversations: ConversationsApi
   onEdit: () => void
+  /** Either voice flag is on, so the mic button can actually capture. */
+  voiceEnabled: boolean
+  /** Opens the settings dialog pointed at the voice input switch. */
+  onOpenVoiceSettings: () => void
 }
 
 const STATE_LABEL: Record<AgentRuntime['state'], string> = {
@@ -77,7 +83,9 @@ export function AgentChat({
   truncated,
   permissions,
   conversations,
-  onEdit
+  onEdit,
+  voiceEnabled,
+  onOpenVoiceSettings
 }: Props): React.JSX.Element {
   const [draft, setDraft] = useState('')
   const [sendError, setSendError] = useState<string | null>(null)
@@ -255,6 +263,13 @@ export function AgentChat({
     attachPaths(picked.filter((f) => !f.type.startsWith('image/')))
   }
 
+  // What the mic button shows: whether a capture is running, and for whom.
+  // No replay on mount is needed — a capture takes a click or a keypress, so
+  // one cannot predate the window (unlike hotkey failures, which can).
+  const [capture, setCapture] = useState<CaptureSnapshot>({ phase: 'hidden', agentId: null })
+  useEffect(() => window.openRoom.onCaptureChanged(setCapture), [])
+  const listening = capture.agentId === agent.config.id && capture.phase === 'listening'
+
   // Whether the draft still fits on one row beside the buttons, measured
   // against the row layout's width whichever layout is on screen — reading
   // the rendered height back instead would oscillate (see lib/composer.ts).
@@ -267,10 +282,10 @@ export function AgentChat({
       const style = getComputedStyle(field)
       const font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`
       // What the row layout reserves beside the text: the box's padding,
-      // two size-8 buttons, two gap-1 gaps, the textarea's own padding,
+      // three size-8 buttons, three gap-1 gaps, the textarea's own padding,
       // and a couple of pixels so a borderline draft wraps rather than
       // clipping its last character.
-      const reserved = 16 + 64 + 8 + 12 + 2
+      const reserved = 16 + 96 + 12 + 12 + 2
       setMultiline(wrapsAt(draft, box.clientWidth - reserved, textMeasurer(font)))
     }
     measure()
@@ -698,11 +713,38 @@ export function AgentChat({
                 multiline && 'order-first basis-full'
               )}
             />
+            {/* The same toggle as the push-to-talk hotkey, aimed at this
+                agent: click to start a capture, click again to stop and
+                send. With voice off it opens Settings on the switch instead
+                of doing nothing — main re-checks every precondition anyway,
+                so this gate is presentation, not the guard. */}
+            <Button
+              size="icon"
+              variant="ghost"
+              className={cn(
+                'ml-auto size-8 shrink-0 rounded-full',
+                listening && 'text-destructive'
+              )}
+              title={
+                !voiceEnabled
+                  ? 'Voice input is off — opens Settings'
+                  : listening
+                    ? 'Stop and send'
+                    : `Talk to ${agent.config.name}`
+              }
+              aria-label={listening ? 'Stop and send' : `Talk to ${agent.config.name}`}
+              onClick={() => {
+                if (!voiceEnabled) onOpenVoiceSettings()
+                else window.openRoom.triggerVoiceCapture(agent.config.id)
+              }}
+            >
+              <Mic className={cn(listening && 'animate-pulse')} />
+            </Button>
             <Button
               onClick={() => void submit()}
               disabled={!draft.trim() && images.length === 0 && files.length === 0}
               size="icon"
-              className="ml-auto size-8 shrink-0 rounded-full"
+              className="size-8 shrink-0 rounded-full"
               title={busy ? 'Queue for after this turn' : 'Send'}
             >
               {/* ArrowUp, not the paper plane: the plane's diagonal mass
