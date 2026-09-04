@@ -24,12 +24,14 @@ Windows and macOS. Windows is verified; macOS is configured but has not yet been
   - [Agents are Claude Code sessions](#agents-are-claude-code-sessions)
   - [Conversations persist](#conversations-persist)
   - [Tools and permissions](#tools-and-permissions)
+  - [Pointing and receiving](#pointing-and-receiving)
   - [How agents talk back](#how-agents-talk-back)
   - [The voice sidecar](#the-voice-sidecar)
   - [Voice input](#voice-input)
   - [Custom wake words without training](#custom-wake-words-without-training)
   - [Not hearing yourself](#not-hearing-yourself)
   - [Quota, context and concurrency](#quota-context-and-concurrency)
+  - [Running an agent inside WSL](#running-an-agent-inside-wsl)
 - [Where things live on disk](#where-things-live-on-disk)
 - [Development](#development)
 - [Design decisions worth knowing before contributing](#design-decisions-worth-knowing-before-contributing)
@@ -79,7 +81,7 @@ In the agent editor, enable TTS and pick a system voice — instant, offline, no
 
 ### 5. (Optional) Turn on voice input
 
-Voice input ships **off**. In settings, download a Whisper model (`tiny.en` is 154 MB, `base.en` is 294 MB), then enable push-to-talk. The default binding is `Ctrl/Cmd+Shift+Space`: press to start, speak, and either press again or stop talking to send; `Esc` discards.
+Voice input ships **off**. In settings, turn on push-to-talk; the switch offers the Whisper model download in place (`tiny.en` is 154 MB, `base.en` is 294 MB). Then either click the mic button beside send in an agent's pane, or press the hotkey. The default binding is `Ctrl/Cmd+Shift+Space`: press to start, speak, and either press again or stop talking to send; `Esc` discards.
 
 Wake words ("hey Atlas …") are a separate opt-in beyond that, because they keep the microphone open. See [Voice input](#voice-input) for why that is a deliberate two-step.
 
@@ -133,6 +135,8 @@ What makes a new conversation *cheap* is `WORKLOG.md`. Each agent's `AGENT.md` i
 
 A per-agent ephemeral mode (`persistSession: false`) exists for privacy: nothing on disk, at the stated cost of no history and no crash recovery.
 
+An agent can also run each new conversation in its own git worktree (`worktrees: true`, off by default), so two agents, or an agent and you, never edit one checkout. Worktrees live under `~/.open-room/worktrees/<agent>/<slug>`, outside the repository, on a branch named `open-room/<agent>/<slug>` cut from the workspace's current HEAD, and the pane header shows the branch. Deleting the conversation removes the worktree only if it is clean and the branch only if it is merged; the app never destroys uncommitted work. Merging the branch back is your editor's and terminal's job, deliberately.
+
 ### Tools and permissions
 
 Every tool is available to every agent. What the config controls is whether the agent asks you first. The editor offers one three-state control per tool:
@@ -145,7 +149,19 @@ This is modelled deliberately as three states rather than an "allowed tools" che
 
 Three things can be changed for a running session from the pane header without restarting it: model, effort level, and permission mode (including plan mode, accept-edits, and Claude Code's own bounded `auto` mode). They are sticky for the session and revert to the agent's config when it ends.
 
-A permission prompt renders in the pane with the relevant detail — the command, or before/after for each edit — and, while the window is hidden, as a first-sorted pip in the HUD.
+A permission prompt renders in the pane with the relevant detail, the command or before/after for each edit. While the window is hidden it is a first-sorted pip in the HUD, whose row shows the same summary with Allow once, Allow for this session and Decline buttons, so it can be answered without raising the window. A question an agent asks aloud through `speak` shows there too, and the global push-to-talk hotkey aims at the agent that asked. Permissions are answered by click only, never by voice: anyone within earshot can address an agent, and approving a shell command should need a hand on the machine.
+
+### Pointing and receiving
+
+Open Room sits beside your editor rather than replacing it. What it owns is pointing an agent at something and seeing what it did.
+
+- **Images** paste or drop into the composer and travel as image content blocks on the message.
+- **`@file`** at a word boundary opens a fuzzy picker over the workspace. The mention is sent as typed, since the agent has `Read` and expanding the file would duplicate it into the context window.
+- **Attached files**, dropped or picked with the paperclip, show as chips and become plain `@path` mentions appended to the prompt on send, so the transcript shows exactly what the agent received.
+- **Files changed** per turn is read off the transcript's Edit and Write calls, not a file watcher, which would also see your own saves. Each row opens in your editor and toggles a read-only diff of the file against HEAD, or against the branch base for a worktree conversation.
+- **Queued prompts** typed during a turn wait in main and go out one per completed turn; Stop discards them.
+
+Not built on purpose: per-hunk accept and reject, inline editing, and expanding `@file` contents on the client. Those are the editor's job.
 
 ### How agents talk back
 
@@ -177,10 +193,9 @@ Two Windows-specific costs were measured and designed around. Windows hands ever
 
 Two modes, both off by default.
 
-**Push-to-talk** is the first thing to enable. It claims a global hotkey and only opens the microphone while you have asked it to. Electron's `globalShortcut` reports key-down with no key-up, so it is a toggle rather than a hold: press, speak, press again — or stop talking, and an RMS endpointer (against a noise floor sampled in the first 300 ms) ends the capture for you. `Esc` discards. Per-agent hotkeys can address one agent directly; the global one goes to whichever agent is selected.
+**Push-to-talk** is the first thing to enable. It claims a global hotkey and only opens the microphone while you have asked it to. Electron's `globalShortcut` reports key-down with no key-up, so it is a toggle rather than a hold: press, speak, press again — or stop talking, and an RMS endpointer (against a noise floor sampled in the first 300 ms) ends the capture for you. `Esc` discards. Per-agent hotkeys can address one agent directly; the global one goes to whichever agent is selected, unless an agent has just asked a question aloud, in which case it goes to that agent. The mic button beside send in an agent's pane is the same toggle aimed at that agent, and with voice input off it opens Settings on the switch rather than doing nothing.
 
 **Wake words** keep the microphone open. That is not mainly a battery question. An always-on microphone is an unauthenticated control channel into a tool with shell and file-write access — anyone within earshot, or a video playing nearby, can address an agent. The code path is the same either way; the default is what matters, and so it is a separate switch.
-
 Both are gated on a downloaded speech model, because a shortcut that exists but cannot possibly work is worse than no shortcut. Hotkey registration failures (another app holds the combination) are reported inline against the field that owns them.
 
 The overlay shows state throughout — which agent, which conversation, listening / transcribing / dispatched — because voice input with no visible state is what makes people distrust the feature, and showing the conversation is what stops a spoken message landing somewhere you did not expect.
@@ -218,6 +233,12 @@ N agents on one subscription is the app's premise and its most likely real-world
 - **Context pressure** is derived from the ordinary result message — input plus cache reads plus cache creation, per request, not the cumulative figure — and shown as a meter in the pane header. `/compact` runs from the pane, and the summary and boundary render as such rather than as a message you apparently typed.
 - **Concurrency is capped** (default 3, configurable), and idle sessions are reaped after a timeout. Each agent is a full `claude` process; several idle ones is gigabytes.
 - **Slash commands pass through.** The CLI executes any `/name` that arrives on the input stream, so `/compact`, `/context`, `/usage`, `/rename` and your own skills all work from the pane. Open Room owns only which commands are offered and how their output is labelled.
+
+### Running an agent inside WSL
+
+On Windows, an agent can be pointed at a WSL distro ("Run in WSL" in the editor, `wsl: { distro }` in its config). Its workspace is then a Linux path, and its `claude`, `git` and file listing all run inside the distro through `wsl.exe --exec`, with the same SDK session on top. Only the process launcher differs; nothing about message handling or permissions knows it is talking to a distro. The distro has its own Claude Code login, separate from the host's, and the pane names the two commands to run if it is signed out. Session history is read through a small worker whose config directory is the distro's own `~/.claude`, because the SDK reads that path process-wide and setting it in main would misdirect every other agent. Worktrees are not offered for WSL agents yet.
+
+This is partly verified. The editor, workspace validation, the failure paths (a missing folder, a distro without `claude`) and the file listing were checked against a real distro. A full turn, the diff view, opening a file over `\\wsl.localhost`, and session resume inside a distro with Claude Code installed have not been run, because the development machine has no such distro.
 
 ---
 
@@ -281,11 +302,13 @@ These were settled deliberately; revisit them explicitly rather than drifting.
 
 ## Status
 
-Pre-1.0. What works, verified on Windows in a packaged build with no dev toolchain on `PATH`: creating and running agents on the bundled CLI, persistent and resumable conversations, system and Kokoro voices, push-to-talk, wake words, the HUD, permission prompts, session controls, quota and context reporting, and the first-run login screen.
+Pre-1.0. What works, verified on Windows in a packaged build with no dev toolchain on `PATH`: creating and running agents on the bundled CLI, persistent and resumable conversations, system and Kokoro voices, push-to-talk, wake words, the HUD, permission prompts, session controls, quota and context reporting, and the first-run login screen. Verified since in the development build on Windows: a git worktree per conversation with a read-only diff per changed file, answering permission prompts and spoken questions from the HUD, and file attachments as chips.
 
 Known gaps, recorded rather than hidden:
 
 - **macOS has not been run.** The DMG target, entitlements and microphone usage string are configured; a Mac is needed to verify them.
+- **Running inside WSL is only partly verified.** See [Running an agent inside WSL](#running-an-agent-inside-wsl).
+- **The composer's mic button has not been exercised in a running app yet.** It shares every code path with the push-to-talk hotkey, but it has not been seen working.
 - **Hold-to-talk does not exist yet**, only toggle-to-talk — it needs the native key hook in the sidecar.
 - **Builds are unsigned.**
 - The always-on CPU figure was taken on a desktop, not the older laptop it was budgeted for.
