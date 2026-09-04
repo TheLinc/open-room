@@ -11,7 +11,7 @@ import type { HotkeyFailure } from '@shared/hotkeys'
 import type { MicrophoneDevice } from '@shared/voice-input'
 import { appSettingsSchema, type AppSettings } from '@shared/settings'
 import { sanitizeOverrides } from '@shared/session-overrides'
-import { acceptImage, type ImageAttachment } from '@shared/attachments'
+import { acceptImage, acceptPrompt, type ImageAttachment } from '@shared/attachments'
 import type { LoginStatus } from '@shared/login'
 import {
   IpcChannel,
@@ -167,6 +167,8 @@ export function registerIpcHandlers(
         const agent = await store.read(agentId)
         // The renderer already applied the limits; re-check here because a
         // renderer is not a trust boundary and a 50 MB message would wedge IPC.
+        const prompt = acceptPrompt(text, images.length)
+        if (!prompt.ok) return { ok: false, message: prompt.reason }
         for (const [i, image] of images.entries()) {
           const verdict = acceptImage({ type: image.mediaType, size: image.data.length * 0.75 }, i)
           if (!verdict.ok) return { ok: false, message: verdict.reason }

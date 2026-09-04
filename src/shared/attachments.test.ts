@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   acceptImage,
+  acceptPrompt,
   MAX_IMAGE_BYTES,
   MAX_IMAGES,
   userContent,
@@ -8,6 +9,24 @@ import {
 } from './attachments'
 
 const png: ImageAttachment = { name: 'shot.png', mediaType: 'image/png', data: 'AAAA' }
+
+describe('acceptPrompt', () => {
+  it('refuses an empty prompt, which would spawn a session to say nothing', () => {
+    expect(acceptPrompt('', 0)).toEqual({ ok: false, reason: 'Nothing to send.' })
+  })
+
+  it('refuses a whitespace-only prompt', () => {
+    expect(acceptPrompt('  \n\t ', 0)).toEqual({ ok: false, reason: 'Nothing to send.' })
+  })
+
+  it('accepts text', () => {
+    expect(acceptPrompt('hello', 0)).toEqual({ ok: true })
+  })
+
+  it('accepts an image with no text, since the image is the message', () => {
+    expect(acceptPrompt('', 1)).toEqual({ ok: true })
+  })
+})
 
 describe('acceptImage', () => {
   it('accepts a small png with room left', () => {

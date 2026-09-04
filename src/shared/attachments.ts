@@ -28,6 +28,22 @@ export function isImageMediaType(type: string): type is ImageMediaType {
 }
 
 /** Whether a file may be attached, with a reason the chip can show if not. */
+/**
+ * Whether there is anything to send.
+ *
+ * The composer disables send on a blank draft, but main is not allowed to
+ * trust the renderer: measured, an empty string reached the supervisor,
+ * spawned a whole CLI session to say nothing, and a whitespace prompt sat
+ * in the queue as a turn. An image with no caption is a real message.
+ */
+export function acceptPrompt(
+  text: string,
+  imageCount: number
+): { ok: true } | { ok: false; reason: string } {
+  if (text.trim() === '' && imageCount === 0) return { ok: false, reason: 'Nothing to send.' }
+  return { ok: true }
+}
+
 export function acceptImage(
   file: { type: string; size: number },
   alreadyAttached: number
