@@ -31,6 +31,7 @@ import { replayKey } from '@shared/compaction'
 import { resumeTarget } from '@shared/conversation'
 import { awaitingAfterTurn } from '@shared/awaiting'
 import { pumpFailureIsFault, stopNeedsInterrupt } from '@shared/stop-plan'
+import { sessionScoped } from '@shared/permission-scope'
 import {
   drain,
   queueActionForResult,
@@ -578,7 +579,7 @@ export class AgentSupervisor {
       // Returning the full suggestion set is what stops the SDK asking again
       // for this tool during the session.
       ...(decision === 'allow-always' && pending.suggestions
-        ? { updatedPermissions: pending.suggestions }
+        ? { updatedPermissions: sessionScoped(pending.suggestions) }
         : {})
     })
   }
