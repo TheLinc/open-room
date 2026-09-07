@@ -111,7 +111,7 @@ describe('VoiceController side questions and queued prompts', () => {
 
     await controller.onSpoken('atlas', 'run the tests', false)
 
-    expect(supervisor.send).toHaveBeenCalledWith(ATLAS, 'run the tests')
+    expect(supervisor.send).toHaveBeenCalledWith(ATLAS, 'run the tests', [], { byVoice: true })
     expect(lastState().phase).toBe('dispatched')
     expect(lastState().agentName).toBe('Atlas')
     expect(lastState().conversationTitle).toBe('CI pipeline')
@@ -253,7 +253,7 @@ describe('VoiceController', () => {
     await speak(controller)
 
     expect(lastState().agentName).toBe('Scout')
-    expect(supervisor.send).toHaveBeenCalledWith(scout, 'deploy the branch')
+    expect(supervisor.send).toHaveBeenCalledWith(scout, 'deploy the branch', [], { byVoice: true })
   })
 
   it('lets a per-agent hotkey override the waiting agent', async () => {
@@ -274,7 +274,7 @@ describe('VoiceController', () => {
     await speak(controller)
 
     expect(sidecar.transcribe).toHaveBeenCalled()
-    expect(supervisor.send).toHaveBeenCalledWith(ATLAS, 'deploy the branch')
+    expect(supervisor.send).toHaveBeenCalledWith(ATLAS, 'deploy the branch', [], { byVoice: true })
     expect(lastState().phase).toBe('dispatched')
     expect(lastState().transcript).toBe('deploy the branch')
   })

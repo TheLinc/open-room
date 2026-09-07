@@ -27,7 +27,9 @@ export type VoiceControllerDeps = {
   supervisor: {
     send: (
       agent: Agent,
-      text: string
+      text: string,
+      images: never[],
+      options: { byVoice: true }
     ) => Promise<{ ok: true; queued?: boolean } | { ok: false; message: string }>
   }
   /** Answers a side question from the conversation without joining it. */
@@ -236,7 +238,9 @@ export class VoiceController {
     const agent = this.agents.find((candidate) => candidate.config.id === agentId)
     if (!agent) return
 
-    const result = await this.deps.supervisor.send(agent, text)
+    // Marked as spoken so the agent acknowledges aloud; a typed prompt has
+    // the pane for that.
+    const result = await this.deps.supervisor.send(agent, text, [], { byVoice: true })
 
     // A tick over a prompt that never reached an agent is the one outcome
     // worse than showing the failure.

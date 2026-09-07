@@ -11,7 +11,13 @@ import type { ImageAttachment } from './attachments'
  * Stop, which is what a queue people can see has to be.
  */
 
-export type QueuedPrompt = { id: string; text: string; images: ImageAttachment[] }
+export type QueuedPrompt = {
+  id: string
+  text: string
+  images: ImageAttachment[]
+  /** Arrived by voice, so its turn is acknowledged aloud when it starts. */
+  byVoice?: boolean
+}
 
 /** What the renderer sees: image bytes stay in main. */
 export type QueuedPromptSummary = { id: string; text: string; imageCount: number }

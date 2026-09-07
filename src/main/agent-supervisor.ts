@@ -37,6 +37,7 @@ import {
   stopNeedsInterrupt
 } from '@shared/stop-plan'
 import { sessionScoped } from '@shared/permission-scope'
+import { acknowledgement, openingCandidate, openingLine } from './voice-ack'
 import {
   drain,
   queueActionForResult,
@@ -104,6 +105,10 @@ type Session = {
   stopping: boolean
   /** Resolved when the current turn ends, by a result or by the stream closing. */
   turnWaiters: Array<() => void>
+  /** The running turn's prompt arrived by voice; see `voice-ack.ts`. */
+  voiceTurn: boolean
+  /** The first assistant message of the turn has been considered for speech. */
+  openingSpoken: boolean
   /** Reset each turn; caps how often an agent may speak and records whether it did. */
   turnSpeech: TurnSpeechState
   /** Where the picker's command list stands; see `commandListUpdate`. */
@@ -249,10 +254,12 @@ export class AgentSupervisor {
   async send(
     agent: Agent,
     text: string,
-    images: ImageAttachment[] = []
+    images: ImageAttachment[] = [],
+    options: { byVoice?: boolean } = {}
   ): Promise<{ ok: true; queued?: boolean } | { ok: false; message: string }> {
     const id = agent.config.id
     const existing = this.sessions.get(id)
+    const byVoice = options.byVoice === true
 
     if (!existing) {
       const resumeId = await this.resolveResume(agent)
@@ -268,16 +275,36 @@ export class AgentSupervisor {
     // dispatch unconditionally. Only a prompt sent into an already-running
     // session can be genuinely mid-turn.
     if (existing && shouldQueue(this.runtimeFor(id).state)) {
-      session.queued = [...session.queued, { id: randomUUID(), text, images }]
+      session.queued = [...session.queued, { id: randomUUID(), text, images, byVoice }]
       this.patch(id, { queued: summarise(session.queued) })
+      if (byVoice) this.say(agent, acknowledgement({ queued: true }))
       // Said explicitly so a voice prompt can show "queued" rather than a
       // tick: the pane that lists the queue is usually hidden when someone
       // is talking to an agent.
       return { ok: true, queued: true }
     }
 
-    this.dispatch(session, text, images)
+    if (byVoice) this.say(agent, acknowledgement({ queued: false }))
+    this.dispatch(session, text, images, byVoice)
     return { ok: true }
+  }
+
+  /**
+   * The app's own voice: an acknowledgement, or the agent's opening line
+   * echoed. Progress priority, so anything the agent asks preempts it and
+   * the bus keeps only the newest. Silent for an agent with TTS off; the
+   * sink would turn it into a notification, which nobody asked for.
+   */
+  private say(agent: Agent, text: string): void {
+    if (!agent.config.tts.enabled) return
+    this.speech.enqueue({
+      id: randomUUID(),
+      agentId: agent.config.id,
+      agentName: agent.config.name,
+      text,
+      priority: 'progress',
+      queuedAt: Date.now()
+    })
   }
 
   /**
@@ -311,8 +338,15 @@ export class AgentSupervisor {
   }
 
   /** Pushes one prompt into the live session and echoes it to the transcript. */
-  private dispatch(session: Session, text: string, images: ImageAttachment[]): void {
+  private dispatch(
+    session: Session,
+    text: string,
+    images: ImageAttachment[],
+    byVoice = false
+  ): void {
     const id = session.agentId
+    session.voiceTurn = byVoice
+    session.openingSpoken = false
     // Any prompt to this agent answers whatever it was waiting on: the reply
     // is what clears "waiting for you", whichever route it arrived by.
     this.patch(id, {
@@ -453,6 +487,8 @@ export class AgentSupervisor {
         interrupting: false,
         stopping: false,
         turnWaiters: [],
+        voiceTurn: false,
+        openingSpoken: false,
         turnSpeech,
         commands: { loaded: false, terminal: [] },
         seen: new Set(),
@@ -730,6 +766,18 @@ export class AgentSupervisor {
       return
     }
 
+    // The voice analogue of watching the reply begin: the turn's first
+    // assistant message, spoken if it is plain enough to be spoken as is.
+    if (message.type === 'assistant' && session.voiceTurn && !session.openingSpoken) {
+      const candidate = openingCandidate(message)
+      if (candidate.kind !== 'wait') {
+        const turn = { byVoice: session.voiceTurn, openingSpoken: session.openingSpoken }
+        session.openingSpoken = true
+        const line = candidate.kind === 'text' ? openingLine(turn, candidate.text) : null
+        if (line) this.say(session.agent, line)
+      }
+    }
+
     if (message.type === 'result') {
       const runtime = this.runtimeFor(id)
 
@@ -826,7 +874,7 @@ export class AgentSupervisor {
     const { next, rest } = drain(session.queued)
     session.queued = rest
     this.patch(id, { queued: summarise(rest) })
-    if (next) this.dispatch(session, next.text, next.images)
+    if (next) this.dispatch(session, next.text, next.images, next.byVoice === true)
   }
 
   /**

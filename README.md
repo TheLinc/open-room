@@ -199,6 +199,8 @@ Two modes, both off by default.
 
 Talking to an agent that is mid-task never interrupts it: the prompt waits behind the running turn, and the pill says "Queued behind the current task". For a question you want answered now, say **"hey Atlas, by the way, ..."** (or "quick question"). That is a side question, the voice equivalent of Claude Code's `/btw`: it is answered from the conversation's context by a separate short-lived process, spoken back, and shown on a card above the composer, and it never enters the conversation itself. The plain wake phrase stays an instruction, because "also update the README" and "what's the status" sound identical to an app that only knows the agent is busy.
 
+An agent with a voice acknowledges a spoken prompt straight away ("On it", or "Queued, after this task") and then reads out its own first line if that line is plain enough to speak, so you hear that it heard you and what it is about to do without raising the window. Typed prompts stay silent; the pane already shows the reply.
+
 Both are gated on a downloaded speech model, because a shortcut that exists but cannot possibly work is worse than no shortcut. Hotkey registration failures (another app holds the combination) are reported inline against the field that owns them.
 
 The overlay shows state throughout — which agent, which conversation, listening / transcribing / dispatched — because voice input with no visible state is what makes people distrust the feature, and showing the conversation is what stops a spoken message landing somewhere you did not expect.
