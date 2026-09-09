@@ -4,6 +4,7 @@ import {
   shell,
   BrowserWindow,
   ipcMain,
+  net,
   Notification,
   session,
   systemPreferences
@@ -24,8 +25,11 @@ import {
   broadcastTranscript,
   broadcastSettingsChanged,
   broadcastTranscriptCleared,
+  broadcastUpdate,
   registerIpcHandlers
 } from './ipc'
+import { UpdateChecker } from './update-check'
+import { describeUpdate, shouldNotifyUpdate, type UpdateStatus } from '@shared/updates'
 import { ConfigStore } from './config-store'
 import { AgentSupervisor } from './agent-supervisor'
 import { checkLogin } from './login-check'
@@ -163,6 +167,44 @@ async function recheckLogin(): Promise<LoginStatus> {
   accountLogin = status
   broadcastLogin(status)
   return status
+}
+
+/** The version last announced by notification, so each one is announced once. */
+let notifiedUpdate: string | null = null
+
+/**
+ * Surfaces a newer Open Room in the three places it can be seen: the banner
+ * in the window, the tray menu, and one native notification per version.
+ * The window is usually hidden while agents work, which is why the banner
+ * alone would not do.
+ */
+function onUpdateStatus(status: UpdateStatus): void {
+  broadcastUpdate(status)
+  tray.setUpdate(status.state === 'available' ? status.release.version : null)
+
+  if (!shouldNotifyUpdate(notifiedUpdate, status) || status.state !== 'available') return
+  notifiedUpdate = status.release.version
+  const body = describeUpdate(status)
+  if (!body || !Notification.isSupported()) return
+  const toast = new Notification({ title: 'Update available', body })
+  toast.on('click', () => void openUpdatePage())
+  toast.show()
+}
+
+/**
+ * Asks GitHub for a newer release. `net.fetch` rather than Node's, so the
+ * request goes through the system proxy like a browser's would.
+ */
+const updates = new UpdateChecker({
+  current: app.getVersion(),
+  fetch: (url, init) => net.fetch(url, init),
+  onStatus: onUpdateStatus
+})
+
+async function openUpdatePage(): Promise<void> {
+  const status = updates.status
+  if (status.state !== 'available') return
+  await shell.openExternal(status.release.url)
 }
 
 /**
@@ -646,9 +688,15 @@ app.whenReady().then(async () => {
       tray.setVoiceEnabled(voiceActive(saved))
       void refreshHotkeys()
       void refreshWake()
+      updates.setEnabled(saved.checkForUpdates)
     },
     () => accountQuota,
     { read: () => accountLogin, recheck: recheckLogin },
+    {
+      read: () => updates.status,
+      recheck: () => updates.checkNow(),
+      openPage: openUpdatePage
+    },
     git,
     worktrees,
     wsl
@@ -759,12 +807,16 @@ app.whenReady().then(async () => {
   tray.create({
     show: showMainWindow,
     toggleVoice: () => void toggleVoiceInput(),
+    openUpdate: () => void openUpdatePage(),
     quit: () => {
       quitting = true
       app.quit()
     }
   })
   tray.setVoiceEnabled(voiceActive(settings))
+  // After the tray exists, since a found update goes into its menu. The
+  // first check waits out the launch; see UPDATE_CHECK_DELAY_MS.
+  updates.setEnabled(settings.checkForUpdates)
 
   await refreshHotkeys()
   await refreshWake()

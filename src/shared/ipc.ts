@@ -10,6 +10,7 @@ import type {
 import type { Conversation, ConversationPage } from './conversation'
 import type { SessionOverridePatch } from './session-overrides'
 import type { LoginStatus } from './login'
+import type { UpdateStatus } from './updates'
 import type { HotkeyFailure } from './hotkeys'
 import type { AppSettings } from './settings'
 import type { MicrophoneDevice, OverlayPhase } from './voice-input'
@@ -101,6 +102,12 @@ export const IpcChannel = {
   loginChanged: 'login:changed',
   getLogin: 'login:get',
   recheckLogin: 'login:recheck',
+  /** main → renderer, the result of the latest check for a newer Open Room. */
+  updateChanged: 'update:changed',
+  getUpdate: 'update:get',
+  recheckUpdate: 'update:recheck',
+  /** renderer → main, open the offered release's page in the browser. */
+  openUpdatePage: 'update:open-page',
   previewVoice: 'voice:preview',
   kokoroStatus: 'voice:kokoro-status',
   loadKokoro: 'voice:kokoro-load',
@@ -300,6 +307,20 @@ export type OpenRoomApi = {
   getLogin: () => Promise<LoginStatus>
   recheckLogin: () => Promise<LoginStatus>
   onLoginChanged: (listener: (status: LoginStatus) => void) => () => void
+
+  /**
+   * Whether a newer Open Room has been released. Checked at launch and every
+   * few hours while `checkForUpdates` is on; `unchecked` while it is off.
+   * Pulled on mount as well as pushed, like quota.
+   */
+  getUpdate: () => Promise<UpdateStatus>
+  recheckUpdate: () => Promise<UpdateStatus>
+  onUpdateChanged: (listener: (status: UpdateStatus) => void) => () => void
+  /**
+   * Opens the offered release's page in the OS browser. Main holds the URL;
+   * the renderer never gets to name one.
+   */
+  openUpdatePage: () => Promise<void>
 
   listVoices: () => Promise<SystemVoice[]>
   previewVoice: (

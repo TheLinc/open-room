@@ -10,7 +10,7 @@ Open Room is a **conversational layer over Claude Code**, not a task launcher wr
 
 > **Read this first.** Open Room uses the Claude Code account already logged in on your machine. It ships no credentials, handles no API keys, and never proxies anyone else's account — every turn any agent runs bills *your* subscription. Running four agents concurrently means four Claude Code sessions drawing on one account; rate-limit events are surfaced in the app because they are a routine part of that.
 
-Everything stays on your machine. There is no telemetry, no analytics, and no server other than Anthropic's, which Claude Code itself talks to. Speech-to-text and text-to-speech both run locally.
+Everything stays on your machine. There is no telemetry and no analytics. Claude Code talks to Anthropic, and speech-to-text and text-to-speech both run locally. The one other request the app makes is an update check against this repository's GitHub releases, at launch and every six hours: it sends the app's name and version and nothing else, and it can be turned off in Settings.
 
 Windows and macOS. Windows is verified; macOS is configured but has not yet been run on a Mac.
 
@@ -58,6 +58,8 @@ If Open Room launches and you are not signed in, it shows a first-run screen wit
 ### 2. Install Open Room
 
 Download the installer for your platform from the [releases page](https://github.com/TheLinc/open-room/releases) (NSIS `.exe` on Windows, `.dmg` on macOS), or build it yourself — see [Development](#development).
+
+Once installed, the app tells you when a newer release exists: a banner in the window, an item in the tray menu, and one notification per version. Download opens the release page; run the new installer over the old install. Updating from inside the app is not built yet, and on macOS cannot be until the app is signed.
 
 The builds are not code-signed, so both operating systems will object once:
 

@@ -4,6 +4,7 @@ import { findEntry, formatBytes, totalBytes } from '@shared/model-catalog'
 import type { HotkeyFailure } from '@shared/hotkeys'
 import type { MicrophoneDevice } from '@shared/voice-input'
 import type { SttStatus } from '@shared/voice-rpc'
+import type { UpdateStatus } from '@shared/updates'
 import { useSettings } from '@/hooks/use-settings'
 import { useStaticDialog } from '@/hooks/use-static-dialog'
 import { explainAccelerator } from '@shared/accelerator'
@@ -36,6 +37,21 @@ const SYSTEM_DEFAULT = '__default__'
  * the same webcam again, which is three ways of saying two things.
  */
 const ALIASES = new Set(['default', 'communications'])
+
+/** One line under "Check now": what the last check found, against what is running. */
+function describeCheck(status: UpdateStatus, version: string): string {
+  const running = version ? `Running ${version}.` : ''
+  switch (status.state) {
+    case 'unchecked':
+      return running
+    case 'current':
+      return `${running} This is the latest release.`.trim()
+    case 'available':
+      return `${running} ${status.release.version} is available.`.trim()
+    case 'failed':
+      return `${running} Could not check: ${status.message}`.trim()
+  }
+}
 
 /** Windows appends a USB vendor:product pair that means nothing to a user. */
 function deviceLabel(label: string): string {
@@ -76,6 +92,24 @@ export function SettingsDialog({
   // Pushed as well as polled: the overlay enumerates, so the list can arrive
   // after this opened, and devices come and go while it is open.
   useEffect(() => window.openRoom.onMicrophonesChanged(setMicrophones), [])
+
+  // The update check's last result, and the version it compared against.
+  const [update, setUpdate] = useState<UpdateStatus>({ state: 'unchecked' })
+  const [appVersion, setAppVersion] = useState('')
+  const [checking, setChecking] = useState(false)
+  useEffect(() => {
+    void window.openRoom.getUpdate().then(setUpdate)
+    void window.openRoom.getAppInfo().then((info) => setAppVersion(info.version))
+    return window.openRoom.onUpdateChanged(setUpdate)
+  }, [])
+  const checkNow = async (): Promise<void> => {
+    setChecking(true)
+    try {
+      setUpdate(await window.openRoom.recheckUpdate())
+    } finally {
+      setChecking(false)
+    }
+  }
 
   // The editor command is free text, and every other field here saves on
   // change. Doing that per keystroke writes settings.json and re-registers
@@ -460,6 +494,42 @@ export function SettingsDialog({
                   )}
                 </div>
               )}
+            </section>
+
+            <section className="space-y-4">
+              <h3 className="text-sm font-medium">Updates</h3>
+
+              <div className="flex items-start justify-between gap-4">
+                <div className="space-y-1">
+                  <Label htmlFor="check-updates">Check for new versions</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Asks GitHub for the latest release at launch and every six hours. This is the
+                    one request Open Room makes to anyone but Anthropic: it names the app and its
+                    version, and GitHub sees your IP address. Nothing else is sent.
+                  </p>
+                </div>
+                <Switch
+                  id="check-updates"
+                  checked={settings.checkForUpdates}
+                  onCheckedChange={(checked) =>
+                    void save({ ...settings, checkForUpdates: checked })
+                  }
+                />
+              </div>
+
+              <div className="flex items-center gap-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={checking}
+                  onClick={() => void checkNow()}
+                >
+                  {checking ? <Loader2 className="animate-spin" /> : null}
+                  {checking ? 'Checking…' : 'Check now'}
+                </Button>
+                <p className="text-xs text-muted-foreground">{describeCheck(update, appVersion)}</p>
+              </div>
             </section>
 
             {error && <p className="text-xs text-destructive">{error}</p>}

@@ -8,6 +8,7 @@ import { AgentChat } from '@/components/agent-chat'
 import { AgentEditor } from '@/components/agent-editor'
 import { SettingsDialog, type SettingsHighlight } from '@/components/settings-dialog'
 import { QuotaBanner } from '@/components/quota-banner'
+import { UpdateBanner } from '@/components/update-banner'
 import { FirstRun } from '@/components/first-run'
 import type { LoginStatus } from '@shared/login'
 import { TitleBar } from '@/components/title-bar'
@@ -86,6 +87,7 @@ function App(): React.JSX.Element {
   return (
     <div className="flex h-screen flex-col bg-background text-foreground">
       <TitleBar />
+      <UpdateBanner />
       <QuotaBanner />
 
       {/* `min-h-0` so the row can shrink below its content and let the panes

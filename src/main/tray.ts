@@ -20,6 +20,8 @@ export type TrayState = 'idle' | 'listening' | 'working' | 'attention'
 export type TrayHandlers = {
   show: () => void
   toggleVoice: () => void
+  /** Opens the offered release's page. Only reachable while an update is on offer. */
+  openUpdate: () => void
   quit: () => void
 }
 
@@ -49,6 +51,8 @@ export class AppTray {
   private tray: Tray | null = null
   private state: TrayState = 'idle'
   private voiceEnabled = false
+  /** The version on offer, or null. The menu is where it stays after the banner is dismissed. */
+  private updateVersion: string | null = null
   private handlers: TrayHandlers | null = null
 
   create(handlers: TrayHandlers): void {
@@ -76,6 +80,17 @@ export class AppTray {
     this.render()
   }
 
+  /**
+   * The banner in the window is dismissible; this item is not. A tray-resident
+   * app is usually running with its window hidden, and "Later" on the banner
+   * should mean later, not never.
+   */
+  setUpdate(version: string | null): void {
+    if (version === this.updateVersion) return
+    this.updateVersion = version
+    this.render()
+  }
+
   destroy(): void {
     this.tray?.destroy()
     this.tray = null
@@ -92,6 +107,9 @@ export class AppTray {
     this.tray.setContextMenu(
       Menu.buildFromTemplate([
         { label: 'Show Open Room', click: this.handlers.show },
+        ...(this.updateVersion
+          ? [{ label: `Update to ${this.updateVersion}…`, click: this.handlers.openUpdate }]
+          : []),
         { type: 'separator' },
         {
           label: 'Voice input',

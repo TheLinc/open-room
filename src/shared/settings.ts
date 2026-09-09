@@ -64,7 +64,19 @@ export const appSettingsSchema = z.object({
    * `{line}` are substituted, e.g. `code -g {path}:{line}`. Empty means the
    * OS default application for the file type.
    */
-  editorCommand: z.string().default('')
+  editorCommand: z.string().default(''),
+
+  /**
+   * Ask GitHub for the latest release at launch and every few hours.
+   *
+   * On by default, and the one request the app makes to a server that is
+   * not Anthropic's: the User-Agent names the app and its version, GitHub
+   * sees an IP address, nothing else travels. An app with shell access that
+   * never learns a fix exists is the worse trade, but the switch is here
+   * because the README promises everything stays local and this is the
+   * exception.
+   */
+  checkForUpdates: z.boolean().default(true)
 })
 
 export type AppSettings = z.infer<typeof appSettingsSchema>

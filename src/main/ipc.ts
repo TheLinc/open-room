@@ -13,6 +13,7 @@ import { appSettingsSchema, type AppSettings } from '@shared/settings'
 import { sanitizeOverrides } from '@shared/session-overrides'
 import { acceptImage, acceptPrompt, type ImageAttachment } from '@shared/attachments'
 import type { LoginStatus } from '@shared/login'
+import type { UpdateStatus } from '@shared/updates'
 import {
   IpcChannel,
   type AgentsSnapshot,
@@ -60,6 +61,16 @@ export function registerIpcHandlers(
   login: { read: () => LoginStatus; recheck: () => Promise<LoginStatus> } = {
     read: () => ({ state: 'unknown' }),
     recheck: async () => ({ state: 'unknown' })
+  },
+  /** The newer-Open-Room check; `openPage` opens the offered release in the browser. */
+  updates: {
+    read: () => UpdateStatus
+    recheck: () => Promise<UpdateStatus>
+    openPage: () => Promise<void>
+  } = {
+    read: () => ({ state: 'unchecked' }),
+    recheck: async () => ({ state: 'unchecked' }),
+    openPage: async () => {}
   },
   /** Null when git is not on PATH; diffs and worktrees then say so. */
   git: Git | null = null,
@@ -310,6 +321,9 @@ export function registerIpcHandlers(
   ipcMain.handle(IpcChannel.getQuota, (): RateLimitStatus | null => readQuota())
   ipcMain.handle(IpcChannel.getLogin, (): LoginStatus => login.read())
   ipcMain.handle(IpcChannel.recheckLogin, (): Promise<LoginStatus> => login.recheck())
+  ipcMain.handle(IpcChannel.getUpdate, (): UpdateStatus => updates.read())
+  ipcMain.handle(IpcChannel.recheckUpdate, (): Promise<UpdateStatus> => updates.recheck())
+  ipcMain.handle(IpcChannel.openUpdatePage, (): Promise<void> => updates.openPage())
 
   ipcMain.handle(IpcChannel.listVoices, async (): Promise<SystemVoice[]> => {
     return voice.listVoices().catch(() => [])
@@ -434,6 +448,10 @@ export function broadcastRuntime(runtime: AgentRuntime): void {
 
 export function broadcastQuota(limit: RateLimitStatus | null): void {
   broadcast(IpcChannel.quotaChanged, limit)
+}
+
+export function broadcastUpdate(status: UpdateStatus): void {
+  broadcast(IpcChannel.updateChanged, status)
 }
 
 export function broadcastLogin(status: LoginStatus): void {
