@@ -4,7 +4,9 @@ import {
   describeUpdate,
   latestRelease,
   shouldNotifyUpdate,
+  updateAction,
   updateStatusFrom,
+  type UpdateInstall,
   type UpdateStatus
 } from './updates'
 
@@ -154,5 +156,53 @@ describe('describeUpdate', () => {
     expect(describeUpdate({ state: 'current', checkedAt: 1 })).toBeNull()
     expect(describeUpdate({ state: 'unchecked' })).toBeNull()
     expect(describeUpdate({ state: 'failed', message: 'x', checkedAt: 1 })).toBeNull()
+  })
+})
+
+describe('updateAction', () => {
+  const available: UpdateStatus = {
+    state: 'available',
+    release: { version: '0.2.0', url: 'https://example.invalid', publishedAt: null },
+    checkedAt: 1
+  }
+  const action = (install: UpdateInstall) => updateAction({ status: available, install })
+
+  it('offers nothing while there is no update', () => {
+    expect(
+      updateAction({ status: { state: 'current', checkedAt: 1 }, install: { kind: 'idle' } })
+    ).toBeNull()
+  })
+
+  it('opens the release page where installing in the app is not supported', () => {
+    // macOS unsigned, or a development build: the browser is the only route.
+    expect(action({ kind: 'unsupported' })).toEqual({ kind: 'open-page', label: 'Download' })
+  })
+
+  it('downloads in the app where it can', () => {
+    expect(action({ kind: 'idle' })).toEqual({ kind: 'download', label: 'Download' })
+  })
+
+  it('shows progress and takes no clicks while downloading', () => {
+    expect(action({ kind: 'downloading', percent: 41.6 })).toEqual({
+      kind: 'busy',
+      label: 'Downloading 42%'
+    })
+  })
+
+  it('offers the restart once the installer is down', () => {
+    expect(action({ kind: 'ready', version: '0.2.0' })).toEqual({
+      kind: 'restart',
+      label: 'Restart to update'
+    })
+  })
+
+  it('falls back to the release page when the in-app path failed, and says why', () => {
+    expect(
+      action({ kind: 'failed', message: 'No installer is published for this release' })
+    ).toEqual({
+      kind: 'open-page',
+      label: 'Open release page',
+      note: 'No installer is published for this release'
+    })
   })
 })

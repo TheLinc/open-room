@@ -10,7 +10,7 @@ import type {
 import type { Conversation, ConversationPage } from './conversation'
 import type { SessionOverridePatch } from './session-overrides'
 import type { LoginStatus } from './login'
-import type { UpdateStatus } from './updates'
+import type { UpdateSnapshot } from './updates'
 import type { HotkeyFailure } from './hotkeys'
 import type { AppSettings } from './settings'
 import type { MicrophoneDevice, OverlayPhase } from './voice-input'
@@ -108,6 +108,10 @@ export const IpcChannel = {
   recheckUpdate: 'update:recheck',
   /** renderer → main, open the offered release's page in the browser. */
   openUpdatePage: 'update:open-page',
+  /** renderer → main, download the offered release's installer (Windows, packaged). */
+  downloadUpdate: 'update:download',
+  /** renderer → main, quit and run the downloaded installer. */
+  installUpdate: 'update:install',
   previewVoice: 'voice:preview',
   kokoroStatus: 'voice:kokoro-status',
   loadKokoro: 'voice:kokoro-load',
@@ -313,14 +317,21 @@ export type OpenRoomApi = {
    * few hours while `checkForUpdates` is on; `unchecked` while it is off.
    * Pulled on mount as well as pushed, like quota.
    */
-  getUpdate: () => Promise<UpdateStatus>
-  recheckUpdate: () => Promise<UpdateStatus>
-  onUpdateChanged: (listener: (status: UpdateStatus) => void) => () => void
+  getUpdate: () => Promise<UpdateSnapshot>
+  recheckUpdate: () => Promise<UpdateSnapshot>
+  onUpdateChanged: (listener: (snapshot: UpdateSnapshot) => void) => () => void
   /**
    * Opens the offered release's page in the OS browser. Main holds the URL;
    * the renderer never gets to name one.
    */
   openUpdatePage: () => Promise<void>
+  /**
+   * Downloads the installer inside the app. Progress arrives through
+   * `onUpdateChanged`; a failure lands there too, as `install.kind: 'failed'`.
+   */
+  downloadUpdate: () => Promise<MutationResult>
+  /** Quits and runs the downloaded installer. Refused while an agent is mid-turn. */
+  installUpdate: () => Promise<MutationResult>
 
   listVoices: () => Promise<SystemVoice[]>
   previewVoice: (

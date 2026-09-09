@@ -98,14 +98,14 @@ export function SettingsDialog({
   const [appVersion, setAppVersion] = useState('')
   const [checking, setChecking] = useState(false)
   useEffect(() => {
-    void window.openRoom.getUpdate().then(setUpdate)
+    void window.openRoom.getUpdate().then((snapshot) => setUpdate(snapshot.status))
     void window.openRoom.getAppInfo().then((info) => setAppVersion(info.version))
-    return window.openRoom.onUpdateChanged(setUpdate)
+    return window.openRoom.onUpdateChanged((snapshot) => setUpdate(snapshot.status))
   }, [])
   const checkNow = async (): Promise<void> => {
     setChecking(true)
     try {
-      setUpdate(await window.openRoom.recheckUpdate())
+      setUpdate((await window.openRoom.recheckUpdate()).status)
     } finally {
       setChecking(false)
     }

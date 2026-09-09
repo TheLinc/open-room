@@ -13,7 +13,7 @@ import { appSettingsSchema, type AppSettings } from '@shared/settings'
 import { sanitizeOverrides } from '@shared/session-overrides'
 import { acceptImage, acceptPrompt, type ImageAttachment } from '@shared/attachments'
 import type { LoginStatus } from '@shared/login'
-import type { UpdateStatus } from '@shared/updates'
+import type { UpdateSnapshot } from '@shared/updates'
 import {
   IpcChannel,
   type AgentsSnapshot,
@@ -62,15 +62,22 @@ export function registerIpcHandlers(
     read: () => ({ state: 'unknown' }),
     recheck: async () => ({ state: 'unknown' })
   },
-  /** The newer-Open-Room check; `openPage` opens the offered release in the browser. */
+  /**
+   * The newer-Open-Room check and install. `openPage` opens the offered
+   * release in the browser; `download` and `install` are the Windows path.
+   */
   updates: {
-    read: () => UpdateStatus
-    recheck: () => Promise<UpdateStatus>
+    read: () => UpdateSnapshot
+    recheck: () => Promise<UpdateSnapshot>
     openPage: () => Promise<void>
+    download: () => Promise<MutationResult>
+    install: () => Promise<MutationResult>
   } = {
-    read: () => ({ state: 'unchecked' }),
-    recheck: async () => ({ state: 'unchecked' }),
-    openPage: async () => {}
+    read: () => ({ status: { state: 'unchecked' }, install: { kind: 'unsupported' } }),
+    recheck: async () => ({ status: { state: 'unchecked' }, install: { kind: 'unsupported' } }),
+    openPage: async () => {},
+    download: async () => ({ ok: false, message: 'Not supported' }),
+    install: async () => ({ ok: false, message: 'Not supported' })
   },
   /** Null when git is not on PATH; diffs and worktrees then say so. */
   git: Git | null = null,
@@ -321,9 +328,11 @@ export function registerIpcHandlers(
   ipcMain.handle(IpcChannel.getQuota, (): RateLimitStatus | null => readQuota())
   ipcMain.handle(IpcChannel.getLogin, (): LoginStatus => login.read())
   ipcMain.handle(IpcChannel.recheckLogin, (): Promise<LoginStatus> => login.recheck())
-  ipcMain.handle(IpcChannel.getUpdate, (): UpdateStatus => updates.read())
-  ipcMain.handle(IpcChannel.recheckUpdate, (): Promise<UpdateStatus> => updates.recheck())
+  ipcMain.handle(IpcChannel.getUpdate, (): UpdateSnapshot => updates.read())
+  ipcMain.handle(IpcChannel.recheckUpdate, (): Promise<UpdateSnapshot> => updates.recheck())
   ipcMain.handle(IpcChannel.openUpdatePage, (): Promise<void> => updates.openPage())
+  ipcMain.handle(IpcChannel.downloadUpdate, (): Promise<MutationResult> => updates.download())
+  ipcMain.handle(IpcChannel.installUpdate, (): Promise<MutationResult> => updates.install())
 
   ipcMain.handle(IpcChannel.listVoices, async (): Promise<SystemVoice[]> => {
     return voice.listVoices().catch(() => [])
@@ -450,8 +459,8 @@ export function broadcastQuota(limit: RateLimitStatus | null): void {
   broadcast(IpcChannel.quotaChanged, limit)
 }
 
-export function broadcastUpdate(status: UpdateStatus): void {
-  broadcast(IpcChannel.updateChanged, status)
+export function broadcastUpdate(snapshot: UpdateSnapshot): void {
+  broadcast(IpcChannel.updateChanged, snapshot)
 }
 
 export function broadcastLogin(status: LoginStatus): void {

@@ -23,9 +23,15 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # latest.yml and the blockmap are the in-app updater's feed: without
+          # them beside the installer, Download in the banner falls back to
+          # opening the release page.
           - os: windows-latest
             script: build:win
-            artifact: dist/*-setup.exe
+            artifact: |
+              dist/*-setup.exe
+              dist/*-setup.exe.blockmap
+              dist/latest.yml
           - os: macos-latest
             script: build:mac
             artifact: dist/*.dmg

@@ -26,6 +26,30 @@ export type UpdateStatus =
   /** The request or the payload failed. Says nothing about whether an update exists. */
   | { state: 'failed'; message: string; checkedAt: number }
 
+/**
+ * How far installing the offered release from inside the app has got.
+ *
+ * `unsupported` is macOS and development builds: electron-updater needs a
+ * signed app on macOS and a packaged one anywhere, so the browser is the only
+ * route there. The rest is the Windows path through electron-updater.
+ */
+export type UpdateInstall =
+  | { kind: 'unsupported' }
+  | { kind: 'idle' }
+  | { kind: 'downloading'; percent: number }
+  | { kind: 'ready'; version: string }
+  | { kind: 'failed'; message: string }
+
+/** What the renderer is told: the check's result, and the install's. */
+export type UpdateSnapshot = { status: UpdateStatus; install: UpdateInstall }
+
+/** The banner's one button, and an optional line under it. */
+export type UpdateAction = {
+  kind: 'open-page' | 'download' | 'busy' | 'restart'
+  label: string
+  note?: string
+}
+
 /** GitHub: `GET /repos/{owner}/{repo}/releases`. */
 export const RELEASES_URL = 'https://api.github.com/repos/TheLinc/open-room/releases?per_page=10'
 
@@ -142,4 +166,29 @@ export function shouldNotifyUpdate(lastNotified: string | null, status: UpdateSt
 export function describeUpdate(status: UpdateStatus): string | null {
   if (status.state !== 'available') return null
   return `Open Room ${status.release.version} is available`
+}
+
+/**
+ * Which button the banner shows, or null while there is no update.
+ *
+ * A failed in-app install falls back to the release page with the reason
+ * under it, rather than a dead button: every release before this feature
+ * shipped has no update feed, so the fallback is the common case for a
+ * while.
+ */
+export function updateAction(snapshot: UpdateSnapshot): UpdateAction | null {
+  if (snapshot.status.state !== 'available') return null
+  const install = snapshot.install
+  switch (install.kind) {
+    case 'unsupported':
+      return { kind: 'open-page', label: 'Download' }
+    case 'idle':
+      return { kind: 'download', label: 'Download' }
+    case 'downloading':
+      return { kind: 'busy', label: `Downloading ${Math.round(install.percent)}%` }
+    case 'ready':
+      return { kind: 'restart', label: 'Restart to update' }
+    case 'failed':
+      return { kind: 'open-page', label: 'Open release page', note: install.message }
+  }
 }

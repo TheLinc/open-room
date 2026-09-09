@@ -59,7 +59,7 @@ If Open Room launches and you are not signed in, it shows a first-run screen wit
 
 Download the installer for your platform from the [releases page](https://github.com/TheLinc/open-room/releases) (NSIS `.exe` on Windows, `.dmg` on macOS), or build it yourself — see [Development](#development).
 
-Once installed, the app tells you when a newer release exists: a banner in the window, an item in the tray menu, and one notification per version. Download opens the release page; run the new installer over the old install. Updating from inside the app is not built yet, and on macOS cannot be until the app is signed.
+Once installed, the app tells you when a newer release exists: a banner in the window, an item in the tray menu, and one notification per version. On Windows, Download fetches the installer inside the app and the button becomes *Restart to update*; the restart waits until no agent is mid-turn. On macOS, Download opens the release page, because an unsigned app cannot update itself there. Releases from before 0.2.0 carry no update feed, so the first update from one of those goes through the release page too.
 
 The builds are not code-signed, so both operating systems will object once:
 

@@ -28,8 +28,15 @@ import {
   broadcastUpdate,
   registerIpcHandlers
 } from './ipc'
+import { autoUpdater } from 'electron-updater'
 import { UpdateChecker } from './update-check'
-import { describeUpdate, shouldNotifyUpdate, type UpdateStatus } from '@shared/updates'
+import { UpdateInstaller } from './update-install'
+import {
+  describeUpdate,
+  shouldNotifyUpdate,
+  type UpdateSnapshot,
+  type UpdateStatus
+} from '@shared/updates'
 import { ConfigStore } from './config-store'
 import { AgentSupervisor } from './agent-supervisor'
 import { checkLogin } from './login-check'
@@ -179,7 +186,7 @@ let notifiedUpdate: string | null = null
  * alone would not do.
  */
 function onUpdateStatus(status: UpdateStatus): void {
-  broadcastUpdate(status)
+  broadcastUpdate(updateSnapshot())
   tray.setUpdate(status.state === 'available' ? status.release.version : null)
 
   if (!shouldNotifyUpdate(notifiedUpdate, status) || status.state !== 'available') return
@@ -205,6 +212,39 @@ async function openUpdatePage(): Promise<void> {
   const status = updates.status
   if (status.state !== 'available') return
   await shell.openExternal(status.release.url)
+}
+
+/**
+ * Installing from inside the app, on Windows in a packaged build only.
+ *
+ * electron-updater cannot update an unsigned macOS app, and in development
+ * there is no app-update.yml to read, so both get null and the banner offers
+ * the release page instead. Discovery stays with `UpdateChecker` above; this
+ * reads the release's `latest.yml` only when the user clicks Download.
+ */
+function packagedWindowsUpdater(): typeof autoUpdater | null {
+  if (process.platform !== 'win32' || !app.isPackaged) return null
+  autoUpdater.autoDownload = false
+  // Same rule as the checker: every release so far is flagged prerelease.
+  autoUpdater.allowPrerelease = true
+  return autoUpdater
+}
+
+const installer = new UpdateInstaller({
+  updater: packagedWindowsUpdater(),
+  onPhase: () => broadcastUpdate(updateSnapshot()),
+  busyAgents: () =>
+    supervisor.allRuntimes().filter((r) => r.state === 'working' || r.state === 'starting').length,
+  // The same teardown as a quit, before the installer runs: the CLI
+  // subprocesses must be gone, and the window must be allowed to close.
+  prepareQuit: async () => {
+    quitting = true
+    await supervisor.stopAll()
+  }
+})
+
+function updateSnapshot(): UpdateSnapshot {
+  return { status: updates.status, install: installer.phase }
 }
 
 /**
@@ -693,9 +733,14 @@ app.whenReady().then(async () => {
     () => accountQuota,
     { read: () => accountLogin, recheck: recheckLogin },
     {
-      read: () => updates.status,
-      recheck: () => updates.checkNow(),
-      openPage: openUpdatePage
+      read: updateSnapshot,
+      recheck: async () => {
+        await updates.checkNow()
+        return updateSnapshot()
+      },
+      openPage: openUpdatePage,
+      download: () => installer.download(),
+      install: () => installer.install()
     },
     git,
     worktrees,

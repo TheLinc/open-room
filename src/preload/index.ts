@@ -12,7 +12,7 @@ import type {
 import type { Conversation, ConversationPage } from '@shared/conversation'
 import type { SessionOverridePatch } from '@shared/session-overrides'
 import type { LoginStatus } from '@shared/login'
-import type { UpdateStatus } from '@shared/updates'
+import type { UpdateSnapshot } from '@shared/updates'
 import type { AppSettings } from '@shared/settings'
 import type { KokoroStatus, SttStatus, SystemVoice } from '@shared/voice-rpc'
 import type { HotkeyFailure } from '@shared/hotkeys'
@@ -140,11 +140,13 @@ const openRoom: OpenRoomApi = {
   onQuotaChanged: (listener: (limit: RateLimitStatus | null) => void) =>
     subscribe(IpcChannel.quotaChanged, (payload) => listener(payload as RateLimitStatus | null)),
 
-  getUpdate: (): Promise<UpdateStatus> => ipcRenderer.invoke(IpcChannel.getUpdate),
-  recheckUpdate: (): Promise<UpdateStatus> => ipcRenderer.invoke(IpcChannel.recheckUpdate),
-  onUpdateChanged: (listener: (status: UpdateStatus) => void) =>
-    subscribe(IpcChannel.updateChanged, (payload) => listener(payload as UpdateStatus)),
+  getUpdate: (): Promise<UpdateSnapshot> => ipcRenderer.invoke(IpcChannel.getUpdate),
+  recheckUpdate: (): Promise<UpdateSnapshot> => ipcRenderer.invoke(IpcChannel.recheckUpdate),
+  onUpdateChanged: (listener: (snapshot: UpdateSnapshot) => void) =>
+    subscribe(IpcChannel.updateChanged, (payload) => listener(payload as UpdateSnapshot)),
   openUpdatePage: (): Promise<void> => ipcRenderer.invoke(IpcChannel.openUpdatePage),
+  downloadUpdate: (): Promise<MutationResult> => ipcRenderer.invoke(IpcChannel.downloadUpdate),
+  installUpdate: (): Promise<MutationResult> => ipcRenderer.invoke(IpcChannel.installUpdate),
 
   previewVoice: (
     voiceId: string,

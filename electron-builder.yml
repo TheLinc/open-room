@@ -44,6 +44,14 @@ mac:
   notarize: false
 dmg:
   artifactName: ${name}-${version}.${ext}
-# No auto-update. The scaffold pointed `publish` at a placeholder URL, which
-# electron-builder would otherwise bake into the app as an update feed.
+# The update feed. This is baked into the app as resources/app-update.yml and
+# is what electron-updater reads on Windows when the user clicks Download in
+# the update banner; it also makes electron-builder write dist/latest.yml,
+# which the release workflow attaches beside the installer. Nothing here
+# publishes: the workflow passes `--publish never` and uploads itself.
+# macOS ignores all of it, since electron-updater refuses an unsigned app.
+publish:
+  provider: github
+  owner: TheLinc
+  repo: open-room
 npmRebuild: false
