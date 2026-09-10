@@ -55,7 +55,7 @@ type SdkMessage = {
 
 function Json({ value }: { value: unknown }): React.JSX.Element {
   return (
-    <pre className="overflow-x-auto rounded bg-muted/40 p-2 font-mono text-[11px] whitespace-pre-wrap">
+    <pre className="overflow-x-auto rounded border border-code-border bg-code p-2 font-mono text-[11px] whitespace-pre-wrap">
       {typeof value === 'string' ? value : JSON.stringify(value, null, 2)}
     </pre>
   )

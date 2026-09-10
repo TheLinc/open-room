@@ -29,6 +29,8 @@
   --color-accent: var(--accent);
   --color-muted-foreground: var(--muted-foreground);
   --color-muted: var(--muted);
+  --color-code: var(--code);
+  --color-code-border: var(--code-border);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-secondary: var(--secondary);
   --color-primary-foreground: var(--primary-foreground);
@@ -61,6 +63,14 @@
   --secondary-foreground: oklch(0.205 0 0);
   --muted: oklch(0.97 0 0);
   --muted-foreground: oklch(0.556 0 0);
+  /*
+   * Code, inline and fenced, and tool output. `muted` at 40% over the page
+   * was a 97% grey on white here and a 27% grey at 40% over 14.5% in the
+   * dark block: neither read as a block. A clear step off the page plus a
+   * border, in both themes.
+   */
+  --code: oklch(0.955 0 0);
+  --code-border: oklch(0.9 0 0);
   --accent: oklch(0.97 0 0);
   --accent-foreground: oklch(0.205 0 0);
   --destructive: oklch(0.577 0.245 27.325);
@@ -110,6 +120,8 @@
   --secondary-foreground: oklch(0.985 0 0);
   --muted: oklch(0.269 0 0);
   --muted-foreground: oklch(0.708 0 0);
+  --code: oklch(0.23 0 0);
+  --code-border: oklch(0.32 0 0);
   --accent: oklch(0.269 0 0);
   --accent-foreground: oklch(0.985 0 0);
   --destructive: oklch(0.704 0.191 22.216);
@@ -250,19 +262,22 @@
   .markdown code {
     font-family: var(--font-mono);
     font-size: 0.85em;
-    background: color-mix(in oklab, var(--muted) 40%, transparent);
+    background: var(--code);
+    border: 1px solid var(--code-border);
     border-radius: 0.25rem;
     padding: 0.1em 0.3em;
   }
   .markdown pre {
     overflow-x: auto;
     border-radius: 0.25rem;
-    background: color-mix(in oklab, var(--muted) 40%, transparent);
+    background: var(--code);
+    border: 1px solid var(--code-border);
     padding: 0.5rem;
     font-size: 11px;
   }
   .markdown pre code {
     background: none;
+    border: none;
     padding: 0;
     font-size: inherit;
   }
@@ -289,6 +304,36 @@
 /* The static-dialog pulse: feedback for an outside click a form dialog
    deliberately ignored (see use-static-dialog.ts). Animates the `scale`
    property so it composes with the content's translate centering. */
+/*
+ * The working glyph at the base of the chat. It breathes rather than spins:
+ * a spin says "busy" and nothing else, while a slow pulse in the agent's
+ * amber reads as alive without drawing the eye off the transcript. Under
+ * reduced motion it slows rather than stops, for the same reason the
+ * overlay's pips do — a still glyph cannot be told from a stale one.
+ */
+@keyframes working-breathe {
+  from {
+    opacity: 0.45;
+    transform: scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1.08);
+  }
+}
+
+.working-glyph {
+  display: inline-block;
+  line-height: 1;
+  animation: working-breathe 900ms ease-in-out infinite alternate;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .working-glyph {
+    animation-duration: 2400ms;
+  }
+}
+
 @keyframes dialog-attention {
   50% {
     scale: 1.015;

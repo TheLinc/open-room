@@ -37,6 +37,10 @@ import { isRenderable } from '@/lib/transcript'
 import { readImage, imageFiles } from '@/lib/attachments'
 import { AttachmentChips } from '@/components/attachment-chips'
 import { QueuedPrompts } from '@/components/queued-prompts'
+import { WorkingIndicator } from '@/components/working-indicator'
+import { TurnFold } from '@/components/turn-fold'
+import { foldTurns, type TranscriptRow } from '@/lib/transcript-folds'
+import { turnStartedAt } from '@/lib/working-indicator'
 import { ContextMeter } from '@/components/context-meter'
 import { McpHealth } from '@/components/mcp-health'
 import { SessionControls } from '@/components/session-controls'
@@ -126,9 +130,76 @@ export function AgentChat({
 
   const color = colorHexFor(agent.config.color)
   const busy = runtime.state === 'working' || runtime.state === 'starting'
+  // When the current turn began, for the working strip's clock and verb:
+  // the time main stamped on the prompt that started it, so no clock is read
+  // during render and every render agrees.
+  const startedAt = turnStartedAt(entries, runtime.lastActiveAt)
   // Silent messages must be dropped before render, not inside the row: an
   // empty wrapper still reserves its contain-intrinsic-size placeholder.
   const visible = entries.filter(isRenderable)
+  // Which settled turns the user has opened, by the fold's key. Local to the
+  // pane on purpose, like T3 Code's: a remount folds everything again.
+  const [unfolded, setUnfolded] = useState<Set<number>>(() => new Set())
+  const toggleFold = (key: number): void =>
+    setUnfolded((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+
+  /**
+   * Draws a list through the turn folds. `after` renders whatever follows an
+   * entry (the files-changed receipt), given the entry's index in the
+   * unfolded list, which is what the turn arithmetic expects.
+   */
+  const renderRows = (
+    list: TranscriptEntry[],
+    live: boolean,
+    after: (entry: TranscriptEntry, index: number) => React.ReactNode
+  ): React.ReactNode => {
+    const indexBySeq = new Map(list.map((entry, index) => [entry.seq, index]))
+    const row = (entry: TranscriptEntry): React.ReactNode => (
+      // content-visibility lets the browser skip layout and paint for rows
+      // scrolled out of view — most of the benefit of a virtualised list
+      // without the dependency, given the retained cap already bounds the DOM.
+      <div style={{ contentVisibility: 'auto', containIntrinsicSize: 'auto 60px' }}>
+        <TranscriptMessage entry={entry} />
+      </div>
+    )
+    return foldTurns(list, { live }).map((item: TranscriptRow) => {
+      if (item.kind === 'fold') {
+        const open = unfolded.has(item.key)
+        return (
+          <Fragment key={`fold-${item.key}`}>
+            <TurnFold
+              label={item.label}
+              count={item.hidden.length}
+              expanded={open}
+              onToggle={() => toggleFold(item.key)}
+            />
+            {open && item.hidden.map((entry) => <Fragment key={entry.seq}>{row(entry)}</Fragment>)}
+          </Fragment>
+        )
+      }
+      if (item.kind === 'after') {
+        // A folded result's outcome (the files-changed receipt), at the end
+        // of its turn rather than where the fold sits.
+        return (
+          <Fragment key={`after-${item.entry.seq}`}>
+            {after(item.entry, indexBySeq.get(item.entry.seq) ?? 0)}
+          </Fragment>
+        )
+      }
+      const index = indexBySeq.get(item.entry.seq) ?? 0
+      return (
+        <Fragment key={item.entry.seq}>
+          {row(item.entry)}
+          {after(item.entry, index)}
+        </Fragment>
+      )
+    })
+  }
   // History is re-read on every mount and the live list survives sidebar
   // switches, so after a live turn the two overlap; see trimOverlap.
   const historyVisible = trimOverlap(conversations.history, entries).filter(isRenderable)
@@ -554,7 +625,7 @@ export function AgentChat({
 
         {historyVisible.length > 0 && (
           <div className="flex flex-col gap-3 pb-3">
-            {historyVisible.map((entry, i) => {
+            {renderRows(historyVisible, false, (entry, i) => {
               const message = entry.message as { type?: string }
               // Persisted history never carries the SDK's `result` message —
               // only Claude Code's own user/assistant transcript reaches
@@ -563,22 +634,13 @@ export function AgentChat({
               const isTurnEnd =
                 message.type === 'assistant' &&
                 (i === historyVisible.length - 1 || isPrompt(historyVisible[i + 1]))
-              return (
-                <Fragment key={entry.seq}>
-                  <div style={{ contentVisibility: 'auto', containIntrinsicSize: 'auto 60px' }}>
-                    <TranscriptMessage entry={entry} />
-                  </div>
-                  {isTurnEnd && (
-                    <FilesChanged
-                      agentId={agent.config.id}
-                      cwd={runtime.cwd ?? agent.config.workspacePath}
-                      files={filesChangedIn(
-                        turnBefore(historyVisible, i + 1).map((e) => e.message)
-                      )}
-                    />
-                  )}
-                </Fragment>
-              )
+              return isTurnEnd ? (
+                <FilesChanged
+                  agentId={agent.config.id}
+                  cwd={runtime.cwd ?? agent.config.workspacePath}
+                  files={filesChangedIn(turnBefore(historyVisible, i + 1).map((e) => e.message))}
+                />
+              ) : null
             })}
           </div>
         )}
@@ -611,27 +673,16 @@ export function AgentChat({
           </div>
         ) : (
           <div className="flex flex-col gap-3">
-            {visible.map((entry, i) => {
+            {renderRows(visible, true, (entry, i) => {
               const message = entry.message as { type?: string; subtype?: string }
               const isTurnEnd = message.type === 'result' && !isCommandResult(message)
-              return (
-                <Fragment key={entry.seq}>
-                  {/* content-visibility lets the browser skip layout and paint
-                      for rows scrolled out of view — most of the benefit of a
-                      virtualised list without the dependency, given the
-                      retained cap already bounds the DOM. */}
-                  <div style={{ contentVisibility: 'auto', containIntrinsicSize: 'auto 60px' }}>
-                    <TranscriptMessage entry={entry} />
-                  </div>
-                  {isTurnEnd && (
-                    <FilesChanged
-                      agentId={agent.config.id}
-                      cwd={runtime.cwd ?? agent.config.workspacePath}
-                      files={filesChangedIn(turnBefore(visible, i).map((e) => e.message))}
-                    />
-                  )}
-                </Fragment>
-              )
+              return isTurnEnd ? (
+                <FilesChanged
+                  agentId={agent.config.id}
+                  cwd={runtime.cwd ?? agent.config.workspacePath}
+                  files={filesChangedIn(turnBefore(visible, i).map((e) => e.message))}
+                />
+              ) : null
             })}
             {permissions.map((request) => (
               <PermissionPrompt key={request.id} request={request} agentName={agent.config.name} />
@@ -646,6 +697,8 @@ export function AgentChat({
           Drop to attach
         </div>
       )}
+
+      <WorkingIndicator state={runtime.state} startedAt={startedAt} entries={entries} />
 
       <div className="border-t border-border px-6 py-3">
         {sendError && (
