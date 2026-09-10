@@ -94,6 +94,10 @@ export function classifyThrownError(error: unknown): AgentError {
   if (
     lower.includes('not logged in') ||
     lower.includes('authentication') ||
+    // "Failed to authenticate. OAuth session expired and failed to refresh."
+    // is what the CLI puts in a result when its token refresh fails.
+    lower.includes('failed to authenticate') ||
+    lower.includes('oauth') ||
     lower.includes('unauthorized') ||
     lower.includes('invalid api key') ||
     lower.includes('please run /login')

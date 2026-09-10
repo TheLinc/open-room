@@ -30,6 +30,7 @@ import {
 import { replayKey } from '@shared/compaction'
 import { resumeTarget } from '@shared/conversation'
 import { latestActive } from '@shared/archive'
+import { turnOutcome } from '@shared/turn-outcome'
 import { awaitingAfterTurn } from '@shared/awaiting'
 import {
   INTERRUPT_GRACE_MS,
@@ -803,10 +804,13 @@ export class AgentSupervisor {
       // reports it as an error result.
       const wasInterrupted = session.interrupting
       session.interrupting = false
+      // `subtype` and `is_error` disagree for some failures (see
+      // `turnOutcome`); everything below reads the one decision.
+      const outcome = turnOutcome(message, wasInterrupted)
 
       this.patch(id, {
         // A result ends the turn; the session stays alive for the next one.
-        state: message.is_error && !wasInterrupted ? 'error' : 'ready',
+        state: outcome === 'error' ? 'error' : 'ready',
         sessionId: message.session_id,
         lastActiveAt: Date.now(),
         // A turn that spoke a question and then ended is an agent waiting on
@@ -839,7 +843,7 @@ export class AgentSupervisor {
           ) ?? runtime.contextUsage
       })
 
-      if (message.is_error && message.subtype !== 'success' && !wasInterrupted) {
+      if (outcome === 'error') {
         // The structured event is the reliable signal. Falling back to
         // matching "rate limit" or "429" in prose worked only when the text
         // happened to say so, and said nothing about when to retry.
@@ -847,11 +851,21 @@ export class AgentSupervisor {
           session,
           queueActionForResult({ isCommandResult: false, isError: true, wasInterrupted })
         )
-        this.fail(id, this.classifyFailure(id, String(message.subtype)))
+        // A flagged "success" carries its reason in `result` (an expired
+        // OAuth session, a model the account cannot use); any other subtype
+        // is its own reason.
+        this.fail(
+          id,
+          this.classifyFailure(
+            id,
+            message.subtype === 'success' ? message.result : String(message.subtype)
+          )
+        )
         return
       }
 
-      if (message.subtype === 'success' && !wasInterrupted) {
+      // The subtype test only narrows the type: `outcome` already implies it.
+      if (outcome === 'success' && message.subtype === 'success') {
         void this.speakFallback(session, message.result)
       }
 

@@ -67,6 +67,16 @@ describe('kindFromAssistantError', () => {
 })
 
 describe('classifyThrownError', () => {
+  it('reads an expired OAuth session as a login problem', () => {
+    // The sentence the CLI puts in a result when its token refresh fails.
+    // "authenticate" is not "authentication", so the old list missed it.
+    expect(
+      classifyThrownError(
+        new Error('Failed to authenticate. OAuth session expired and failed to refresh.')
+      ).kind
+    ).toBe('not-authenticated')
+  })
+
   const cases: Array<[string, string]> = [
     ['spawn claude ENOENT', 'cli-missing'],
     ['command not found: claude', 'cli-missing'],
