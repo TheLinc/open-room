@@ -97,7 +97,15 @@ export const appSettingsSchema = z.object({
    * the retention window is the grace period in which that decision can
    * still be reversed. See `src/shared/archive.ts`.
    */
-  archiveRetentionDays: z.number().int().min(0).max(365).default(30)
+  archiveRetentionDays: z.number().int().min(0).max(365).default(30),
+
+  /**
+   * Speak completions and progress even while the user is looking at that
+   * agent's pane. Off by default: a reply you are reading as it streams does
+   * not need reading aloud a beat later. Questions and blockers are spoken
+   * either way. See `src/shared/attention.ts`.
+   */
+  speakWhenWatching: z.boolean().default(false)
 })
 
 export type AppSettings = z.infer<typeof appSettingsSchema>

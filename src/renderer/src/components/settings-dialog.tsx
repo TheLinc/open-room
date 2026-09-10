@@ -503,6 +503,30 @@ export function SettingsDialog({
                     </div>
                   </section>
 
+                  <section className="space-y-4">
+                    <h3 className="text-sm font-medium">Speaking aloud</h3>
+
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="space-y-1">
+                        <Label htmlFor="speak-when-watching">
+                          Speak even when I&apos;m watching
+                        </Label>
+                        <p className="text-xs text-muted-foreground">
+                          Off, an agent stays quiet about finishing while its pane is on screen and
+                          the window is focused, since you are already reading the reply. Questions
+                          and blockers are always spoken.
+                        </p>
+                      </div>
+                      <Switch
+                        id="speak-when-watching"
+                        checked={settings.speakWhenWatching}
+                        onCheckedChange={(checked) =>
+                          void save({ ...settings, speakWhenWatching: checked })
+                        }
+                      />
+                    </div>
+                  </section>
+
                   <section className="space-y-3">
                     <h3 className="text-sm font-medium">Speech model</h3>
 

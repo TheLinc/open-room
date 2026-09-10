@@ -11,4 +11,9 @@ describe('appSettingsSchema', () => {
     expect(appSettingsSchema.safeParse({ archiveRetentionDays: 400 }).success).toBe(false)
     expect(appSettingsSchema.safeParse({ archiveRetentionDays: 1.5 }).success).toBe(false)
   })
+
+  it('speaks only when the user is not watching, unless asked otherwise', () => {
+    expect(appSettingsSchema.parse({}).speakWhenWatching).toBe(false)
+    expect(appSettingsSchema.parse({ speakWhenWatching: true }).speakWhenWatching).toBe(true)
+  })
 })

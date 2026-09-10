@@ -40,6 +40,7 @@ import {
   type UpdateStatus
 } from '@shared/updates'
 import { resolveTheme, themeChrome, type ThemeSetting } from '@shared/theme'
+import { speechAllowed, watching } from '@shared/attention'
 import { ConfigStore } from './config-store'
 import { AgentSupervisor } from './agent-supervisor'
 import { checkLogin } from './login-check'
@@ -127,7 +128,26 @@ const voiceScript = app.isPackaged
   ? join(process.resourcesPath, 'app.asar', 'out', 'main', 'voice.js')
   : join(app.getAppPath(), 'out', 'main', 'voice.js')
 const voice = new VoiceSidecar(voiceScript, () => void primeSpeech())
-const speech = new SpeechBus(new VoiceSink(voice, new NotificationSink(), store))
+// Speech follows attention: a completion is not read aloud to someone who
+// is looking at the pane it streamed into. Questions and blockers always
+// play. `speakWhenWatching` is the user's opt-out from the rule.
+let speakWhenWatching = false
+const speech = new SpeechBus(
+  new VoiceSink(voice, new NotificationSink(), store),
+  Date.now,
+  (utterance) =>
+    speechAllowed(
+      utterance.priority,
+      watching(
+        {
+          windowFocused: mainWindow !== null && !mainWindow.isDestroyed() && mainWindow.isFocused(),
+          selectedAgentId
+        },
+        utterance.agentId
+      ),
+      speakWhenWatching
+    )
+)
 
 /**
  * Primes the speech path so the first thing an agent says sounds prompt.
@@ -813,6 +833,7 @@ app.whenReady().then(async () => {
       updates.setEnabled(saved.checkForUpdates)
       applyTheme(saved.theme)
       archiveRetentionDays = saved.archiveRetentionDays
+      speakWhenWatching = saved.speakWhenWatching
     },
     () => accountQuota,
     { read: () => accountLogin, recheck: recheckLogin, modelAccess: () => accountModelAccess },
@@ -832,6 +853,7 @@ app.whenReady().then(async () => {
     archive
   )
   archiveRetentionDays = settings.archiveRetentionDays
+  speakWhenWatching = settings.speakWhenWatching
   sweeper.start()
   supervisor.setWorktrees(worktrees)
   supervisor.setWsl(wsl)

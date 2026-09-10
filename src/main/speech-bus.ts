@@ -42,7 +42,16 @@ export class SpeechBus {
 
   constructor(
     private readonly sink: SpeechSink,
-    private readonly now: () => number = Date.now
+    private readonly now: () => number = Date.now,
+    /**
+     * Whether an utterance is worth playing at the moment it would start.
+     * Main answers from window focus and the selected agent (see
+     * `src/shared/attention.ts`); a refused line is dropped, since the pane
+     * the user is watching already shows it. Asked at play time and never at
+     * enqueue, because a line can wait behind another agent's sentence
+     * while the user sits down or walks away.
+     */
+    private readonly gate: (utterance: Utterance) => boolean = () => true
   ) {}
 
   get isSpeaking(): boolean {
@@ -102,7 +111,8 @@ export class SpeechBus {
       return
     }
 
-    const utterance = this.take()
+    let utterance = this.take()
+    while (utterance && !this.gate(utterance)) utterance = this.take()
     if (!utterance) return
 
     const controller = new AbortController()

@@ -402,3 +402,45 @@ describe('SpeechBus resilience', () => {
     expect(failing.speak).toHaveBeenCalledTimes(2)
   })
 })
+
+describe('SpeechBus attention gate', () => {
+  it('drops an utterance the gate refuses and plays the next one instead', async () => {
+    const { sink, spoken } = makeSink()
+    const bus = new SpeechBus(sink, now, (utterance) => utterance.text !== 'watched')
+
+    bus.enqueue(utter('atlas', 'done', 'watched'))
+    bus.enqueue(utter('juno', 'done', 'unwatched'))
+    await settle()
+
+    expect(spoken).toEqual(['unwatched'])
+  })
+
+  it('asks the gate when playback would start, not when the utterance was queued', async () => {
+    // The user sat down to watch the pane while the line waited its turn.
+    let allow = true
+    const { sink, spoken, end } = makeSink()
+    const bus = new SpeechBus(sink, now, () => allow)
+
+    bus.enqueue(utter('atlas', 'done', 'occupier'))
+    await settle()
+    bus.enqueue(utter('atlas', 'done', 'later'))
+    allow = false
+    await end()
+    await settle()
+
+    expect(spoken).toEqual(['occupier'])
+  })
+
+  it('does not report speaking for a line it dropped', async () => {
+    const { sink } = makeSink()
+    const bus = new SpeechBus(sink, now, () => false)
+    const changes: boolean[] = []
+    bus.onSpeakingChange = (speaking) => changes.push(speaking)
+
+    bus.enqueue(utter('atlas', 'done', 'watched'))
+    await settle()
+
+    expect(changes).toEqual([])
+    expect(bus.isSpeaking).toBe(false)
+  })
+})
