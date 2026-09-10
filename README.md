@@ -70,7 +70,7 @@ Nothing is bundled beyond the app: no voices, no speech models. System text-to-s
 
 ### 3. Create an agent
 
-Give it a name, pick a model, point it at a workspace folder. The editor writes two files you can edit by hand at any time:
+Give it a name, pick a model, point it at a workspace folder. Fable models are offered too; the app asks Claude Code at launch which models your plan includes and shows the rest disabled, so an agent never fails on a model you cannot use. The editor writes two files you can edit by hand at any time:
 
 - `~/.open-room/agents/<id>/config.json` — model, tools, voice, hotkey
 - `~/.open-room/agents/<id>/AGENT.md` — the role description, prepended to every session
@@ -132,6 +132,8 @@ Each agent gets one in-process MCP server with a single tool, `speak` — see [H
 One conversation is one SDK session, tagged `open-room:<agentId>` so an agent's conversations can be listed without parsing transcript files, and without keying off titles the user is free to change.
 
 Launching the app selects each agent's most recent conversation, rendered and scrolled to the bottom with a `Resumed · last active 2 days ago` divider. A switcher in the pane header lists recent conversations by how they started, plus "New conversation". New conversations are always explicit — there is no idle timer and no per-launch reset, because surprise amnesia is worse than a long thread.
+
+A finished conversation can be archived instead of deleted, from the switcher or the pane's menu. It leaves the list, sits under a collapsed "Archived" group with a countdown, and can be restored until the retention window runs out (30 days by default, adjustable in Settings, or never). Once the window passes it is deleted the same way a manual delete would be: a worktree with uncommitted work is left alone.
 
 What makes a new conversation *cheap* is `WORKLOG.md`. Each agent's `AGENT.md` instructs it to keep one in its workspace: what it is working on, where things stand, what is blocked. A fresh context window still knows the state of play, and "what's the progress on the CI pipeline?" gets a sensible answer even in a conversation that was never about CI. It is a plain file, readable outside the app, and it survives clearing history.
 

@@ -13,6 +13,10 @@ import { appSettingsSchema, type AppSettings } from '@shared/settings'
 import { sanitizeOverrides } from '@shared/session-overrides'
 import { acceptImage, acceptPrompt, type ImageAttachment } from '@shared/attachments'
 import type { LoginStatus } from '@shared/login'
+import type { ModelAccess } from '@shared/model-access'
+import { latestActive } from '@shared/archive'
+import type { ArchiveStore } from './archive-store'
+import { removeConversation, type RemovalDeps } from './remove-conversation'
 import type { UpdateSnapshot } from '@shared/updates'
 import {
   IpcChannel,
@@ -58,9 +62,15 @@ export function registerIpcHandlers(
    * renderer can mount long after the event that last set it.
    */
   readQuota: () => RateLimitStatus | null = () => null,
-  login: { read: () => LoginStatus; recheck: () => Promise<LoginStatus> } = {
+  login: {
+    read: () => LoginStatus
+    recheck: () => Promise<LoginStatus>
+    /** Which models the account can use; read on demand like quota. */
+    modelAccess: () => ModelAccess
+  } = {
     read: () => ({ state: 'unknown' }),
-    recheck: async () => ({ state: 'unknown' })
+    recheck: async () => ({ state: 'unknown' }),
+    modelAccess: () => ({ state: 'unknown' })
   },
   /**
    * The newer-Open-Room check and install. `openPage` opens the offered
@@ -82,8 +92,20 @@ export function registerIpcHandlers(
   /** Null when git is not on PATH; diffs and worktrees then say so. */
   git: Git | null = null,
   worktrees: WorktreeManager | null = null,
-  wsl: WslRuntime | null = null
+  wsl: WslRuntime | null = null,
+  archive: ArchiveStore | null = null
 ): void {
+  /** The delete path, shared with the archive sweeper (see `removeConversation`). */
+  const removalDeps: RemovalDeps = {
+    read: (agentId) => store.read(agentId),
+    activeConversationId: (agentId) => supervisor.runtimeFor(agentId).activeConversationId,
+    stop: (agentId) => supervisor.stop(agentId),
+    clearActive: (agentId) => supervisor.setActiveConversation(agentId, null),
+    removeTranscript: (agent, sessionId) => conversations.remove(agent, sessionId),
+    releaseWorktree: worktrees ? (agent, sessionId) => worktrees.release(agent, sessionId) : null,
+    forgetArchive: archive ? (agentId, sessionId) => archive.forget(agentId, sessionId) : null
+  }
+
   /**
    * The checkout the agent's active conversation runs in — its worktree when
    * it has one, the workspace otherwise. The `@` picker, open-in-editor and
@@ -295,15 +317,33 @@ export function registerIpcHandlers(
     IpcChannel.deleteConversation,
     async (_e, agentId: string, sessionId: string): Promise<MutationResult> =>
       guard(async () => {
+        notifyKept(await removeConversation(removalDeps, agentId, sessionId))
+      })
+  )
+
+  ipcMain.handle(
+    IpcChannel.archiveConversation,
+    async (_e, agentId: string, sessionId: string): Promise<MutationResult> =>
+      guard(async () => {
+        if (!archive) throw new Error('Archiving is not available')
         const agent = await store.read(agentId)
+        await archive.archive(agentId, sessionId)
+        // Archiving the conversation on screen: end its session and land in
+        // the most recent live one, decided here for the same reason
+        // `resumeTarget` lives in main rather than in the pane.
         if (supervisor.runtimeFor(agentId).activeConversationId === sessionId) {
           await supervisor.stop(agentId)
-          supervisor.setActiveConversation(agentId, null)
+          supervisor.setActiveConversation(agentId, latestActive(await conversations.list(agent)))
         }
-        // The transcript goes first: it is keyed by the worktree's path, and
-        // releasing the worktree first would leave it unreachable.
-        await conversations.remove(agent, sessionId)
-        if (worktrees) notifyKept((await worktrees.release(agent, sessionId)).message)
+      })
+  )
+
+  ipcMain.handle(
+    IpcChannel.restoreConversation,
+    async (_e, agentId: string, sessionId: string): Promise<MutationResult> =>
+      guard(async () => {
+        if (!archive) throw new Error('Archiving is not available')
+        await archive.restore(agentId, sessionId)
       })
   )
 
@@ -315,7 +355,9 @@ export function registerIpcHandlers(
         await supervisor.stop(agentId)
         supervisor.setActiveConversation(agentId, null)
         const owned = worktrees ? Object.keys(await worktrees.records(agentId)) : []
+        const archived = archive ? Object.keys(await archive.read(agentId)) : []
         await conversations.removeAll(agent)
+        for (const sessionId of archived) await archive?.forget(agentId, sessionId)
         const kept: string[] = []
         for (const sessionId of owned) {
           const { message } = await worktrees!.release(agent, sessionId)
@@ -328,6 +370,7 @@ export function registerIpcHandlers(
   ipcMain.handle(IpcChannel.getQuota, (): RateLimitStatus | null => readQuota())
   ipcMain.handle(IpcChannel.getLogin, (): LoginStatus => login.read())
   ipcMain.handle(IpcChannel.recheckLogin, (): Promise<LoginStatus> => login.recheck())
+  ipcMain.handle(IpcChannel.getModelAccess, (): ModelAccess => login.modelAccess())
   ipcMain.handle(IpcChannel.getUpdate, (): UpdateSnapshot => updates.read())
   ipcMain.handle(IpcChannel.recheckUpdate, (): Promise<UpdateSnapshot> => updates.recheck())
   ipcMain.handle(IpcChannel.openUpdatePage, (): Promise<void> => updates.openPage())
@@ -465,6 +508,10 @@ export function broadcastUpdate(snapshot: UpdateSnapshot): void {
 
 export function broadcastLogin(status: LoginStatus): void {
   broadcast(IpcChannel.loginChanged, status)
+}
+
+export function broadcastModelAccess(access: ModelAccess): void {
+  broadcast(IpcChannel.modelAccessChanged, access)
 }
 
 export function broadcastTranscript(entry: TranscriptEntry): void {

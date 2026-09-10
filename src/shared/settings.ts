@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { THEME_SETTINGS } from './theme'
 
 /**
  * App-wide settings, stored at `~/.open-room/settings.json`.
@@ -76,7 +77,27 @@ export const appSettingsSchema = z.object({
    * because the README promises everything stays local and this is the
    * exception.
    */
-  checkForUpdates: z.boolean().default(true)
+  checkForUpdates: z.boolean().default(true),
+
+  /**
+   * Light, dark, or whatever the OS is set to.
+   *
+   * Defaults to dark rather than system because every install so far has
+   * been dark by construction; an update that flipped a user's app to light
+   * because their OS happened to be would read as a regression.
+   */
+  theme: z.enum(THEME_SETTINGS).default('dark'),
+
+  /**
+   * How long an archived conversation is kept before it is deleted, in
+   * days. 0 keeps archived conversations until they are deleted by hand.
+   *
+   * Archiving is what makes a long list of finished conversations cheap to
+   * tidy without deciding, then and there, that each one is gone for good;
+   * the retention window is the grace period in which that decision can
+   * still be reversed. See `src/shared/archive.ts`.
+   */
+  archiveRetentionDays: z.number().int().min(0).max(365).default(30)
 })
 
 export type AppSettings = z.infer<typeof appSettingsSchema>

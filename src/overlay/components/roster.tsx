@@ -43,14 +43,14 @@ export function Roster({
             onMouseUp={(event) => {
               if (event.button === 0) onSelect(pip.agentId)
             }}
-            className="flex cursor-pointer items-center gap-2 rounded-md px-1.5 py-1 text-left transition-colors duration-100 hover:bg-white/8"
+            className="flex cursor-pointer items-center gap-2 rounded-md px-1.5 py-1 text-left transition-colors duration-100 hover:bg-or-fg/8"
           >
             <span
               aria-hidden
               className="block size-2 shrink-0 rounded-full"
               style={{ background: pip.color, boxShadow: `0 0 9px ${pip.color}` }}
             />
-            <span className="truncate text-[11px] font-semibold text-slate-100">{pip.name}</span>
+            <span className="truncate text-[11px] font-semibold text-or-fg">{pip.name}</span>
             <span
               className={[
                 'ml-auto shrink-0 pl-2 text-[9.5px]',
@@ -58,7 +58,7 @@ export function Roster({
                   ? 'text-red-400'
                   : pip.state === 'asking'
                     ? 'text-amber-300'
-                    : 'text-slate-400'
+                    : 'text-or-fg/55'
               ].join(' ')}
             >
               {pip.state === 'needs-attention'
@@ -74,7 +74,7 @@ export function Roster({
           {pip.permission && (
             <div className="flex flex-col gap-1 px-1.5 pt-0.5 pb-1.5">
               <div
-                className="truncate font-mono text-[10px] text-slate-300"
+                className="truncate font-mono text-[10px] text-or-fg/75"
                 title={pip.permission.summary}
               >
                 {pip.permission.summary}
@@ -95,7 +95,7 @@ export function Roster({
 
           {pip.question && (
             <div
-              className="line-clamp-2 px-1.5 pt-0.5 pb-1.5 text-[10.5px] leading-snug text-slate-300"
+              className="line-clamp-2 px-1.5 pt-0.5 pb-1.5 text-[10.5px] leading-snug text-or-fg/75"
               title={pip.question}
             >
               {pip.question}
@@ -126,8 +126,8 @@ function Answer({
       className={[
         'cursor-pointer rounded px-2 py-0.5 text-[10px] font-medium transition-colors duration-100',
         muted
-          ? 'text-slate-400 hover:bg-white/8 hover:text-slate-200'
-          : 'bg-white/10 text-slate-100 hover:bg-white/16'
+          ? 'text-or-fg/55 hover:bg-or-fg/8 hover:text-or-fg/90'
+          : 'bg-or-fg/10 text-or-fg hover:bg-or-fg/16'
       ].join(' ')}
     >
       {children}

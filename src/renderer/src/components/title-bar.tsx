@@ -34,11 +34,23 @@ export function TitleBar(): React.JSX.Element {
       className="flex h-10 shrink-0 items-center gap-2 bg-background select-none"
     >
       <div className="flex items-center gap-2" style={{ paddingLeft: IS_MAC ? 80 : 12 }}>
-        {/* Sized by height, not width: the mark is about two and a half times
-            taller than it is wide, so constraining the other axis would crush
-            it. `draggable={false}` keeps a press on the logo dragging the
-            window rather than starting an image drag. */}
-        <img src={logoUrl} alt="" draggable={false} className="h-5 w-auto shrink-0" />
+        {/* The mark is a mask filled with the foreground colour, so one asset
+            serves both themes: the PNG is the light variant, a flat grey on
+            transparent, and only its alpha is used. Sized by height, with the
+            mark's own aspect ratio giving the width: it is about two and a
+            half times taller than it is wide. A span rather than an img also
+            means a press on it drags the window instead of the image. */}
+        <span
+          aria-hidden
+          className="h-5 shrink-0 bg-foreground/85"
+          style={{
+            aspectRatio: '218 / 545',
+            maskImage: `url(${logoUrl})`,
+            maskSize: 'contain',
+            maskRepeat: 'no-repeat',
+            maskPosition: 'center'
+          }}
+        />
         <span className="text-xs font-medium tracking-tight text-foreground/90">Open Room</span>
       </div>
     </header>

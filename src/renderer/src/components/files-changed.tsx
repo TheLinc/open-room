@@ -56,7 +56,7 @@ export function FilesChanged({ agentId, files, cwd }: Props): React.JSX.Element 
               <div className="flex items-center gap-1.5 font-mono text-xs">
                 <button
                   type="button"
-                  className="flex size-4 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-white/8 hover:text-foreground"
+                  className="flex size-4 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-foreground/8 hover:text-foreground"
                   title={state ? 'Hide diff' : 'Show diff'}
                   aria-label={state ? 'Hide diff' : 'Show diff'}
                   aria-expanded={Boolean(state)}

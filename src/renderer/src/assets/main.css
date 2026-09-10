@@ -81,9 +81,23 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
+
+  /* See the dark block for why these are stronger than `--border`. */
+  --scrollbar-thumb: oklch(0 0 0 / 18%);
+  --scrollbar-thumb-hover: oklch(0 0 0 / 30%);
+
+  /*
+   * The palette lives in CSS variables, which Chromium cannot see when it
+   * decides how to paint the parts it owns — scrollbars, form controls, and
+   * any scroll container the rules below do not reach, including ones
+   * inside shadow trees. So each theme block states its scheme here, and
+   * the parts Chromium owns follow the `dark` class with everything else.
+   */
+  color-scheme: light;
 }
 
 .dark {
+  color-scheme: dark;
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.205 0 0);
@@ -135,15 +149,6 @@
   }
   html {
     @apply font-sans;
-
-    /*
-     * The palette lives in CSS variables, which Chromium cannot see when it
-     * decides how to paint the parts it owns — so without this it renders
-     * light scrollbars and light form controls on a black page. It also
-     * covers every scroll container the rules below do not reach, including
-     * ones inside shadow trees.
-     */
-    color-scheme: dark;
   }
 
   /*

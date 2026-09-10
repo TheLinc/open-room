@@ -9,12 +9,15 @@ import {
   type SessionOverridePatch,
   type SessionOverrides
 } from '@shared/session-overrides'
+import { modelAllowed, NOT_IN_PLAN, type ModelAccess } from '@shared/model-access'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 
 type Props = {
   config: AgentConfig
   overrides: SessionOverrides
+  /** Which models the account can use; Fable pills are disabled without the tier. */
+  modelAccess: ModelAccess
   /** The mode the live session reports, or null before init. */
   sessionPermissionMode: string | null
   onChange: (patch: SessionOverridePatch) => void
@@ -36,6 +39,7 @@ type Props = {
 export function SessionControls({
   config,
   overrides,
+  modelAccess,
   sessionPermissionMode,
   onChange
 }: Props): React.JSX.Element {
@@ -88,7 +92,15 @@ export function SessionControls({
             <div className="flex flex-col gap-3 px-3 py-3">
               <Group
                 label="Model"
-                options={MODELS.map((m) => ({ id: m.id, label: m.label }))}
+                options={MODELS.map((m) => {
+                  const allowed = modelAllowed(modelAccess, m.id)
+                  return {
+                    id: m.id,
+                    label: m.label,
+                    disabled: !allowed,
+                    hint: allowed ? undefined : NOT_IN_PLAN
+                  }
+                })}
                 fallback={MODELS.find((m) => m.id === config.model)?.label ?? config.model}
                 selected={overrides.model}
                 onPick={(model) => onChange({ model })}
@@ -140,7 +152,7 @@ export function SessionControls({
   )
 }
 
-type Option = { id: string; label: string; hint?: string }
+type Option = { id: string; label: string; hint?: string; disabled?: boolean }
 
 function Group<T extends string>({
   label,
@@ -168,6 +180,7 @@ function Group<T extends string>({
             key={option.id}
             active={selected === option.id}
             title={option.hint}
+            disabled={option.disabled}
             onClick={() => onPick(option.id as T)}
           >
             {option.label}
@@ -181,11 +194,13 @@ function Group<T extends string>({
 function Pill({
   active,
   title,
+  disabled,
   onClick,
   children
 }: {
   active: boolean
   title?: string
+  disabled?: boolean
   onClick: () => void
   children: React.ReactNode
 }): React.JSX.Element {
@@ -194,9 +209,10 @@ function Pill({
       type="button"
       title={title}
       aria-pressed={active}
+      disabled={disabled}
       onClick={onClick}
       className={cn(
-        'rounded-md border px-2 py-1 text-xs capitalize transition-colors',
+        'rounded-md border px-2 py-1 text-xs capitalize transition-colors disabled:cursor-not-allowed disabled:opacity-40',
         active
           ? 'border-primary/40 bg-primary/15 text-foreground'
           : 'border-transparent bg-muted/50 text-muted-foreground hover:bg-muted'

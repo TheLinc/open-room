@@ -16,7 +16,11 @@ import type { AppInfo, WorkspaceInfo } from '@shared/ipc'
 import { explainAccelerator } from '@shared/accelerator'
 import { uncToLinux, type WslDistro } from '@shared/wsl'
 import { HotkeyInput } from '@/components/hotkey-input'
+import { DialogNav } from '@/components/dialog-nav'
+import { EDITOR_PAGES, flaggedPages, type EditorPage } from '@/lib/dialog-pages'
 import { useStaticDialog } from '@/hooks/use-static-dialog'
+import { useModelAccess } from '@/hooks/use-model-access'
+import { modelAllowed, NOT_IN_PLAN } from '@shared/model-access'
 import type { KokoroStatus, SystemVoice } from '@shared/voice-rpc'
 import { DEFAULT_KOKORO_VOICE, KOKORO_VOICES } from '@shared/kokoro-voices'
 import {
@@ -49,7 +53,6 @@ import {
 import { Separator } from '@/components/ui/separator'
 import { Slider } from '@/components/ui/slider'
 import { Switch } from '@/components/ui/switch'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 
 /**
@@ -156,6 +159,8 @@ export function AgentEditor({
   const [saveError, setSaveError] = useState<string | null>(null)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const staticDialog = useStaticDialog()
+  const [page, setPage] = useState<EditorPage>('identity')
+  const modelAccess = useModelAccess()
 
   const defaults = useMemo(
     () => toFormValues(agent ?? createDefaultAgent('', '', 'amber'), CLAUDE_CODE_TOOLS),
@@ -175,6 +180,7 @@ export function AgentEditor({
       form.reset(defaults)
       setSaveError(null)
       setConfirmingDelete(false)
+      setPage('identity')
     }
   }, [open, defaults, form])
 
@@ -240,6 +246,15 @@ export function AgentEditor({
     [watchedName, existingNames]
   )
 
+  // A validation error on a page the user is not looking at would otherwise
+  // fail the save silently: the rail dots the page, and a rejected submit
+  // jumps to the first one.
+  const flagged = flaggedPages(Object.keys(form.formState.errors))
+  const onInvalid = (errors: Record<string, unknown>): void => {
+    const [first] = flaggedPages(Object.keys(errors))
+    if (first) setPage(first)
+  }
+
   const onSubmit = async (values: AgentFormValues): Promise<void> => {
     setSaveError(null)
     const next = toAgent(values, agent?.config.id)
@@ -289,7 +304,7 @@ export function AgentEditor({
           Cancel, Save). See use-static-dialog.ts. */}
       <DialogContent
         {...staticDialog}
-        className="flex max-h-[85vh] h-full flex-col gap-0 overflow-hidden sm:max-w-2xl px-0"
+        className="flex h-full max-h-[85vh] flex-col gap-0 overflow-hidden px-0 sm:max-w-3xl"
       >
         <DialogHeader className="px-2">
           <DialogTitle>{isNew ? 'New agent' : `Edit ${agent.config.name}`}</DialogTitle>
@@ -300,629 +315,662 @@ export function AgentEditor({
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={form.handleSubmit(onSubmit)} className="flex min-h-0 flex-1 flex-col mt-2">
-          <Tabs defaultValue="general" className="flex min-h-0 flex-1 flex-col">
-            <div className="px-2">
-              <TabsList className="w-full justify-start px-2">
-                <TabsTrigger value="general">General</TabsTrigger>
-                <TabsTrigger value="permissions">Permissions</TabsTrigger>
-                <TabsTrigger value="context">Context</TabsTrigger>
-                <TabsTrigger value="voice">Voice</TabsTrigger>
-                <TabsTrigger value="advanced">Advanced</TabsTrigger>
-              </TabsList>
-            </div>
+        <form
+          onSubmit={form.handleSubmit(onSubmit, onInvalid)}
+          className="flex min-h-0 flex-1 flex-col mt-2"
+        >
+          <div className="flex min-h-0 flex-1 gap-4 px-2">
+            <DialogNav
+              label="Agent settings pages"
+              pages={EDITOR_PAGES.map((p) => ({ ...p, flagged: flagged.includes(p.id) }))}
+              active={page}
+              onSelect={setPage}
+            />
 
             {/* Native overflow rather than ScrollArea: Radix's viewport sizes
                 itself with a percentage height, which does not resolve against
                 a flex-sized parent here and lets content paint over the
                 footer. A plain scroll container in a `min-h-0` flex child is
                 the dependable form. */}
-            {/* No negative margin here: pairing `-mx-1` with `px-1` makes this
-                wider than its parent and produces a stray horizontal scrollbar. */}
-            <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-2">
+            {/* `px-1` is room for the 3 px focus ring inside the clip, and
+                the stable gutter keeps the scrollbar out of it; see the same
+                container in settings-dialog.tsx. */}
+            <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-1 [scrollbar-gutter:stable]">
               <div className="py-2">
-                <TabsContent value="general" className="mt-0 flex flex-col gap-5">
-                  <Field>
-                    <FieldLabel htmlFor="name">Name</FieldLabel>
-                    <Input id="name" placeholder="Atlas" {...form.register('name')} />
-                    <FieldDescription>
-                      What you call this agent. With wake words on, saying “Hey” and this name
-                      addresses it; the push-to-talk shortcut works either way.
-                    </FieldDescription>
-                    <FieldError errors={[form.formState.errors.name]} />
-                    {nameWarnings.map((warning) => (
-                      <p
-                        key={warning.kind}
-                        className="flex items-start gap-1.5 text-sm text-amber-500"
-                      >
-                        <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
-                        {warning.message}
-                      </p>
-                    ))}
-                  </Field>
-
-                  <Field>
-                    <FieldLabel>Colour</FieldLabel>
-                    <Controller
-                      control={form.control}
-                      name="color"
-                      render={({ field }) => (
-                        <div className="flex flex-wrap gap-2">
-                          {AGENT_COLORS.map((color) => (
-                            <button
-                              key={color.id}
-                              type="button"
-                              aria-label={color.id}
-                              aria-pressed={field.value === color.id}
-                              onClick={() => field.onChange(color.id)}
-                              className={cn(
-                                'size-7 rounded-full border-2 transition-transform',
-                                field.value === color.id
-                                  ? 'border-foreground scale-110'
-                                  : 'border-transparent hover:scale-105'
-                              )}
-                              style={{ backgroundColor: color.hex }}
-                            />
-                          ))}
-                        </div>
-                      )}
-                    />
-                    <FieldDescription>
-                      Identifies the agent in the sidebar and while it is listening.
-                    </FieldDescription>
-                  </Field>
-
-                  <Field>
-                    <FieldLabel htmlFor="workspacePath">Workspace folder</FieldLabel>
-                    <div className="flex gap-2">
-                      <Input
-                        id="workspacePath"
-                        placeholder="Choose a folder…"
-                        {...form.register('workspacePath')}
-                      />
-                      <Button type="button" variant="outline" onClick={pickWorkspace}>
-                        <FolderOpen /> Browse
-                      </Button>
-                    </div>
-                    <FieldDescription>
-                      {wslDistro
-                        ? 'A Linux path inside the distro, like /home/you/project. Browse can pick it under \\\\wsl.localhost.'
-                        : 'The agent runs here, exactly as Claude Code would in that directory.'}
-                    </FieldDescription>
-                    <FieldError errors={[form.formState.errors.workspacePath]} />
-                  </Field>
-
-                  {platform === 'win32' && (
+                {page === 'identity' && (
+                  <div className="flex flex-col gap-5">
                     <Field>
-                      <FieldLabel htmlFor="wslDistro">Run in WSL</FieldLabel>
+                      <FieldLabel htmlFor="name">Name</FieldLabel>
+                      <Input id="name" placeholder="Atlas" {...form.register('name')} />
+                      <FieldDescription>
+                        What you call this agent. With wake words on, saying “Hey” and this name
+                        addresses it; the push-to-talk shortcut works either way.
+                      </FieldDescription>
+                      <FieldError errors={[form.formState.errors.name]} />
+                      {nameWarnings.map((warning) => (
+                        <p
+                          key={warning.kind}
+                          className="flex items-start gap-1.5 text-sm text-amber-500"
+                        >
+                          <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+                          {warning.message}
+                        </p>
+                      ))}
+                    </Field>
+
+                    <Field>
+                      <FieldLabel>Colour</FieldLabel>
                       <Controller
                         control={form.control}
-                        name="wslDistro"
+                        name="color"
                         render={({ field }) => (
-                          <Select
-                            value={field.value || UNSET}
-                            onValueChange={(next) => field.onChange(next === UNSET ? '' : next)}
-                          >
-                            <SelectTrigger id="wslDistro">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value={UNSET}>Off</SelectItem>
-                              {distros.map((d) => (
-                                <SelectItem key={d.name} value={d.name}>
-                                  {d.name}
-                                  {d.isDefault ? ' (default)' : ''}
-                                </SelectItem>
-                              ))}
-                              {wslDistro && !distros.some((d) => d.name === wslDistro) && (
-                                <SelectItem value={wslDistro}>
-                                  {wslDistro} (not installed)
-                                </SelectItem>
-                              )}
-                            </SelectContent>
-                          </Select>
+                          <div className="flex flex-wrap gap-2">
+                            {AGENT_COLORS.map((color) => (
+                              <button
+                                key={color.id}
+                                type="button"
+                                aria-label={color.id}
+                                aria-pressed={field.value === color.id}
+                                onClick={() => field.onChange(color.id)}
+                                className={cn(
+                                  'size-7 rounded-full border-2 transition-transform',
+                                  field.value === color.id
+                                    ? 'border-foreground scale-110'
+                                    : 'border-transparent hover:scale-105'
+                                )}
+                                style={{ backgroundColor: color.hex }}
+                              />
+                            ))}
+                          </div>
                         )}
                       />
+                      <FieldDescription>
+                        Identifies the agent in the sidebar and while it is listening.
+                      </FieldDescription>
+                    </Field>
+
+                    <Field>
+                      <FieldLabel htmlFor="context">AGENT.md</FieldLabel>
+                      <Textarea
+                        id="context"
+                        spellCheck={false}
+                        className="min-h-[340px] font-mono text-xs"
+                        {...form.register('context')}
+                      />
+                      <FieldDescription>
+                        Appended to the Claude Code system prompt, so write it as standing
+                        instructions. Persists across conversations.
+                      </FieldDescription>
+                    </Field>
+                  </div>
+                )}
+
+                {page === 'workspace' && (
+                  <div className="flex flex-col gap-5">
+                    <Field>
+                      <FieldLabel htmlFor="workspacePath">Workspace folder</FieldLabel>
+                      <div className="flex gap-2">
+                        <Input
+                          id="workspacePath"
+                          placeholder="Choose a folder…"
+                          {...form.register('workspacePath')}
+                        />
+                        <Button type="button" variant="outline" onClick={pickWorkspace}>
+                          <FolderOpen /> Browse
+                        </Button>
+                      </div>
                       <FieldDescription>
                         {wslDistro
-                          ? `Claude Code, git and the agent's files all live inside ${wslDistro}. The workspace is a Linux path, and the distro has its own Claude Code sign-in.`
-                          : distros.length === 0
-                            ? 'No WSL distros were found on this machine.'
-                            : 'Run this agent inside a Linux distro instead of on Windows.'}
+                          ? 'A Linux path inside the distro, like /home/you/project. Browse can pick it under \\\\wsl.localhost.'
+                          : 'The agent runs here, exactly as Claude Code would in that directory.'}
                       </FieldDescription>
-                    </Field>
-                  )}
-
-                  <Field orientation="horizontal">
-                    <div className="flex flex-col gap-1">
-                      <FieldLabel htmlFor="worktrees">
-                        Isolate conversations in git worktrees
-                      </FieldLabel>
-                      <FieldDescription>
-                        {worktrees
-                          ? 'Each new conversation gets its own branch and checkout under ~/.open-room/worktrees, so the workspace itself is never edited. Deleting a conversation removes its worktree only if it is clean.'
-                          : 'Conversations run directly in the workspace folder.'}
-                      </FieldDescription>
-                      {worktrees && workspaceInfo && !workspaceInfo.git && (
-                        <FieldDescription className="text-amber-500">
-                          {workspaceInfo.exists
-                            ? 'Not a git repository — conversations will run in the folder itself until it is one.'
-                            : 'That folder does not exist yet.'}
-                        </FieldDescription>
-                      )}
-                      {wslDistro && (
-                        <FieldDescription className="text-amber-500">
-                          Not available for WSL agents yet.
-                        </FieldDescription>
-                      )}
-                    </div>
-                    <Controller
-                      control={form.control}
-                      name="worktrees"
-                      render={({ field }) => (
-                        <Switch
-                          id="worktrees"
-                          checked={field.value}
-                          onCheckedChange={field.onChange}
-                          disabled={Boolean(wslDistro)}
-                        />
-                      )}
-                    />
-                  </Field>
-
-                  <Field>
-                    <FieldLabel>Model</FieldLabel>
-                    <Controller
-                      control={form.control}
-                      name="model"
-                      render={({ field }) => (
-                        <Select value={field.value} onValueChange={field.onChange}>
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {MODELS.map((model) => (
-                              <SelectItem key={model.id} value={model.id}>
-                                {model.label} — {model.hint}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      )}
-                    />
-                  </Field>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <Field>
-                      <FieldLabel>Reasoning effort</FieldLabel>
-                      <Controller
-                        control={form.control}
-                        name="effort"
-                        render={({ field }) => (
-                          // Radix Select cannot hold an empty string, so
-                          // "unset" travels as a sentinel and is mapped back.
-                          <Select
-                            value={field.value || UNSET}
-                            onValueChange={(next) => field.onChange(next === UNSET ? '' : next)}
-                          >
-                            <SelectTrigger>
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value={UNSET}>Model default</SelectItem>
-                              {EFFORT_LEVELS.map((level) => (
-                                <SelectItem key={level} value={level}>
-                                  {level}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        )}
-                      />
+                      <FieldError errors={[form.formState.errors.workspacePath]} />
                     </Field>
 
-                    <Field>
-                      <FieldLabel>Fallback model</FieldLabel>
-                      <Controller
-                        control={form.control}
-                        name="fallbackModel"
-                        render={({ field }) => (
-                          <Select
-                            value={field.value || UNSET}
-                            onValueChange={(next) => field.onChange(next === UNSET ? '' : next)}
-                          >
-                            <SelectTrigger>
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value={UNSET}>None</SelectItem>
-                              {MODELS.map((model) => (
-                                <SelectItem key={model.id} value={model.id}>
-                                  {model.label}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        )}
-                      />
-                      <FieldDescription>Used if the primary model is unavailable.</FieldDescription>
-                    </Field>
-                  </div>
-                </TabsContent>
-
-                <TabsContent value="permissions" className="mt-0 flex flex-col gap-5">
-                  <Field>
-                    <FieldLabel>Permission mode</FieldLabel>
-                    <Controller
-                      control={form.control}
-                      name="permissionMode"
-                      render={({ field }) => (
-                        <Select value={field.value} onValueChange={field.onChange}>
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="default">
-                              Default — act, asking when needed
-                            </SelectItem>
-                            <SelectItem value="plan">
-                              Plan — propose changes without making them
-                            </SelectItem>
-                            <SelectItem value="auto">
-                              Auto — a classifier approves routine actions, asks about risky ones
-                            </SelectItem>
-                          </SelectContent>
-                        </Select>
-                      )}
-                    />
-                  </Field>
-
-                  <Separator />
-
-                  <div className="flex flex-col gap-1">
-                    <p className="text-sm font-medium">Tools</p>
-                    <p className="text-sm text-muted-foreground">
-                      Every tool is available to the agent. This controls whether it asks you first.
-                    </p>
-                  </div>
-
-                  <Controller
-                    control={form.control}
-                    name="toolPermissions"
-                    render={({ field }) => (
-                      <div className="flex flex-col gap-2">
-                        {CLAUDE_CODE_TOOLS.map((tool) => {
-                          const value: ToolPermission = field.value?.[tool] ?? 'ask'
-                          return (
-                            <div key={tool} className="flex items-center justify-between gap-4">
-                              <span className="font-mono text-sm">{tool}</span>
-                              <Select
-                                value={value}
-                                onValueChange={(next) =>
-                                  field.onChange({ ...field.value, [tool]: next })
-                                }
-                              >
-                                <SelectTrigger className="w-48">
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {(Object.keys(TOOL_PERMISSION_LABELS) as ToolPermission[]).map(
-                                    (permission) => (
-                                      <SelectItem key={permission} value={permission}>
-                                        {TOOL_PERMISSION_LABELS[permission]}
-                                      </SelectItem>
-                                    )
-                                  )}
-                                </SelectContent>
-                              </Select>
-                            </div>
-                          )
-                        })}
-                      </div>
-                    )}
-                  />
-                </TabsContent>
-
-                <TabsContent value="context" className="mt-0 flex flex-col gap-5">
-                  <Field>
-                    <FieldLabel htmlFor="context">AGENT.md</FieldLabel>
-                    <Textarea
-                      id="context"
-                      spellCheck={false}
-                      className="min-h-[340px] font-mono text-xs"
-                      {...form.register('context')}
-                    />
-                    <FieldDescription>
-                      Appended to the Claude Code system prompt, so write it as standing
-                      instructions. Persists across conversations.
-                    </FieldDescription>
-                  </Field>
-                </TabsContent>
-
-                <TabsContent value="voice" className="mt-0 flex flex-col gap-5">
-                  <Field orientation="horizontal">
-                    <div className="flex flex-col gap-1">
-                      <FieldLabel htmlFor="notificationsEnabled">Show notifications</FieldLabel>
-                      <FieldDescription>
-                        A desktop notification when this agent reports in. Independent of speech —
-                        speech is gone if you miss it, a notification stays.
-                      </FieldDescription>
-                    </div>
-                    <Controller
-                      control={form.control}
-                      name="notificationsEnabled"
-                      render={({ field }) => (
-                        <Switch
-                          id="notificationsEnabled"
-                          checked={field.value}
-                          onCheckedChange={field.onChange}
-                        />
-                      )}
-                    />
-                  </Field>
-
-                  <Separator />
-
-                  <Field orientation="horizontal">
-                    <div className="flex flex-col gap-1">
-                      <FieldLabel htmlFor="ttsEnabled">Speak aloud</FieldLabel>
-                      <FieldDescription>
-                        Read this agent&rsquo;s updates out loud, in its own voice.
-                      </FieldDescription>
-                    </div>
-                    <Controller
-                      control={form.control}
-                      name="ttsEnabled"
-                      render={({ field }) => (
-                        <Switch
-                          id="ttsEnabled"
-                          checked={field.value}
-                          onCheckedChange={field.onChange}
-                        />
-                      )}
-                    />
-                  </Field>
-
-                  {!notificationsEnabled && !ttsEnabled && (
-                    <p className="text-sm text-amber-500">
-                      With both switched off this agent reports silently — its updates appear only
-                      in the chat transcript.
-                    </p>
-                  )}
-
-                  {ttsEnabled && (
-                    <>
+                    {platform === 'win32' && (
                       <Field>
-                        <FieldLabel>Engine</FieldLabel>
+                        <FieldLabel htmlFor="wslDistro">Run in WSL</FieldLabel>
                         <Controller
                           control={form.control}
-                          name="voiceProvider"
+                          name="wslDistro"
                           render={({ field }) => (
                             <Select
-                              value={field.value}
-                              onValueChange={(next) => {
-                                field.onChange(next)
-                                // Voice ids are per-engine, so a leftover id
-                                // from the other one would never resolve.
-                                form.setValue(
-                                  'voiceId',
-                                  next === 'kokoro' ? DEFAULT_KOKORO_VOICE : ''
-                                )
-                              }}
+                              value={field.value || UNSET}
+                              onValueChange={(next) => field.onChange(next === UNSET ? '' : next)}
                             >
-                              <SelectTrigger>
+                              <SelectTrigger id="wslDistro">
                                 <SelectValue />
                               </SelectTrigger>
                               <SelectContent>
-                                <SelectItem value="system">System — instant, built in</SelectItem>
-                                <SelectItem value="kokoro">
-                                  Neural — better quality, 163 MB download
-                                </SelectItem>
+                                <SelectItem value={UNSET}>Off</SelectItem>
+                                {distros.map((d) => (
+                                  <SelectItem key={d.name} value={d.name}>
+                                    {d.name}
+                                    {d.isDefault ? ' (default)' : ''}
+                                  </SelectItem>
+                                ))}
+                                {wslDistro && !distros.some((d) => d.name === wslDistro) && (
+                                  <SelectItem value={wslDistro}>
+                                    {wslDistro} (not installed)
+                                  </SelectItem>
+                                )}
                               </SelectContent>
                             </Select>
                           )}
                         />
                         <FieldDescription>
-                          {voiceProvider === 'kokoro'
-                            ? 'Sounds markedly more natural and is identical on Windows and macOS. Adds roughly half a second before each line.'
-                            : 'Uses the voices already installed on this machine. Fastest to start speaking.'}
+                          {wslDistro
+                            ? `Claude Code, git and the agent's files all live inside ${wslDistro}. The workspace is a Linux path, and the distro has its own Claude Code sign-in.`
+                            : distros.length === 0
+                              ? 'No WSL distros were found on this machine.'
+                              : 'Run this agent inside a Linux distro instead of on Windows.'}
                         </FieldDescription>
                       </Field>
+                    )}
 
-                      {/* Shown only when the weights are genuinely absent.
-                          An installed-but-cold model warms itself, so the
-                          common case after a restart is no banner at all. */}
-                      {voiceProvider === 'kokoro' && !kokoro.installed && (
-                        <div className="flex items-center justify-between gap-3 rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2.5 text-sm">
-                          <span className="text-amber-500">
-                            {kokoro.error
-                              ? `Download failed: ${kokoro.error}`
-                              : kokoro.progress !== undefined && kokoro.progress < 1
-                                ? `Downloading voice model… ${Math.round(kokoro.progress * 100)}%`
-                                : 'Voice model not downloaded yet (163 MB, one time). Downloads once and is shared by every agent.'}
-                          </span>
-                          {kokoro.progress === undefined && (
-                            <Button
-                              type="button"
-                              size="sm"
-                              onClick={() => void window.openRoom.loadKokoro()}
-                            >
-                              <Download /> Download
-                            </Button>
-                          )}
-                        </div>
-                      )}
+                    <Field orientation="horizontal">
+                      <div className="flex flex-col gap-1">
+                        <FieldLabel htmlFor="worktrees">
+                          Isolate conversations in git worktrees
+                        </FieldLabel>
+                        <FieldDescription>
+                          {worktrees
+                            ? 'Each new conversation gets its own branch and checkout under ~/.open-room/worktrees, so the workspace itself is never edited. Deleting a conversation removes its worktree only if it is clean.'
+                            : 'Conversations run directly in the workspace folder.'}
+                        </FieldDescription>
+                        {worktrees && workspaceInfo && !workspaceInfo.git && (
+                          <FieldDescription className="text-amber-500">
+                            {workspaceInfo.exists
+                              ? 'Not a git repository — conversations will run in the folder itself until it is one.'
+                              : 'That folder does not exist yet.'}
+                          </FieldDescription>
+                        )}
+                        {wslDistro && (
+                          <FieldDescription className="text-amber-500">
+                            Not available for WSL agents yet.
+                          </FieldDescription>
+                        )}
+                      </div>
+                      <Controller
+                        control={form.control}
+                        name="worktrees"
+                        render={({ field }) => (
+                          <Switch
+                            id="worktrees"
+                            checked={field.value}
+                            onCheckedChange={field.onChange}
+                            disabled={Boolean(wslDistro)}
+                          />
+                        )}
+                      />
+                    </Field>
 
+                    <Separator />
+
+                    <Field orientation="horizontal">
+                      <div className="flex flex-col gap-1">
+                        <FieldLabel htmlFor="persistSession">Remember conversations</FieldLabel>
+                        <FieldDescription>
+                          {persistSession
+                            ? 'Conversations are saved and can be resumed later.'
+                            : 'Nothing is written to disk — no conversation history, and no recovery if the app or agent crashes.'}
+                        </FieldDescription>
+                      </div>
+                      <Controller
+                        control={form.control}
+                        name="persistSession"
+                        render={({ field }) => (
+                          <Switch
+                            id="persistSession"
+                            checked={field.value}
+                            onCheckedChange={field.onChange}
+                          />
+                        )}
+                      />
+                    </Field>
+                  </div>
+                )}
+
+                {page === 'model' && (
+                  <div className="flex flex-col gap-5">
+                    <Field>
+                      <FieldLabel>Model</FieldLabel>
+                      <Controller
+                        control={form.control}
+                        name="model"
+                        render={({ field }) => (
+                          <Select value={field.value} onValueChange={field.onChange}>
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {MODELS.map((model) => {
+                                // Disabled, not hidden: a Fable row that
+                                // simply vanished would read as the app
+                                // lacking the model rather than the plan.
+                                const allowed = modelAllowed(modelAccess, model.id)
+                                return (
+                                  <SelectItem key={model.id} value={model.id} disabled={!allowed}>
+                                    {model.label} — {allowed ? model.hint : NOT_IN_PLAN}
+                                  </SelectItem>
+                                )
+                              })}
+                            </SelectContent>
+                          </Select>
+                        )}
+                      />
+                    </Field>
+
+                    <div className="grid grid-cols-2 gap-4">
                       <Field>
-                        <FieldLabel>Voice</FieldLabel>
+                        <FieldLabel>Reasoning effort</FieldLabel>
                         <Controller
                           control={form.control}
-                          name="voiceId"
+                          name="effort"
                           render={({ field }) => (
-                            <div className="flex gap-2">
-                              <Select
-                                value={field.value || UNSET}
-                                onValueChange={(next) => field.onChange(next === UNSET ? '' : next)}
-                              >
-                                <SelectTrigger disabled={!voiceReady}>
-                                  <SelectValue placeholder="Choose a voice" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {voiceProvider === 'system' ? (
-                                    <>
-                                      <SelectItem value={UNSET}>System default</SelectItem>
-                                      {systemVoices.map((voice) => (
-                                        <SelectItem key={voice.id} value={voice.id}>
-                                          {voice.label}
-                                          {voice.locale ? ` · ${voice.locale}` : ''}
-                                        </SelectItem>
-                                      ))}
-                                    </>
-                                  ) : (
-                                    // Listed best-first with Kokoro's own grade
-                                    // shown: the roster runs A to F, and the
-                                    // weakest entries would otherwise define the
-                                    // impression of the engine.
-                                    KOKORO_VOICES.map((voice) => (
-                                      <SelectItem key={voice.id} value={voice.id}>
-                                        {voice.name} · {voice.gender} · {voice.locale} ·{' '}
-                                        {voice.grade}
-                                      </SelectItem>
-                                    ))
-                                  )}
-                                </SelectContent>
-                              </Select>
-                              <Button
-                                type="button"
-                                variant="outline"
-                                aria-label="Preview voice"
-                                disabled={!voiceReady}
-                                onClick={() =>
-                                  void window.openRoom.previewVoice(
-                                    field.value,
-                                    form.getValues('rate'),
-                                    voiceProvider
-                                  )
-                                }
-                              >
-                                <Volume2 /> Preview
-                              </Button>
-                            </div>
+                            // Radix Select cannot hold an empty string, so
+                            // "unset" travels as a sentinel and is mapped back.
+                            <Select
+                              value={field.value || UNSET}
+                              onValueChange={(next) => field.onChange(next === UNSET ? '' : next)}
+                            >
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value={UNSET}>Model default</SelectItem>
+                                {EFFORT_LEVELS.map((level) => (
+                                  <SelectItem key={level} value={level}>
+                                    {level}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          )}
+                        />
+                      </Field>
+
+                      <Field>
+                        <FieldLabel>Fallback model</FieldLabel>
+                        <Controller
+                          control={form.control}
+                          name="fallbackModel"
+                          render={({ field }) => (
+                            <Select
+                              value={field.value || UNSET}
+                              onValueChange={(next) => field.onChange(next === UNSET ? '' : next)}
+                            >
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value={UNSET}>None</SelectItem>
+                                {MODELS.map((model) => (
+                                  <SelectItem
+                                    key={model.id}
+                                    value={model.id}
+                                    disabled={!modelAllowed(modelAccess, model.id)}
+                                  >
+                                    {model.label}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
                           )}
                         />
                         <FieldDescription>
-                          Give each speaking agent a distinct voice — it is the fastest way to tell
-                          who is talking.
+                          Used if the primary model is unavailable.
                         </FieldDescription>
                       </Field>
+                    </div>
+                  </div>
+                )}
 
+                {page === 'permissions' && (
+                  <div className="flex flex-col gap-5">
+                    <Field>
+                      <FieldLabel>Permission mode</FieldLabel>
                       <Controller
                         control={form.control}
-                        name="rate"
+                        name="permissionMode"
                         render={({ field }) => (
-                          <Field>
-                            <FieldLabel>Rate — {field.value.toFixed(2)}×</FieldLabel>
-                            <Slider
-                              min={0.5}
-                              max={2}
-                              step={0.05}
-                              value={[field.value]}
-                              onValueChange={([next]) => field.onChange(next)}
-                            />
-                          </Field>
+                          <Select value={field.value} onValueChange={field.onChange}>
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="default">
+                                Default — act, asking when needed
+                              </SelectItem>
+                              <SelectItem value="plan">
+                                Plan — propose changes without making them
+                              </SelectItem>
+                              <SelectItem value="auto">
+                                Auto — a classifier approves routine actions, asks about risky ones
+                              </SelectItem>
+                            </SelectContent>
+                          </Select>
                         )}
                       />
-                    </>
-                  )}
-                </TabsContent>
+                    </Field>
 
-                <TabsContent value="advanced" className="mt-0 flex flex-col gap-5">
-                  <Field>
-                    <FieldLabel htmlFor="mcpServersJson">MCP servers</FieldLabel>
-                    <Textarea
-                      id="mcpServersJson"
-                      spellCheck={false}
-                      placeholder={'{\n  "my-server": { "command": "npx", "args": ["-y", "…"] }\n}'}
-                      className="min-h-[180px] font-mono text-xs"
-                      {...form.register('mcpServersJson')}
-                    />
-                    <FieldDescription>
-                      Same shape as Claude Code’s <code>.mcp.json</code>. Leave empty for none.
-                    </FieldDescription>
-                    <FieldError errors={[form.formState.errors.mcpServersJson]} />
-                  </Field>
+                    <Separator />
 
-                  <Field>
-                    <FieldLabel htmlFor="hotkey">Push-to-talk shortcut</FieldLabel>
-                    <Controller
-                      control={form.control}
-                      name="hotkey"
-                      render={({ field }) => (
-                        <HotkeyInput
-                          id="hotkey"
-                          value={field.value ?? ''}
-                          onChange={field.onChange}
-                          placeholder="Click, then press a shortcut for this agent"
-                        />
-                      )}
-                    />
-                    {!voiceInputEnabled ? (
-                      <FieldDescription className="text-amber-500">
-                        Voice input is off, so this shortcut will not do anything yet. Turn it on in{' '}
-                        {/* type="button": this sits inside the editor's form,
-                            and the default type would submit it. */}
-                        <button
-                          type="button"
-                          className="cursor-pointer underline underline-offset-2"
-                          onClick={onOpenVoiceSettings}
-                        >
-                          Settings
-                        </button>
-                        .
-                      </FieldDescription>
-                    ) : explainAccelerator(watchedHotkey ?? '') ? (
-                      <FieldDescription className="text-destructive">
-                        {explainAccelerator(watchedHotkey ?? '')}
-                      </FieldDescription>
-                    ) : hotkeyFailure ? (
-                      <FieldDescription className="text-destructive">
-                        {hotkeyFailure.reason}
-                      </FieldDescription>
-                    ) : (
-                      <FieldDescription>
-                        Optional. Talks to this agent directly, whichever one is selected. Leave
-                        empty to use the global shortcut.
-                      </FieldDescription>
-                    )}
-                  </Field>
-
-                  <Separator />
-
-                  <Field orientation="horizontal">
                     <div className="flex flex-col gap-1">
-                      <FieldLabel htmlFor="persistSession">Remember conversations</FieldLabel>
-                      <FieldDescription>
-                        {persistSession
-                          ? 'Conversations are saved and can be resumed later.'
-                          : 'Nothing is written to disk — no conversation history, and no recovery if the app or agent crashes.'}
-                      </FieldDescription>
+                      <p className="text-sm font-medium">Tools</p>
+                      <p className="text-sm text-muted-foreground">
+                        Every tool is available to the agent. This controls whether it asks you
+                        first.
+                      </p>
                     </div>
+
                     <Controller
                       control={form.control}
-                      name="persistSession"
+                      name="toolPermissions"
                       render={({ field }) => (
-                        <Switch
-                          id="persistSession"
-                          checked={field.value}
-                          onCheckedChange={field.onChange}
-                        />
+                        <div className="flex flex-col gap-2">
+                          {CLAUDE_CODE_TOOLS.map((tool) => {
+                            const value: ToolPermission = field.value?.[tool] ?? 'ask'
+                            return (
+                              <div key={tool} className="flex items-center justify-between gap-4">
+                                <span className="font-mono text-sm">{tool}</span>
+                                <Select
+                                  value={value}
+                                  onValueChange={(next) =>
+                                    field.onChange({ ...field.value, [tool]: next })
+                                  }
+                                >
+                                  <SelectTrigger className="w-48">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {(Object.keys(TOOL_PERMISSION_LABELS) as ToolPermission[]).map(
+                                      (permission) => (
+                                        <SelectItem key={permission} value={permission}>
+                                          {TOOL_PERMISSION_LABELS[permission]}
+                                        </SelectItem>
+                                      )
+                                    )}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            )
+                          })}
+                        </div>
                       )}
                     />
-                  </Field>
-                </TabsContent>
+
+                    <Separator />
+
+                    <Field>
+                      <FieldLabel htmlFor="mcpServersJson">MCP servers</FieldLabel>
+                      <Textarea
+                        id="mcpServersJson"
+                        spellCheck={false}
+                        placeholder={
+                          '{\n  "my-server": { "command": "npx", "args": ["-y", "…"] }\n}'
+                        }
+                        className="min-h-[180px] font-mono text-xs"
+                        {...form.register('mcpServersJson')}
+                      />
+                      <FieldDescription>
+                        Same shape as Claude Code’s <code>.mcp.json</code>. Leave empty for none.
+                      </FieldDescription>
+                      <FieldError errors={[form.formState.errors.mcpServersJson]} />
+                    </Field>
+                  </div>
+                )}
+
+                {page === 'voice' && (
+                  <div className="flex flex-col gap-5">
+                    <Field>
+                      <FieldLabel htmlFor="hotkey">Push-to-talk shortcut</FieldLabel>
+                      <Controller
+                        control={form.control}
+                        name="hotkey"
+                        render={({ field }) => (
+                          <HotkeyInput
+                            id="hotkey"
+                            value={field.value ?? ''}
+                            onChange={field.onChange}
+                            placeholder="Click, then press a shortcut for this agent"
+                          />
+                        )}
+                      />
+                      {!voiceInputEnabled ? (
+                        <FieldDescription className="text-amber-500">
+                          Voice input is off, so this shortcut will not do anything yet. Turn it on
+                          in{' '}
+                          {/* type="button": this sits inside the editor's form,
+                            and the default type would submit it. */}
+                          <button
+                            type="button"
+                            className="cursor-pointer underline underline-offset-2"
+                            onClick={onOpenVoiceSettings}
+                          >
+                            Settings
+                          </button>
+                          .
+                        </FieldDescription>
+                      ) : explainAccelerator(watchedHotkey ?? '') ? (
+                        <FieldDescription className="text-destructive">
+                          {explainAccelerator(watchedHotkey ?? '')}
+                        </FieldDescription>
+                      ) : hotkeyFailure ? (
+                        <FieldDescription className="text-destructive">
+                          {hotkeyFailure.reason}
+                        </FieldDescription>
+                      ) : (
+                        <FieldDescription>
+                          Optional. Talks to this agent directly, whichever one is selected. Leave
+                          empty to use the global shortcut.
+                        </FieldDescription>
+                      )}
+                    </Field>
+
+                    <Separator />
+
+                    <Field orientation="horizontal">
+                      <div className="flex flex-col gap-1">
+                        <FieldLabel htmlFor="notificationsEnabled">Show notifications</FieldLabel>
+                        <FieldDescription>
+                          A desktop notification when this agent reports in. Independent of speech —
+                          speech is gone if you miss it, a notification stays.
+                        </FieldDescription>
+                      </div>
+                      <Controller
+                        control={form.control}
+                        name="notificationsEnabled"
+                        render={({ field }) => (
+                          <Switch
+                            id="notificationsEnabled"
+                            checked={field.value}
+                            onCheckedChange={field.onChange}
+                          />
+                        )}
+                      />
+                    </Field>
+
+                    <Separator />
+
+                    <Field orientation="horizontal">
+                      <div className="flex flex-col gap-1">
+                        <FieldLabel htmlFor="ttsEnabled">Speak aloud</FieldLabel>
+                        <FieldDescription>
+                          Read this agent&rsquo;s updates out loud, in its own voice.
+                        </FieldDescription>
+                      </div>
+                      <Controller
+                        control={form.control}
+                        name="ttsEnabled"
+                        render={({ field }) => (
+                          <Switch
+                            id="ttsEnabled"
+                            checked={field.value}
+                            onCheckedChange={field.onChange}
+                          />
+                        )}
+                      />
+                    </Field>
+
+                    {!notificationsEnabled && !ttsEnabled && (
+                      <p className="text-sm text-amber-500">
+                        With both switched off this agent reports silently — its updates appear only
+                        in the chat transcript.
+                      </p>
+                    )}
+
+                    {ttsEnabled && (
+                      <>
+                        <Field>
+                          <FieldLabel>Engine</FieldLabel>
+                          <Controller
+                            control={form.control}
+                            name="voiceProvider"
+                            render={({ field }) => (
+                              <Select
+                                value={field.value}
+                                onValueChange={(next) => {
+                                  field.onChange(next)
+                                  // Voice ids are per-engine, so a leftover id
+                                  // from the other one would never resolve.
+                                  form.setValue(
+                                    'voiceId',
+                                    next === 'kokoro' ? DEFAULT_KOKORO_VOICE : ''
+                                  )
+                                }}
+                              >
+                                <SelectTrigger>
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="system">System — instant, built in</SelectItem>
+                                  <SelectItem value="kokoro">
+                                    Neural — better quality, 163 MB download
+                                  </SelectItem>
+                                </SelectContent>
+                              </Select>
+                            )}
+                          />
+                          <FieldDescription>
+                            {voiceProvider === 'kokoro'
+                              ? 'Sounds markedly more natural and is identical on Windows and macOS. Adds roughly half a second before each line.'
+                              : 'Uses the voices already installed on this machine. Fastest to start speaking.'}
+                          </FieldDescription>
+                        </Field>
+
+                        {/* Shown only when the weights are genuinely absent.
+                          An installed-but-cold model warms itself, so the
+                          common case after a restart is no banner at all. */}
+                        {voiceProvider === 'kokoro' && !kokoro.installed && (
+                          <div className="flex items-center justify-between gap-3 rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2.5 text-sm">
+                            <span className="text-amber-500">
+                              {kokoro.error
+                                ? `Download failed: ${kokoro.error}`
+                                : kokoro.progress !== undefined && kokoro.progress < 1
+                                  ? `Downloading voice model… ${Math.round(kokoro.progress * 100)}%`
+                                  : 'Voice model not downloaded yet (163 MB, one time). Downloads once and is shared by every agent.'}
+                            </span>
+                            {kokoro.progress === undefined && (
+                              <Button
+                                type="button"
+                                size="sm"
+                                onClick={() => void window.openRoom.loadKokoro()}
+                              >
+                                <Download /> Download
+                              </Button>
+                            )}
+                          </div>
+                        )}
+
+                        <Field>
+                          <FieldLabel>Voice</FieldLabel>
+                          <Controller
+                            control={form.control}
+                            name="voiceId"
+                            render={({ field }) => (
+                              <div className="flex gap-2">
+                                <Select
+                                  value={field.value || UNSET}
+                                  onValueChange={(next) =>
+                                    field.onChange(next === UNSET ? '' : next)
+                                  }
+                                >
+                                  <SelectTrigger disabled={!voiceReady}>
+                                    <SelectValue placeholder="Choose a voice" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {voiceProvider === 'system' ? (
+                                      <>
+                                        <SelectItem value={UNSET}>System default</SelectItem>
+                                        {systemVoices.map((voice) => (
+                                          <SelectItem key={voice.id} value={voice.id}>
+                                            {voice.label}
+                                            {voice.locale ? ` · ${voice.locale}` : ''}
+                                          </SelectItem>
+                                        ))}
+                                      </>
+                                    ) : (
+                                      // Listed best-first with Kokoro's own grade
+                                      // shown: the roster runs A to F, and the
+                                      // weakest entries would otherwise define the
+                                      // impression of the engine.
+                                      KOKORO_VOICES.map((voice) => (
+                                        <SelectItem key={voice.id} value={voice.id}>
+                                          {voice.name} · {voice.gender} · {voice.locale} ·{' '}
+                                          {voice.grade}
+                                        </SelectItem>
+                                      ))
+                                    )}
+                                  </SelectContent>
+                                </Select>
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  aria-label="Preview voice"
+                                  disabled={!voiceReady}
+                                  onClick={() =>
+                                    void window.openRoom.previewVoice(
+                                      field.value,
+                                      form.getValues('rate'),
+                                      voiceProvider
+                                    )
+                                  }
+                                >
+                                  <Volume2 /> Preview
+                                </Button>
+                              </div>
+                            )}
+                          />
+                          <FieldDescription>
+                            Give each speaking agent a distinct voice — it is the fastest way to
+                            tell who is talking.
+                          </FieldDescription>
+                        </Field>
+
+                        <Controller
+                          control={form.control}
+                          name="rate"
+                          render={({ field }) => (
+                            <Field>
+                              <FieldLabel>Rate — {field.value.toFixed(2)}×</FieldLabel>
+                              <Slider
+                                min={0.5}
+                                max={2}
+                                step={0.05}
+                                value={[field.value]}
+                                onValueChange={([next]) => field.onChange(next)}
+                              />
+                            </Field>
+                          )}
+                        />
+                      </>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
-          </Tabs>
+          </div>
 
           {saveError && (
             <p role="alert" className="pb-2 text-sm text-destructive">

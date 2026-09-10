@@ -83,11 +83,11 @@ export function Pill({
         {glyph}
 
         <span className="flex min-w-0 items-baseline gap-1.5">
-          <span className="truncate text-[11.5px] leading-normal font-semibold text-slate-100">
+          <span className="truncate text-[11.5px] leading-normal font-semibold text-or-fg">
             {state.agentName}
           </span>
           {state.conversationTitle ? (
-            <span className="truncate text-[9.5px] leading-normal text-slate-100/50">
+            <span className="truncate text-[9.5px] leading-normal text-or-fg/50">
               · {state.conversationTitle}
             </span>
           ) : null}
@@ -100,7 +100,7 @@ export function Pill({
           into the conversation and the user should see that they were
           heard that way. */}
       {state.aside && wide ? (
-        <div className="text-[9px] leading-normal tracking-wide text-slate-100/50 uppercase">
+        <div className="text-[9px] leading-normal tracking-wide text-or-fg/50 uppercase">
           Side question
         </div>
       ) : null}
@@ -108,7 +108,7 @@ export function Pill({
       {wide && state.transcript ? (
         <div
           className={[
-            'text-[10px] leading-[1.5] text-slate-100/85 italic',
+            'text-[10px] leading-[1.5] text-or-fg/85 italic',
             // One line by default, with a faded right edge rather than an
             // ellipsis: a fade says "there is more" without pretending the
             // truncation is the message. The full text is in the chat pane.
@@ -131,15 +131,15 @@ export function Pill({
 
       {/* The answer is read, not glanced at: full width, wrapped, no fade. */}
       {answered && state.answer ? (
-        <div className="text-[10.5px] leading-[1.45] text-slate-100">{state.answer}</div>
+        <div className="text-[10.5px] leading-[1.45] text-or-fg">{state.answer}</div>
       ) : null}
 
-      {asking ? <div className="text-[10px] leading-normal text-slate-100/70">Asking…</div> : null}
+      {asking ? <div className="text-[10px] leading-normal text-or-fg/70">Asking…</div> : null}
 
       {/* A tick over a prompt waiting behind a two-minute task would say
           "delivered"; the pane that lists the queue is usually hidden. */}
       {dispatched && state.queued ? (
-        <div className="text-[10px] leading-normal text-slate-100/70">
+        <div className="text-[10px] leading-normal text-or-fg/70">
           Queued behind the current task
         </div>
       ) : null}
@@ -148,7 +148,7 @@ export function Pill({
           failsafe still transcribes and dispatches, and the message is how
           the user learns the prompt was truncated. */}
       {state.message ? (
-        <div className="text-[10px] leading-normal text-slate-100/70">{state.message}</div>
+        <div className="text-[10px] leading-normal text-or-fg/70">{state.message}</div>
       ) : null}
     </div>
   )

@@ -17,6 +17,8 @@ export type ConversationsApi = {
   startNew: () => Promise<void>
   rename: (sessionId: string, title: string) => Promise<void>
   remove: (sessionId: string) => Promise<void>
+  archive: (sessionId: string) => Promise<void>
+  restore: (sessionId: string) => Promise<void>
   clearAll: () => Promise<void>
   refresh: () => Promise<void>
 }
@@ -191,6 +193,24 @@ export function useConversations(
     [agentId, refresh]
   )
 
+  const archive = useCallback(
+    async (sessionId: string) => {
+      if (!agentId) return
+      await window.openRoom.archiveConversation(agentId, sessionId)
+      await refresh()
+    },
+    [agentId, refresh]
+  )
+
+  const restore = useCallback(
+    async (sessionId: string) => {
+      if (!agentId) return
+      await window.openRoom.restoreConversation(agentId, sessionId)
+      await refresh()
+    },
+    [agentId, refresh]
+  )
+
   const clearAll = useCallback(async () => {
     if (!agentId) return
     await window.openRoom.clearConversations(agentId)
@@ -208,6 +228,8 @@ export function useConversations(
     startNew,
     rename,
     remove,
+    archive,
+    restore,
     clearAll,
     refresh
   }

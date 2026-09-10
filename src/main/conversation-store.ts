@@ -2,6 +2,7 @@ import type { Agent } from '@shared/agent'
 import { resolvePageRange, type Conversation, type ConversationPage } from '@shared/conversation'
 import type { WorktreeMap, WorktreeRecord } from '@shared/worktrees'
 import { hostSessions, type SessionApi } from './session-reader'
+import type { ArchiveReader } from './archive-store'
 
 /**
  * Reads and manages an agent's conversations.
@@ -35,7 +36,9 @@ export type WorktreeLookup = {
 export class ConversationStore {
   constructor(
     private readonly worktrees: WorktreeLookup | null = null,
-    private readonly sessionsFor: (agent: Agent) => SessionApi = () => hostSessions
+    private readonly sessionsFor: (agent: Agent) => SessionApi = () => hostSessions,
+    /** Archived conversations are listed too, stamped so the switcher can group them. */
+    private readonly archive: ArchiveReader | null = null
   ) {}
 
   /**
@@ -86,7 +89,12 @@ export class ConversationStore {
       }
     }
 
-    return conversations.sort((a, b) => b.lastModified - a.lastModified)
+    const archived = this.archive ? await this.archive.read(agent.config.id) : {}
+    return conversations
+      .map((c) =>
+        archived[c.sessionId] ? { ...c, archivedAt: archived[c.sessionId].archivedAt } : c
+      )
+      .sort((a, b) => b.lastModified - a.lastModified)
   }
 
   /** Marks a session as this agent's, so `list` can find it later. */

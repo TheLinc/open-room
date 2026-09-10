@@ -8,6 +8,7 @@ import type {
   TranscriptEntry
 } from './agent-runtime'
 import type { Conversation, ConversationPage } from './conversation'
+import type { ModelAccess } from './model-access'
 import type { SessionOverridePatch } from './session-overrides'
 import type { LoginStatus } from './login'
 import type { UpdateSnapshot } from './updates'
@@ -94,6 +95,8 @@ export const IpcChannel = {
   newConversation: 'conversation:new',
   renameConversation: 'conversation:rename',
   deleteConversation: 'conversation:delete',
+  archiveConversation: 'conversation:archive',
+  restoreConversation: 'conversation:restore',
   clearConversations: 'conversation:clear-all',
 
   listVoices: 'voice:list',
@@ -102,6 +105,9 @@ export const IpcChannel = {
   loginChanged: 'login:changed',
   getLogin: 'login:get',
   recheckLogin: 'login:recheck',
+  /** main → renderer, which models the signed-in account can use. */
+  modelAccessChanged: 'models:changed',
+  getModelAccess: 'models:get',
   /** main → renderer, the result of the latest check for a newer Open Room. */
   updateChanged: 'update:changed',
   getUpdate: 'update:get',
@@ -291,6 +297,14 @@ export type OpenRoomApi = {
   newConversation: (agentId: string) => Promise<MutationResult>
   renameConversation: (agentId: string, sessionId: string, title: string) => Promise<MutationResult>
   deleteConversation: (agentId: string, sessionId: string) => Promise<MutationResult>
+  /**
+   * Takes a conversation out of the switcher without deleting it. It is
+   * deleted once `archiveRetentionDays` have passed; until then it can be
+   * restored. Archiving the active conversation ends its session and lands
+   * the agent in the most recent live one.
+   */
+  archiveConversation: (agentId: string, sessionId: string) => Promise<MutationResult>
+  restoreConversation: (agentId: string, sessionId: string) => Promise<MutationResult>
   clearConversations: (agentId: string) => Promise<MutationResult>
 
   /**
@@ -311,6 +325,14 @@ export type OpenRoomApi = {
   getLogin: () => Promise<LoginStatus>
   recheckLogin: () => Promise<LoginStatus>
   onLoginChanged: (listener: (status: LoginStatus) => void) => () => void
+
+  /**
+   * Which models the signed-in account can use, asked of the bundled CLI
+   * after each login check. `unknown` allows everything; the pickers only
+   * disable a model the account is known to lack.
+   */
+  getModelAccess: () => Promise<ModelAccess>
+  onModelAccessChanged: (listener: (access: ModelAccess) => void) => () => void
 
   /**
    * Whether a newer Open Room has been released. Checked at launch and every

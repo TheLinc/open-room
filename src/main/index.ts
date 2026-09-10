@@ -4,6 +4,7 @@ import {
   shell,
   BrowserWindow,
   ipcMain,
+  nativeTheme,
   net,
   Notification,
   session,
@@ -22,6 +23,7 @@ import {
   broadcastQuota,
   broadcastRuntime,
   broadcastLogin,
+  broadcastModelAccess,
   broadcastTranscript,
   broadcastSettingsChanged,
   broadcastTranscriptCleared,
@@ -37,9 +39,14 @@ import {
   type UpdateSnapshot,
   type UpdateStatus
 } from '@shared/updates'
+import { resolveTheme, themeChrome, type ThemeSetting } from '@shared/theme'
 import { ConfigStore } from './config-store'
 import { AgentSupervisor } from './agent-supervisor'
 import { checkLogin } from './login-check'
+import { checkModelAccess, type ModelAccess } from './model-access'
+import { ArchiveStore } from './archive-store'
+import { ArchiveSweeper } from './archive-sweeper'
+import { removeConversation } from './remove-conversation'
 import type { LoginStatus } from '@shared/login'
 import { ConversationStore } from './conversation-store'
 import { findGit, Git, spawnGit } from './git'
@@ -108,7 +115,10 @@ const sessionsFor = (agent: Agent): SessionApi => {
   return reader
 }
 
-const conversations = new ConversationStore(worktrees, sessionsFor)
+// Archived conversations: a record beside each agent's config, and a
+// sweeper that deletes them once the retention window has passed.
+const archive = new ArchiveStore((id) => store.agentDir(id))
+const conversations = new ConversationStore(worktrees, sessionsFor, archive)
 
 // One global playback lane for every agent. The sink decides delivery —
 // speech for agents with TTS on, notifications for everyone else and whenever
@@ -169,10 +179,52 @@ let accountQuota: RateLimitStatus | null = null
  */
 let accountLogin: LoginStatus = { state: 'unknown' }
 
+/**
+ * Which models that login can use, asked of the same binary once the login
+ * is known to be usable. Account state like quota: a model an agent is
+ * configured for that the plan does not include fails only when it runs,
+ * and this is what lets the pickers say so first.
+ */
+let accountModelAccess: ModelAccess = { state: 'unknown' }
+
+/** The retention the sweeper reads; kept current by the settings save hook. */
+let archiveRetentionDays = 30
+const sweeper = new ArchiveSweeper({
+  agents: async () => (await store.list()).agents.map((agent) => agent.config.id),
+  archive,
+  retentionDays: () => archiveRetentionDays,
+  remove: async (agentId, sessionId) => {
+    // The same path as the switcher's delete: a worktree with uncommitted
+    // work is refused and kept, and the sweep moves on.
+    await removeConversation(
+      {
+        read: (id) => store.read(id),
+        activeConversationId: (id) => supervisor.runtimeFor(id).activeConversationId,
+        stop: (id) => supervisor.stop(id),
+        clearActive: (id) => supervisor.setActiveConversation(id, null),
+        removeTranscript: (agent, id) => conversations.remove(agent, id),
+        releaseWorktree: (agent, id) => worktrees.release(agent, id),
+        forgetArchive: (id, sessionId) => archive.forget(id, sessionId)
+      },
+      agentId,
+      sessionId
+    )
+  },
+  log: (message) => console.warn(message)
+})
+
 async function recheckLogin(): Promise<LoginStatus> {
   const status = await checkLogin()
   accountLogin = status
   broadcastLogin(status)
+  // Sequenced after the login, not alongside it: a signed-out account has no
+  // picker to read, and the probe would only spend a spawn to learn that.
+  if (status.state === 'signed-in') {
+    void checkModelAccess().then((access) => {
+      accountModelAccess = access
+      broadcastModelAccess(access)
+    })
+  }
   return status
 }
 
@@ -609,7 +661,33 @@ async function refreshHotkeys(): Promise<void> {
  */
 const TITLE_BAR_HEIGHT = 40
 
+/**
+ * The theme, as far as main is concerned.
+ *
+ * `nativeTheme.themeSource` is the whole mechanism: Chromium answers every
+ * window's `prefers-color-scheme` from it, and the renderer and the overlay
+ * toggle their `dark` class off that query. What CSS cannot reach — the
+ * native caption buttons on Windows and the colour a window shows before
+ * its first paint — is set here from the same answer, and again whenever
+ * Chromium reports a change (a settings save, or the OS switching while the
+ * setting is "system").
+ */
+function applyTheme(setting: ThemeSetting): void {
+  nativeTheme.themeSource = setting
+  applyChrome()
+}
+
+function applyChrome(): void {
+  if (!mainWindow || mainWindow.isDestroyed()) return
+  const chrome = themeChrome(resolveTheme('system', nativeTheme.shouldUseDarkColors))
+  mainWindow.setBackgroundColor(chrome.background)
+  if (process.platform === 'win32') {
+    mainWindow.setTitleBarOverlay({ color: chrome.background, symbolColor: chrome.symbol })
+  }
+}
+
 function createWindow(): void {
+  const chrome = themeChrome(resolveTheme('system', nativeTheme.shouldUseDarkColors))
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 840,
@@ -617,7 +695,7 @@ function createWindow(): void {
     minHeight: 640,
     show: false,
     autoHideMenuBar: true,
-    backgroundColor: '#0a0a0a',
+    backgroundColor: chrome.background,
     // The OS caption bar cannot be coloured: Windows paints it in the user's
     // accent colour, and a pale grey the moment the window loses focus. The
     // app draws its own strip instead (`TitleBar`) and keeps the native
@@ -628,8 +706,8 @@ function createWindow(): void {
     ...(process.platform === 'win32'
       ? {
           titleBarOverlay: {
-            color: '#0a0a0a',
-            symbolColor: '#fafafa',
+            color: chrome.background,
+            symbolColor: chrome.symbol,
             height: TITLE_BAR_HEIGHT
           }
         }
@@ -718,6 +796,10 @@ app.whenReady().then(async () => {
   const settings = await store.readSettings()
   supervisor.setOptions({ maxConcurrent: settings.maxConcurrentAgents })
 
+  // Before any window exists, so the first paint is already the right theme.
+  applyTheme(settings.theme)
+  nativeTheme.on('updated', applyChrome)
+
   voice.start()
   registerIpcHandlers(
     store,
@@ -729,9 +811,11 @@ app.whenReady().then(async () => {
       void refreshHotkeys()
       void refreshWake()
       updates.setEnabled(saved.checkForUpdates)
+      applyTheme(saved.theme)
+      archiveRetentionDays = saved.archiveRetentionDays
     },
     () => accountQuota,
-    { read: () => accountLogin, recheck: recheckLogin },
+    { read: () => accountLogin, recheck: recheckLogin, modelAccess: () => accountModelAccess },
     {
       read: updateSnapshot,
       recheck: async () => {
@@ -744,8 +828,11 @@ app.whenReady().then(async () => {
     },
     git,
     worktrees,
-    wsl
+    wsl,
+    archive
   )
+  archiveRetentionDays = settings.archiveRetentionDays
+  sweeper.start()
   supervisor.setWorktrees(worktrees)
   supervisor.setWsl(wsl)
   createWindow()

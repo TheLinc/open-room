@@ -54,6 +54,8 @@ import {
   type SlashCommandInfo
 } from '@shared/slash-commands'
 import { MAX_RETAINED_ENTRIES } from '@/hooks/use-sessions'
+import { useModelAccess } from '@/hooks/use-model-access'
+import { modelUnavailableLine } from '@shared/model-access'
 import { FilePicker } from '@/components/file-picker'
 import { applyMention, filterFiles, mentionAt } from '@shared/file-mentions'
 import { addFile, appendMentions, type FileAttachment } from '@shared/file-attachments'
@@ -74,6 +76,8 @@ type Props = {
   voiceEnabled: boolean
   /** Opens the settings dialog pointed at the voice input switch. */
   onOpenVoiceSettings: () => void
+  /** How long an archived conversation is kept, for the switcher's countdown. */
+  archiveRetentionDays: number
 }
 
 const STATE_LABEL: Record<AgentRuntime['state'], string> = {
@@ -93,9 +97,12 @@ export function AgentChat({
   conversations,
   onEdit,
   voiceEnabled,
+  archiveRetentionDays,
   onOpenVoiceSettings
 }: Props): React.JSX.Element {
   const [draft, setDraft] = useState('')
+  const modelAccess = useModelAccess()
+  const modelUnavailable = modelUnavailableLine(modelAccess, agent.config.model)
   const [sendError, setSendError] = useState<string | null>(null)
   const [images, setImages] = useState<ImageAttachment[]>([])
   const [files, setFiles] = useState<FileAttachment[]>([])
@@ -385,6 +392,9 @@ export function AgentChat({
                   onNew={() => void conversations.startNew()}
                   onRename={(id, title) => void conversations.rename(id, title)}
                   onDelete={(id) => void conversations.remove(id)}
+                  onArchive={(id) => void conversations.archive(id)}
+                  onRestore={(id) => void conversations.restore(id)}
+                  archiveRetentionDays={archiveRetentionDays}
                 />
               )}
             </div>
@@ -431,6 +441,7 @@ export function AgentChat({
           <SessionControls
             config={agent.config}
             overrides={runtime.overrides}
+            modelAccess={modelAccess}
             sessionPermissionMode={runtime.permissionMode}
             onChange={(patch) => void window.openRoom.setOverrides(agent.config.id, patch)}
           />
@@ -459,6 +470,25 @@ export function AgentChat({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
+              {agent.config.persistSession && (
+                <DropdownMenuItem
+                  disabled={!conversations.active || conversations.active.archivedAt !== undefined}
+                  onSelect={() => {
+                    if (conversations.active) {
+                      void conversations.archive(conversations.active.sessionId)
+                    }
+                  }}
+                >
+                  <div className="flex flex-col gap-0.5">
+                    <span>Archive conversation</span>
+                    <span className="text-xs text-muted-foreground">
+                      {archiveRetentionDays === 0
+                        ? 'Leaves the list. Kept until you delete it.'
+                        : `Leaves the list. Deleted after ${archiveRetentionDays} day${archiveRetentionDays === 1 ? '' : 's'}.`}
+                    </span>
+                  </div>
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem
                 disabled={runtime.state === 'idle'}
                 onSelect={() => void window.openRoom.stopAgent(agent.config.id)}
@@ -474,6 +504,18 @@ export function AgentChat({
           </DropdownMenu>
         </div>
       </header>
+
+      {/* Said before the agent runs, not after it fails: the plan check is
+          account state the launch probe already answered. */}
+      {modelUnavailable && (
+        <div
+          role="status"
+          className="flex items-start gap-2 border-b border-amber-500/30 bg-amber-500/5 px-6 py-2 text-sm text-amber-500"
+        >
+          <CircleAlert className="mt-0.5 size-4 shrink-0" />
+          <span>{modelUnavailable}</span>
+        </div>
+      )}
 
       {runtime.error && (
         <div

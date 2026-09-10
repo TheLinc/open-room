@@ -5,12 +5,20 @@ import type { HotkeyFailure } from '@shared/hotkeys'
 import type { MicrophoneDevice } from '@shared/voice-input'
 import type { SttStatus } from '@shared/voice-rpc'
 import type { UpdateStatus } from '@shared/updates'
+import type { AppSettings } from '@shared/settings'
 import { useSettings } from '@/hooks/use-settings'
 import { useStaticDialog } from '@/hooks/use-static-dialog'
 import { explainAccelerator } from '@shared/accelerator'
 import { HotkeyInput } from '@/components/hotkey-input'
 import { MicMeter } from '@/components/mic-meter'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { DialogNav } from '@/components/dialog-nav'
+import {
+  pageForHighlight,
+  SETTINGS_PAGES,
+  type SettingsHighlight,
+  type SettingsPage
+} from '@/lib/dialog-pages'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -58,8 +66,7 @@ function deviceLabel(label: string): string {
   return label.replace(/\s*\([0-9a-f]{4}:[0-9a-f]{4}\)\s*$/i, '').trim()
 }
 
-/** A control a link elsewhere can open this dialog pointed at. */
-export type SettingsHighlight = 'voice-input'
+export type { SettingsHighlight }
 
 export function SettingsDialog({
   open,
@@ -150,6 +157,20 @@ export function SettingsDialog({
   const highlightRef = useRef<HTMLDivElement>(null)
   const [flashing, setFlashing] = useState(false)
   const settingsLoaded = Boolean(settings)
+  // Which page is showing. Opening lands on General, or on the page holding
+  // the control a link asked for; the choice is not remembered across opens.
+  const [page, setPage] = useState<SettingsPage>('general')
+  // Reset on open by adjusting state during render (React's own pattern for
+  // "when a prop changes"), rather than in an effect that would paint the
+  // previous page for a frame first.
+  const [openedFor, setOpenedFor] = useState<{ open: boolean; highlight: typeof highlight }>({
+    open,
+    highlight
+  })
+  if (openedFor.open !== open || openedFor.highlight !== highlight) {
+    setOpenedFor({ open, highlight })
+    if (open) setPage(pageForHighlight(highlight))
+  }
   useEffect(() => {
     if (!open || !highlight || !settingsLoaded) return
     const frame = requestAnimationFrame(() => {
@@ -245,7 +266,7 @@ export function SettingsDialog({
           beside them means. */}
       <DialogContent
         {...staticDialog}
-        className="flex max-h-[80vh] flex-col overflow-hidden sm:max-w-lg px-0"
+        className="flex h-[80vh] max-h-[80vh] flex-col overflow-hidden px-0 pb-0 sm:max-w-3xl"
       >
         <DialogHeader className="px-2">
           <DialogTitle>Settings</DialogTitle>
@@ -254,285 +275,380 @@ export function SettingsDialog({
         {!settings ? (
           <p className="text-sm text-muted-foreground">Loading…</p>
         ) : (
-          // Plain overflow div, not ScrollArea — see CLAUDE.md's gotcha about
-          // ScrollArea inside a flex-sized parent.
-          <div className="min-h-0 flex-1 space-y-8 overflow-x-hidden overflow-y-auto px-2">
-            <section className="space-y-4">
-              <h3 className="text-sm font-medium">Agents</h3>
+          <div className="flex min-h-0 flex-1 gap-4 px-2">
+            <DialogNav
+              label="Settings pages"
+              pages={SETTINGS_PAGES}
+              active={page}
+              onSelect={setPage}
+            />
 
-              <div className="space-y-2">
-                <Label>Maximum running at once — {settings.maxConcurrentAgents}</Label>
-                <Slider
-                  min={1}
-                  max={12}
-                  step={1}
-                  value={[settings.maxConcurrentAgents]}
-                  onValueChange={([value]) =>
-                    void save({ ...settings, maxConcurrentAgents: value })
-                  }
-                />
-                <p className="text-xs text-muted-foreground">
-                  Each running agent is a full Claude Code subprocess, so this is a memory ceiling
-                  as much as a usage one.
-                </p>
-              </div>
+            {/* Plain overflow div, not ScrollArea — see CLAUDE.md's gotcha about
+                ScrollArea inside a flex-sized parent. The dialog's own bottom
+                padding is gone (`pb-0` above) so content scrolls to the modal
+                edge and is clipped by nothing but its rounded corner; the
+                `pb-4` here is inside the scroll, so the last control keeps its
+                room without a dead band below it. */}
+            {/* `px-1` on both sides is room for the 3 px focus ring inside
+                the clip: measured, a `w-full` control on the clip edge lost
+                its ring. `scrollbar-gutter: stable` keeps the 10 px scrollbar
+                out of that padding whether or not the page scrolls, so the
+                right side never loses the room the left has. */}
+            <div className="min-h-0 flex-1 space-y-8 overflow-x-hidden overflow-y-auto px-1 pb-4 [scrollbar-gutter:stable]">
+              {page === 'general' && (
+                <section className="space-y-4">
+                  <h3 className="text-sm font-medium">Agents</h3>
 
-              <div className="space-y-2">
-                <Label>
-                  Tear down idle sessions after —{' '}
-                  {settings.idleTimeoutMinutes === 0
-                    ? 'never'
-                    : `${settings.idleTimeoutMinutes} minutes`}
-                </Label>
-                <Slider
-                  min={0}
-                  max={240}
-                  step={5}
-                  value={[settings.idleTimeoutMinutes]}
-                  onValueChange={([value]) => void save({ ...settings, idleTimeoutMinutes: value })}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="editor">Open files with</Label>
-                <Input
-                  id="editor"
-                  value={editorDraft ?? settings.editorCommand}
-                  placeholder="code -g {path}:{line}"
-                  onChange={(e) => setEditorDraft(e.target.value)}
-                  onBlur={flushEditor}
-                />
-                <p className="text-xs text-muted-foreground">
-                  A command; {'{path}'} and {'{line}'} are filled in. Leave empty to use whatever
-                  opens the file type.
-                </p>
-              </div>
-            </section>
-
-            <section className="space-y-4">
-              <h3 className="text-sm font-medium">Voice input</h3>
-
-              <div
-                ref={highlightRef}
-                className={
-                  flashing
-                    ? 'settings-highlight flex items-start justify-between gap-4'
-                    : 'flex items-start justify-between gap-4'
-                }
-              >
-                <div className="space-y-1">
-                  <Label htmlFor="voice-input">Enable push-to-talk</Label>
-                  <p className="text-xs text-muted-foreground">
-                    An open microphone is a control channel into a tool with shell and file-write
-                    access. Enabling it is a deliberate act.
-                  </p>
-                </div>
-                <Switch
-                  id="voice-input"
-                  checked={settings.voiceInputEnabled}
-                  // Not disabled while the model is missing: the switch is
-                  // how the download gets offered. It stays off until the
-                  // model is actually installed, so a shortcut that cannot
-                  // work still never exists.
-                  disabled={downloading}
-                  onCheckedChange={(checked) => requestEnable('ptt', checked)}
-                />
-              </div>
-
-              <div className="flex items-start justify-between gap-4">
-                <div className="space-y-1">
-                  <Label htmlFor="wake-word">Wake words</Label>
-                  <p className="text-xs text-muted-foreground">
-                    Keeps the microphone open and listens for “Hey {'{agent}'}”. Unlike push-to-talk
-                    this is an open channel: anyone within earshot, or a video playing nearby, can
-                    address an agent.
-                  </p>
-                </div>
-                <Switch
-                  id="wake-word"
-                  checked={settings.wakeWordEnabled}
-                  // Independent of push-to-talk on purpose: each is its own
-                  // opt-in, and gating this on the other made hands-free-only
-                  // use impossible — while turning push-to-talk off greyed
-                  // this out with the microphone still open behind it.
-                  disabled={downloading}
-                  onCheckedChange={(checked) => requestEnable('wake', checked)}
-                />
-              </div>
-
-              {pendingEnable && entry && (
-                <div className="space-y-2 rounded-lg border border-border p-3">
-                  <p className="text-sm">
-                    {pendingEnable === 'ptt' ? 'Push-to-talk needs' : 'Wake words need'} the{' '}
-                    {entry.label} speech model — a one-time {formatBytes(totalBytes(entry))}{' '}
-                    download. It runs entirely on this machine; nothing you say is sent anywhere.
-                  </p>
-                  <div className="flex gap-2">
-                    <Button size="sm" onClick={() => void acceptDownload()}>
-                      <Download />
-                      Download and enable
-                    </Button>
-                    <Button size="sm" variant="outline" onClick={() => setPendingEnable(null)}>
-                      Not now
-                    </Button>
+                  <div className="space-y-2">
+                    <Label>Maximum running at once — {settings.maxConcurrentAgents}</Label>
+                    <Slider
+                      min={1}
+                      max={12}
+                      step={1}
+                      value={[settings.maxConcurrentAgents]}
+                      onValueChange={([value]) =>
+                        void save({ ...settings, maxConcurrentAgents: value })
+                      }
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Each running agent is a full Claude Code subprocess, so this is a memory
+                      ceiling as much as a usage one.
+                    </p>
                   </div>
-                </div>
+
+                  <div className="space-y-2">
+                    <Label>
+                      Tear down idle sessions after —{' '}
+                      {settings.idleTimeoutMinutes === 0
+                        ? 'never'
+                        : `${settings.idleTimeoutMinutes} minutes`}
+                    </Label>
+                    <Slider
+                      min={0}
+                      max={240}
+                      step={5}
+                      value={[settings.idleTimeoutMinutes]}
+                      onValueChange={([value]) =>
+                        void save({ ...settings, idleTimeoutMinutes: value })
+                      }
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="editor">Open files with</Label>
+                    <Input
+                      id="editor"
+                      value={editorDraft ?? settings.editorCommand}
+                      placeholder="code -g {path}:{line}"
+                      onChange={(e) => setEditorDraft(e.target.value)}
+                      onBlur={flushEditor}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      A command; {'{path}'} and {'{line}'} are filled in. Leave empty to use
+                      whatever opens the file type.
+                    </p>
+                  </div>
+                </section>
               )}
 
-              {completing && (
-                <div className="space-y-1">
-                  <Progress value={(stt?.progress ?? 0) * 100} />
-                  <p className="text-xs text-muted-foreground">
-                    Downloading the speech model — the switch flips on when it lands.
-                  </p>
-                </div>
-              )}
-              {enableError && <p className="text-xs text-destructive">{enableError}</p>}
+              {page === 'voice' && (
+                <>
+                  <section className="space-y-4">
+                    <h3 className="text-sm font-medium">Voice input</h3>
 
-              <div className="space-y-2">
-                <Label htmlFor="microphone">Microphone</Label>
-                <Select
-                  value={settings.microphone || SYSTEM_DEFAULT}
-                  onValueChange={(value) =>
-                    void save({
-                      ...settings,
-                      microphone: value === SYSTEM_DEFAULT ? '' : value
-                    })
-                  }
-                >
-                  <SelectTrigger id="microphone" className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={SYSTEM_DEFAULT}>System default</SelectItem>
-                    {microphones
-                      .filter((device) => device.label && !ALIASES.has(device.deviceId))
-                      .map((device) => (
-                        <SelectItem key={device.deviceId} value={device.label}>
-                          {deviceLabel(device.label)}
-                        </SelectItem>
-                      ))}
-                    {settings.microphone &&
-                      !microphones.some((device) => device.label === settings.microphone) && (
-                        // Keep an unplugged selection visible: a Select whose
-                        // value matches no item paints blank, which reads as
-                        // "nothing chosen" rather than "your headset is off".
-                        <SelectItem value={settings.microphone}>
-                          {deviceLabel(settings.microphone)} (not connected)
-                        </SelectItem>
+                    <div
+                      ref={highlightRef}
+                      className={
+                        flashing
+                          ? 'settings-highlight flex items-start justify-between gap-4'
+                          : 'flex items-start justify-between gap-4'
+                      }
+                    >
+                      <div className="space-y-1">
+                        <Label htmlFor="voice-input">Enable push-to-talk</Label>
+                        <p className="text-xs text-muted-foreground">
+                          An open microphone is a control channel into a tool with shell and
+                          file-write access. Enabling it is a deliberate act.
+                        </p>
+                      </div>
+                      <Switch
+                        id="voice-input"
+                        checked={settings.voiceInputEnabled}
+                        // Not disabled while the model is missing: the switch is
+                        // how the download gets offered. It stays off until the
+                        // model is actually installed, so a shortcut that cannot
+                        // work still never exists.
+                        disabled={downloading}
+                        onCheckedChange={(checked) => requestEnable('ptt', checked)}
+                      />
+                    </div>
+
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="space-y-1">
+                        <Label htmlFor="wake-word">Wake words</Label>
+                        <p className="text-xs text-muted-foreground">
+                          Keeps the microphone open and listens for “Hey {'{agent}'}”. Unlike
+                          push-to-talk this is an open channel: anyone within earshot, or a video
+                          playing nearby, can address an agent.
+                        </p>
+                      </div>
+                      <Switch
+                        id="wake-word"
+                        checked={settings.wakeWordEnabled}
+                        // Independent of push-to-talk on purpose: each is its own
+                        // opt-in, and gating this on the other made hands-free-only
+                        // use impossible — while turning push-to-talk off greyed
+                        // this out with the microphone still open behind it.
+                        disabled={downloading}
+                        onCheckedChange={(checked) => requestEnable('wake', checked)}
+                      />
+                    </div>
+
+                    {pendingEnable && entry && (
+                      <div className="space-y-2 rounded-lg border border-border p-3">
+                        <p className="text-sm">
+                          {pendingEnable === 'ptt' ? 'Push-to-talk needs' : 'Wake words need'} the{' '}
+                          {entry.label} speech model — a one-time {formatBytes(totalBytes(entry))}{' '}
+                          download. It runs entirely on this machine; nothing you say is sent
+                          anywhere.
+                        </p>
+                        <div className="flex gap-2">
+                          <Button size="sm" onClick={() => void acceptDownload()}>
+                            <Download />
+                            Download and enable
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setPendingEnable(null)}
+                          >
+                            Not now
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+
+                    {completing && (
+                      <div className="space-y-1">
+                        <Progress value={(stt?.progress ?? 0) * 100} />
+                        <p className="text-xs text-muted-foreground">
+                          Downloading the speech model — the switch flips on when it lands.
+                        </p>
+                      </div>
+                    )}
+                    {enableError && <p className="text-xs text-destructive">{enableError}</p>}
+
+                    <div className="space-y-2">
+                      <Label htmlFor="microphone">Microphone</Label>
+                      <Select
+                        value={settings.microphone || SYSTEM_DEFAULT}
+                        onValueChange={(value) =>
+                          void save({
+                            ...settings,
+                            microphone: value === SYSTEM_DEFAULT ? '' : value
+                          })
+                        }
+                      >
+                        <SelectTrigger id="microphone" className="w-full">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={SYSTEM_DEFAULT}>System default</SelectItem>
+                          {microphones
+                            .filter((device) => device.label && !ALIASES.has(device.deviceId))
+                            .map((device) => (
+                              <SelectItem key={device.deviceId} value={device.label}>
+                                {deviceLabel(device.label)}
+                              </SelectItem>
+                            ))}
+                          {settings.microphone &&
+                            !microphones.some((device) => device.label === settings.microphone) && (
+                              // Keep an unplugged selection visible: a Select whose
+                              // value matches no item paints blank, which reads as
+                              // "nothing chosen" rather than "your headset is off".
+                              <SelectItem value={settings.microphone}>
+                                {deviceLabel(settings.microphone)} (not connected)
+                              </SelectItem>
+                            )}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground">
+                        {microphones.length > 1
+                          ? 'The system default is often not the one you talk into.'
+                          : 'Whatever this machine is set to use for input.'}
+                      </p>
+                      <MicMeter />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="ptt">Push-to-talk shortcut</Label>
+                      <HotkeyInput
+                        id="ptt"
+                        value={settings.pushToTalkHotkey}
+                        onChange={(accelerator) =>
+                          void save({ ...settings, pushToTalkHotkey: accelerator })
+                        }
+                      />
+                      {explainAccelerator(settings.pushToTalkHotkey) ? (
+                        <p className="text-xs text-destructive">
+                          {explainAccelerator(settings.pushToTalkHotkey)}
+                        </p>
+                      ) : globalFailure ? (
+                        <p className="text-xs text-destructive">{globalFailure.reason}</p>
+                      ) : (
+                        <p className="text-xs text-muted-foreground">
+                          Press once to start talking, again to send. Esc discards.
+                        </p>
                       )}
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground">
-                  {microphones.length > 1
-                    ? 'The system default is often not the one you talk into.'
-                    : 'Whatever this machine is set to use for input.'}
-                </p>
-                <MicMeter />
-              </div>
+                    </div>
+                  </section>
 
-              <div className="space-y-2">
-                <Label htmlFor="ptt">Push-to-talk shortcut</Label>
-                <HotkeyInput
-                  id="ptt"
-                  value={settings.pushToTalkHotkey}
-                  onChange={(accelerator) =>
-                    void save({ ...settings, pushToTalkHotkey: accelerator })
-                  }
-                />
-                {explainAccelerator(settings.pushToTalkHotkey) ? (
-                  <p className="text-xs text-destructive">
-                    {explainAccelerator(settings.pushToTalkHotkey)}
-                  </p>
-                ) : globalFailure ? (
-                  <p className="text-xs text-destructive">{globalFailure.reason}</p>
-                ) : (
-                  <p className="text-xs text-muted-foreground">
-                    Press once to start talking, again to send. Esc discards.
-                  </p>
-                )}
-              </div>
-            </section>
+                  <section className="space-y-3">
+                    <h3 className="text-sm font-medium">Speech model</h3>
 
-            <section className="space-y-3">
-              <h3 className="text-sm font-medium">Speech model</h3>
+                    {entry && (
+                      <div className="space-y-2 rounded-lg border border-border p-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="text-sm">{entry.label}</p>
+                            <p className="text-xs break-words text-muted-foreground">
+                              {formatBytes(totalBytes(entry))} · {entry.license} ·{' '}
+                              {entry.attribution}
+                            </p>
+                          </div>
+                          {installed ? (
+                            <span className="shrink-0 text-xs text-muted-foreground">
+                              Installed
+                            </span>
+                          ) : (
+                            <Button
+                              size="sm"
+                              className="shrink-0"
+                              disabled={downloading}
+                              onClick={() => void download()}
+                            >
+                              {downloading ? <Loader2 className="animate-spin" /> : <Download />}
+                              {downloading ? 'Downloading…' : 'Download'}
+                            </Button>
+                          )}
+                        </div>
 
-              {entry && (
-                <div className="space-y-2 rounded-lg border border-border p-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="text-sm">{entry.label}</p>
-                      <p className="text-xs break-words text-muted-foreground">
-                        {formatBytes(totalBytes(entry))} · {entry.license} · {entry.attribution}
+                        {downloading && <Progress value={(stt?.progress ?? 0) * 100} />}
+                        {(downloadError ?? stt?.error) && (
+                          <p className="text-xs text-destructive">{downloadError ?? stt?.error}</p>
+                        )}
+                        {!installed && !downloading && (
+                          <p className="text-xs text-muted-foreground">
+                            Voice input stays off until this is installed — flipping either switch
+                            above offers the download too. It runs entirely on this machine; nothing
+                            you say is sent anywhere.
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </section>
+                </>
+              )}
+
+              {page === 'conversations' && (
+                <section className="space-y-4">
+                  <h3 className="text-sm font-medium">Archive</h3>
+
+                  <div className="space-y-2">
+                    <Label>
+                      Delete archived conversations after —{' '}
+                      {settings.archiveRetentionDays === 0
+                        ? 'never'
+                        : `${settings.archiveRetentionDays} day${settings.archiveRetentionDays === 1 ? '' : 's'}`}
+                    </Label>
+                    <Slider
+                      min={0}
+                      max={365}
+                      step={1}
+                      value={[settings.archiveRetentionDays]}
+                      onValueChange={([value]) =>
+                        void save({ ...settings, archiveRetentionDays: value })
+                      }
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Archiving takes a conversation out of the switcher without deleting it. Once
+                      this many days have passed it is deleted for good; at never, it stays until
+                      you delete it yourself.
+                    </p>
+                  </div>
+                </section>
+              )}
+
+              {page === 'appearance' && (
+                <section className="space-y-4">
+                  <h3 className="text-sm font-medium">Appearance</h3>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="theme">Theme</Label>
+                    <Select
+                      value={settings.theme}
+                      onValueChange={(value) =>
+                        void save({ ...settings, theme: value as AppSettings['theme'] })
+                      }
+                    >
+                      <SelectTrigger id="theme" className="w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="dark">Dark</SelectItem>
+                        <SelectItem value="light">Light</SelectItem>
+                        <SelectItem value="system">Match the system</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      Applies to the window and the listening overlay.
+                    </p>
+                  </div>
+                </section>
+              )}
+
+              {page === 'updates' && (
+                <section className="space-y-4">
+                  <h3 className="text-sm font-medium">Updates</h3>
+
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="space-y-1">
+                      <Label htmlFor="check-updates">Check for new versions</Label>
+                      <p className="text-xs text-muted-foreground">
+                        Asks GitHub for the latest release at launch and every six hours. This is
+                        the one request Open Room makes to anyone but Anthropic: it names the app
+                        and its version, and GitHub sees your IP address. Nothing else is sent.
                       </p>
                     </div>
-                    {installed ? (
-                      <span className="shrink-0 text-xs text-muted-foreground">Installed</span>
-                    ) : (
-                      <Button
-                        size="sm"
-                        className="shrink-0"
-                        disabled={downloading}
-                        onClick={() => void download()}
-                      >
-                        {downloading ? <Loader2 className="animate-spin" /> : <Download />}
-                        {downloading ? 'Downloading…' : 'Download'}
-                      </Button>
-                    )}
+                    <Switch
+                      id="check-updates"
+                      checked={settings.checkForUpdates}
+                      onCheckedChange={(checked) =>
+                        void save({ ...settings, checkForUpdates: checked })
+                      }
+                    />
                   </div>
 
-                  {downloading && <Progress value={(stt?.progress ?? 0) * 100} />}
-                  {(downloadError ?? stt?.error) && (
-                    <p className="text-xs text-destructive">{downloadError ?? stt?.error}</p>
-                  )}
-                  {!installed && !downloading && (
+                  <div className="flex items-center gap-3">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={checking}
+                      onClick={() => void checkNow()}
+                    >
+                      {checking ? <Loader2 className="animate-spin" /> : null}
+                      {checking ? 'Checking…' : 'Check now'}
+                    </Button>
                     <p className="text-xs text-muted-foreground">
-                      Voice input stays off until this is installed — flipping either switch above
-                      offers the download too. It runs entirely on this machine; nothing you say is
-                      sent anywhere.
+                      {describeCheck(update, appVersion)}
                     </p>
-                  )}
-                </div>
+                  </div>
+                </section>
               )}
-            </section>
 
-            <section className="space-y-4">
-              <h3 className="text-sm font-medium">Updates</h3>
-
-              <div className="flex items-start justify-between gap-4">
-                <div className="space-y-1">
-                  <Label htmlFor="check-updates">Check for new versions</Label>
-                  <p className="text-xs text-muted-foreground">
-                    Asks GitHub for the latest release at launch and every six hours. This is the
-                    one request Open Room makes to anyone but Anthropic: it names the app and its
-                    version, and GitHub sees your IP address. Nothing else is sent.
-                  </p>
-                </div>
-                <Switch
-                  id="check-updates"
-                  checked={settings.checkForUpdates}
-                  onCheckedChange={(checked) =>
-                    void save({ ...settings, checkForUpdates: checked })
-                  }
-                />
-              </div>
-
-              <div className="flex items-center gap-3">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={checking}
-                  onClick={() => void checkNow()}
-                >
-                  {checking ? <Loader2 className="animate-spin" /> : null}
-                  {checking ? 'Checking…' : 'Check now'}
-                </Button>
-                <p className="text-xs text-muted-foreground">{describeCheck(update, appVersion)}</p>
-              </div>
-            </section>
-
-            {error && <p className="text-xs text-destructive">{error}</p>}
+              {error && <p className="text-xs text-destructive">{error}</p>}
+            </div>
           </div>
         )}
       </DialogContent>

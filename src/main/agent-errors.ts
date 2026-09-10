@@ -37,8 +37,13 @@ export function kindFromAssistantError(error: string): AgentErrorKind {
       return 'not-authenticated'
     case 'billing_error':
       return 'billing'
-    case 'invalid_request':
+    // Measured on a bogus id: a synthetic assistant message carrying this
+    // code, then a result that says success. A plan-locked Fable id takes
+    // the same route, so this is also the backstop for a model the account
+    // cannot use when the launch-time probe did not run.
     case 'model_not_found':
+      return 'model-unavailable'
+    case 'invalid_request':
     case 'max_output_tokens':
     case 'server_error':
       return 'unknown'
@@ -57,7 +62,9 @@ const HINTS: Partial<Record<AgentErrorKind, string>> = {
   'rate-limited': 'Usage limit reached. This clears on its own — try again shortly.',
   overloaded: 'The service is busy. This usually clears within a minute.',
   'usage-limit': 'Your plan’s usage limit is reached. It resets on your billing cycle.',
-  billing: 'There is a billing problem on the account Claude Code is signed in to.'
+  billing: 'There is a billing problem on the account Claude Code is signed in to.',
+  'model-unavailable':
+    'This model is not available to the signed-in account. Pick another in the agent settings.'
 }
 
 export function describeAgentError(kind: AgentErrorKind, message: string): AgentError {

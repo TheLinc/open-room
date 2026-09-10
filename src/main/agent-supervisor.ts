@@ -29,6 +29,7 @@ import {
 } from '@shared/slash-commands'
 import { replayKey } from '@shared/compaction'
 import { resumeTarget } from '@shared/conversation'
+import { latestActive } from '@shared/archive'
 import { awaitingAfterTurn } from '@shared/awaiting'
 import {
   INTERRUPT_GRACE_MS,
@@ -329,8 +330,9 @@ export class AgentSupervisor {
     const activeId = this.runtimeFor(id).activeConversationId
     const chosen = this.chosen.has(id)
 
-    const latestId =
-      chosen || activeId ? null : ((await this.conversations.list(agent))[0]?.sessionId ?? null)
+    // The latest *live* conversation: archiving one is the user saying "not
+    // this", so the launch-time resume never lands in it.
+    const latestId = chosen || activeId ? null : latestActive(await this.conversations.list(agent))
     const target = resumeTarget({ chosen, activeId, latestId })
 
     if (target !== activeId) this.patch(id, { activeConversationId: target, sessionId: target })

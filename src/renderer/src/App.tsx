@@ -84,6 +84,15 @@ function App(): React.JSX.Element {
     setEditorOpen(true)
   }
 
+  // The sidebar row's delete, already confirmed there. Same IPC as the
+  // editor's footer; main ends the agent's session before removing it.
+  const deleteAgent = async (id: string): Promise<void> => {
+    const result = await window.openRoom.deleteAgent(id)
+    if (!result.ok) return
+    if (selectedId === id) setSelectedId(null)
+    void refresh()
+  }
+
   return (
     <div className="flex h-screen flex-col bg-background text-foreground">
       <TitleBar />
@@ -105,6 +114,14 @@ function App(): React.JSX.Element {
               onSelect={setSelectedId}
               onCreate={openNew}
               onOpenSettings={() => setSettingsOpen(true)}
+              // The editor is keyed to the selected agent, so editing from a
+              // row selects it first; that is also what a user expects to see
+              // behind the dialog.
+              onEdit={(id) => {
+                setSelectedId(id)
+                openEdit()
+              }}
+              onDelete={(id) => void deleteAgent(id)}
             />
 
             <main className="flex min-w-0 flex-1 flex-col">
@@ -119,6 +136,7 @@ function App(): React.JSX.Element {
                   conversations={conversations}
                   onEdit={openEdit}
                   voiceEnabled={Boolean(settings?.voiceInputEnabled || settings?.wakeWordEnabled)}
+                  archiveRetentionDays={settings?.archiveRetentionDays ?? 30}
                   onOpenVoiceSettings={() => {
                     setSettingsHighlight('voice-input')
                     setSettingsOpen(true)

@@ -1,5 +1,15 @@
 import { useState } from 'react'
-import { Check, ChevronDown, MessageSquarePlus, Pencil, Trash2 } from 'lucide-react'
+import {
+  Archive,
+  ArchiveRestore,
+  Check,
+  ChevronDown,
+  ChevronRight,
+  MessageSquarePlus,
+  Pencil,
+  Trash2
+} from 'lucide-react'
+import { describeDeletion, partitionArchived } from '@shared/archive'
 import { describeLastActive, type Conversation } from '@shared/conversation'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -12,6 +22,10 @@ type Props = {
   onNew: () => void
   onRename: (sessionId: string, title: string) => void
   onDelete: (sessionId: string) => void
+  onArchive: (sessionId: string) => void
+  onRestore: (sessionId: string) => void
+  /** Days an archived conversation is kept; 0 means until deleted by hand. */
+  archiveRetentionDays: number
 }
 
 /**
@@ -21,6 +35,10 @@ type Props = {
  * is no idle timer and no per-launch reset: surprise amnesia would undermine
  * the persona the rest of the app presents, and the agent's WORKLOG.md is
  * what makes a deliberate reset cheap.
+ *
+ * Archived conversations sit under a collapsed group at the bottom rather
+ * than vanishing: a list that silently shrinks reads as data loss, and the
+ * countdown on each row is what makes the retention window trustworthy.
  */
 export function ConversationSwitcher({
   conversations,
@@ -28,11 +46,21 @@ export function ConversationSwitcher({
   onSelect,
   onNew,
   onRename,
-  onDelete
+  onDelete,
+  onArchive,
+  onRestore,
+  archiveRetentionDays
 }: Props): React.JSX.Element {
   const [open, setOpen] = useState(false)
   const [renaming, setRenaming] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
+  const [showArchived, setShowArchived] = useState(false)
+  // The clock the countdowns are read against, taken when the menu opens: a
+  // list that sits open for an hour is off by an hour, which is fine, while
+  // reading the clock during render is not.
+  const [now, setNow] = useState(() => Date.now())
+
+  const { active: live, archived } = partitionArchived(conversations)
 
   const commitRename = (sessionId: string): void => {
     const title = draft.trim()
@@ -45,11 +73,17 @@ export function ConversationSwitcher({
       <Button
         variant="ghost"
         size="sm"
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => {
+          setNow(Date.now())
+          setOpen((v) => !v)
+        }}
         aria-expanded={open}
         className="max-w-full justify-start gap-1.5 font-normal sm:max-w-[22rem]"
       >
         <span className="truncate">{active?.title ?? 'New conversation'}</span>
+        {active?.archivedAt !== undefined && (
+          <span className="shrink-0 text-xs text-muted-foreground">(archived)</span>
+        )}
         <ChevronDown className="size-3.5 shrink-0 opacity-60" />
       </Button>
 
@@ -76,7 +110,7 @@ export function ConversationSwitcher({
                 <p className="px-3 py-3 text-sm text-muted-foreground">No conversations yet.</p>
               )}
 
-              {conversations.map((conversation) => {
+              {live.map((conversation) => {
                 const isActive = conversation.sessionId === active?.sessionId
 
                 if (renaming === conversation.sessionId) {
@@ -136,6 +170,20 @@ export function ConversationSwitcher({
                     <Button
                       size="icon-xs"
                       variant="ghost"
+                      aria-label="Archive conversation"
+                      title={
+                        archiveRetentionDays === 0
+                          ? 'Archive. Kept until you delete it.'
+                          : `Archive. Deleted after ${archiveRetentionDays} days.`
+                      }
+                      className="opacity-0 group-hover:opacity-100"
+                      onClick={() => onArchive(conversation.sessionId)}
+                    >
+                      <Archive />
+                    </Button>
+                    <Button
+                      size="icon-xs"
+                      variant="ghost"
                       aria-label="Delete conversation"
                       className="opacity-0 group-hover:opacity-100"
                       onClick={() => onDelete(conversation.sessionId)}
@@ -145,6 +193,66 @@ export function ConversationSwitcher({
                   </div>
                 )
               })}
+
+              {archived.length > 0 && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setShowArchived((v) => !v)}
+                    aria-expanded={showArchived}
+                    className="flex w-full items-center gap-1.5 border-t border-border px-3 py-2 text-left text-xs text-muted-foreground hover:bg-muted/50"
+                  >
+                    {showArchived ? (
+                      <ChevronDown className="size-3.5 shrink-0" />
+                    ) : (
+                      <ChevronRight className="size-3.5 shrink-0" />
+                    )}
+                    Archived ({archived.length})
+                  </button>
+
+                  {showArchived &&
+                    archived.map((conversation) => (
+                      <div
+                        key={conversation.sessionId}
+                        className={cn(
+                          'group flex items-center gap-2 px-3 py-2 text-sm',
+                          conversation.sessionId === active?.sessionId
+                            ? 'bg-muted'
+                            : 'hover:bg-muted/50'
+                        )}
+                      >
+                        <div className="flex min-w-0 flex-1 flex-col items-start text-left text-muted-foreground">
+                          <span className="w-full truncate">{conversation.title}</span>
+                          <span className="text-xs">
+                            {describeDeletion(
+                              { archivedAt: conversation.archivedAt ?? now },
+                              archiveRetentionDays,
+                              now
+                            )}
+                          </span>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 gap-1 px-2 text-xs"
+                          onClick={() => onRestore(conversation.sessionId)}
+                        >
+                          <ArchiveRestore />
+                          Restore
+                        </Button>
+                        <Button
+                          size="icon-xs"
+                          variant="ghost"
+                          aria-label="Delete conversation"
+                          className="opacity-0 group-hover:opacity-100"
+                          onClick={() => onDelete(conversation.sessionId)}
+                        >
+                          <Trash2 />
+                        </Button>
+                      </div>
+                    ))}
+                </>
+              )}
             </div>
           </div>
         </>

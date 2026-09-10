@@ -10,6 +10,34 @@
  */
 @source "./**/*.{ts,tsx}";
 
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * The bubble's own palette: one foreground, on one surface. Both follow the
+ * `dark` class the entry point keeps in step with the theme setting, so the
+ * pill and the HUD match the main window without importing its whole token
+ * set. Opacity modifiers (`text-or-fg/70`) do the rest.
+ */
+@theme inline {
+  --color-or-fg: var(--or-fg);
+}
+
+:root {
+  --or-fg: oklch(0.2 0.02 260);
+  --or-surface: oklch(0.99 0.003 260);
+  --or-surface-border: oklch(0 0 0 / 10%);
+  --or-shadow-strong: oklch(0 0 0 / 22%);
+  --or-shadow-soft: oklch(0 0 0 / 12%);
+}
+
+.dark {
+  --or-fg: oklch(0.97 0.005 260);
+  --or-surface: #101722;
+  --or-surface-border: oklch(1 0 0 / 12%);
+  --or-shadow-strong: oklch(0 0 0 / 55%);
+  --or-shadow-soft: oklch(0 0 0 / 40%);
+}
+
 /*
  * The window itself is transparent — only the bubble paints. Anything that
  * gives the body a background turns the whole always-on-top rectangle into a
@@ -39,11 +67,11 @@ body {
  * surface. The shadow is what separates it from whatever is behind.
  */
 .or-surface {
-  background: #101722;
-  border: 1px solid oklch(1 0 0 / 12%);
+  background: var(--or-surface);
+  border: 1px solid var(--or-surface-border);
   box-shadow:
-    0 10px 30px oklch(0 0 0 / 55%),
-    0 2px 8px oklch(0 0 0 / 40%);
+    0 10px 30px var(--or-shadow-strong),
+    0 2px 8px var(--or-shadow-soft);
 }
 
 /*

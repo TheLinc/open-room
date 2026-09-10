@@ -9,15 +9,33 @@ import { AGENT_COLOR_IDS } from './agent-colors'
  * role context alongside it in `AGENT.md`.
  */
 
+/**
+ * The models an agent can be configured for.
+ *
+ * Fable is the first tier a subscription may not include. Whether this
+ * account has it is asked of the CLI at launch (`src/shared/model-access.ts`);
+ * the pickers disable the Fable rows when it does not, and an agent already
+ * configured for one says so in its pane header.
+ */
 export const MODELS = [
-  { id: 'claude-opus-5', label: 'Opus 5', hint: 'Most capable. Best for hard, open-ended work.' },
+  {
+    id: 'claude-fable-5-1',
+    label: 'Fable 5.1',
+    hint: 'Most capable, for the hardest and longest tasks. Needs a plan that includes Fable.'
+  },
+  { id: 'claude-opus-5', label: 'Opus 5', hint: 'Best for hard, open-ended work.' },
   { id: 'claude-sonnet-5', label: 'Sonnet 5', hint: 'Balanced speed and capability.' },
   {
     id: 'claude-haiku-4-5',
     label: 'Haiku 4.5',
     hint: 'Fastest and cheapest. Good for narrow tasks.'
   },
-  { id: 'claude-opus-4-8', label: 'Opus 4.8', hint: 'Previous-generation Opus.' }
+  { id: 'claude-opus-4-8', label: 'Opus 4.8', hint: 'Previous-generation Opus.' },
+  {
+    id: 'claude-fable-5',
+    label: 'Fable 5',
+    hint: 'Previous-generation Fable. Needs a plan that includes Fable.'
+  }
 ] as const
 
 export const MODEL_IDS = MODELS.map((m) => m.id) as [string, ...string[]]

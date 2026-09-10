@@ -1,10 +1,26 @@
-import { AlertTriangle, CircleAlert, Loader2, Plus, Settings } from 'lucide-react'
+import { useState } from 'react'
+import {
+  AlertTriangle,
+  CircleAlert,
+  Loader2,
+  MoreHorizontal,
+  Pencil,
+  Plus,
+  Settings,
+  Trash2
+} from 'lucide-react'
 import type { Agent } from '@shared/agent'
 import { colorHexFor } from '@shared/agent-colors'
 import { isTransient, type AgentRuntime } from '@shared/agent-runtime'
 import type { AgentLoadError } from '@shared/ipc'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger
+} from '@/components/ui/dropdown-menu'
 import { ScrollArea } from '@/components/ui/scroll-area'
 
 type Props = {
@@ -15,6 +31,10 @@ type Props = {
   onSelect: (id: string) => void
   onCreate: () => void
   onOpenSettings: () => void
+  /** Opens the editor on this agent. */
+  onEdit: (id: string) => void
+  /** Deletes this agent; the row has already asked twice. */
+  onDelete: (id: string) => void
 }
 
 /**
@@ -42,6 +62,66 @@ function StatusDot({ runtime }: { runtime: AgentRuntime }): React.JSX.Element | 
   return null
 }
 
+/**
+ * The row's menu: the quick way to an agent's settings, without first
+ * selecting it and finding Edit in the pane header.
+ *
+ * Delete asks twice inside the menu. The first click keeps the menu open
+ * (`preventDefault` on `onSelect`, which is how Radix lets an item stay) and
+ * relabels itself; the second deletes. Closing the menu forgets the first
+ * click, so a stray press never arms a delete for later.
+ */
+function RowMenu({
+  agent,
+  onEdit,
+  onDelete
+}: {
+  agent: Agent
+  onEdit: () => void
+  onDelete: () => void
+}): React.JSX.Element {
+  const [confirming, setConfirming] = useState(false)
+
+  return (
+    <DropdownMenu onOpenChange={(open) => !open && setConfirming(false)}>
+      <DropdownMenuTrigger asChild>
+        <Button
+          size="icon-xs"
+          variant="ghost"
+          aria-label={`More for ${agent.config.name}`}
+          title="More"
+          // Revealed on hover and focus, and whenever open. Kept out of the
+          // row's own button so a press here never selects the agent.
+          className="shrink-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100 group-data-[selected=true]:opacity-100"
+          onClick={(event) => event.stopPropagation()}
+        >
+          <MoreHorizontal />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" onClick={(event) => event.stopPropagation()}>
+        <DropdownMenuItem onSelect={onEdit}>
+          <Pencil />
+          Edit agent
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          variant="destructive"
+          onSelect={(event) => {
+            if (!confirming) {
+              event.preventDefault()
+              setConfirming(true)
+              return
+            }
+            onDelete()
+          }}
+        >
+          <Trash2 />
+          {confirming ? 'Click again to delete' : 'Delete agent'}
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
 export function AgentSidebar({
   agents,
   errors,
@@ -49,7 +129,9 @@ export function AgentSidebar({
   runtimeFor,
   onSelect,
   onCreate,
-  onOpenSettings
+  onOpenSettings,
+  onEdit,
+  onDelete
 }: Props): React.JSX.Element {
   return (
     <aside className="flex w-64 shrink-0 flex-col border-r border-border bg-card">
@@ -68,27 +150,42 @@ export function AgentSidebar({
 
       <ScrollArea className="min-h-0 flex-1">
         <div className="flex flex-col gap-0.5 px-2 pb-2">
-          {agents.map((agent) => (
-            <button
-              key={agent.config.id}
-              type="button"
-              onClick={() => onSelect(agent.config.id)}
-              className={cn(
-                'flex items-center gap-2.5 rounded-md px-2 py-2 text-left text-sm transition-colors',
-                selectedId === agent.config.id
-                  ? 'bg-muted text-foreground'
-                  : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
-              )}
-            >
-              <span
-                aria-hidden
-                className="size-2.5 shrink-0 rounded-full"
-                style={{ backgroundColor: colorHexFor(agent.config.color) }}
-              />
-              <span className="flex-1 truncate">{agent.config.name}</span>
-              <StatusDot runtime={runtimeFor(agent.config.id)} />
-            </button>
-          ))}
+          {agents.map((agent) => {
+            const isSelected = selectedId === agent.config.id
+            return (
+              // A div holding a button and a menu, not one button: a button
+              // cannot contain another, and the menu must not select the row.
+              <div
+                key={agent.config.id}
+                data-selected={isSelected}
+                className={cn(
+                  'group flex items-center gap-1 rounded-md pr-1 text-sm transition-colors',
+                  isSelected
+                    ? 'bg-muted text-foreground'
+                    : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+                )}
+              >
+                <button
+                  type="button"
+                  onClick={() => onSelect(agent.config.id)}
+                  className="flex min-w-0 flex-1 items-center gap-2.5 px-2 py-2 text-left"
+                >
+                  <span
+                    aria-hidden
+                    className="size-2.5 shrink-0 rounded-full"
+                    style={{ backgroundColor: colorHexFor(agent.config.color) }}
+                  />
+                  <span className="flex-1 truncate">{agent.config.name}</span>
+                  <StatusDot runtime={runtimeFor(agent.config.id)} />
+                </button>
+                <RowMenu
+                  agent={agent}
+                  onEdit={() => onEdit(agent.config.id)}
+                  onDelete={() => onDelete(agent.config.id)}
+                />
+              </div>
+            )
+          })}
 
           {/* Agents whose files failed to load are shown rather than hidden —
               a vanished agent is far more confusing than a broken one. */}

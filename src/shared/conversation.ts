@@ -14,6 +14,8 @@ export type Conversation = {
   /** Epoch ms. */
   lastModified: number
   createdAt?: number
+  /** Epoch ms when it was archived; absent for a live conversation. */
+  archivedAt?: number
 }
 
 /** A bounded slice of a conversation's transcript. */

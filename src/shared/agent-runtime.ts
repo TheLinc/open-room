@@ -29,6 +29,8 @@ export type AgentErrorKind =
   | 'overloaded'
   | 'usage-limit'
   | 'billing'
+  /** The configured model is not one the signed-in account can use. */
+  | 'model-unavailable'
   | 'crashed'
   | 'unknown'
 

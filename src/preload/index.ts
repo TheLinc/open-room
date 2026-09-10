@@ -12,6 +12,7 @@ import type {
 import type { Conversation, ConversationPage } from '@shared/conversation'
 import type { SessionOverridePatch } from '@shared/session-overrides'
 import type { LoginStatus } from '@shared/login'
+import type { ModelAccess } from '@shared/model-access'
 import type { UpdateSnapshot } from '@shared/updates'
 import type { AppSettings } from '@shared/settings'
 import type { KokoroStatus, SttStatus, SystemVoice } from '@shared/voice-rpc'
@@ -129,6 +130,10 @@ const openRoom: OpenRoomApi = {
 
   clearConversations: (agentId: string): Promise<MutationResult> =>
     ipcRenderer.invoke(IpcChannel.clearConversations, agentId),
+  archiveConversation: (agentId: string, sessionId: string): Promise<MutationResult> =>
+    ipcRenderer.invoke(IpcChannel.archiveConversation, agentId, sessionId),
+  restoreConversation: (agentId: string, sessionId: string): Promise<MutationResult> =>
+    ipcRenderer.invoke(IpcChannel.restoreConversation, agentId, sessionId),
 
   listVoices: (): Promise<SystemVoice[]> => ipcRenderer.invoke(IpcChannel.listVoices),
 
@@ -137,6 +142,9 @@ const openRoom: OpenRoomApi = {
   recheckLogin: (): Promise<LoginStatus> => ipcRenderer.invoke(IpcChannel.recheckLogin),
   onLoginChanged: (listener: (status: LoginStatus) => void) =>
     subscribe(IpcChannel.loginChanged, (payload) => listener(payload as LoginStatus)),
+  getModelAccess: (): Promise<ModelAccess> => ipcRenderer.invoke(IpcChannel.getModelAccess),
+  onModelAccessChanged: (listener: (access: ModelAccess) => void) =>
+    subscribe(IpcChannel.modelAccessChanged, (payload) => listener(payload as ModelAccess)),
   onQuotaChanged: (listener: (limit: RateLimitStatus | null) => void) =>
     subscribe(IpcChannel.quotaChanged, (payload) => listener(payload as RateLimitStatus | null)),
 

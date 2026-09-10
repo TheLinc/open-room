@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { isTransient } from '@shared/agent-runtime'
-import { buildChildEnv, classifyThrownError, kindFromAssistantError } from './agent-errors'
+import {
+  buildChildEnv,
+  classifyThrownError,
+  describeAgentError,
+  kindFromAssistantError
+} from './agent-errors'
 
 describe('buildChildEnv', () => {
   it('strips ANTHROPIC_API_KEY so agents bill the subscription, not credits', () => {
@@ -44,6 +49,16 @@ describe('kindFromAssistantError', () => {
 
   it('maps billing errors distinctly, since waiting will not fix them', () => {
     expect(kindFromAssistantError('billing_error')).toBe('billing')
+  })
+
+  it('files a model the account cannot use under its own kind, with a way out', () => {
+    // Measured: a bogus or plan-locked model ends the turn with this code on
+    // a synthetic assistant message, and the result says success.
+    expect(kindFromAssistantError('model_not_found')).toBe('model-unavailable')
+    expect(isTransient('model-unavailable')).toBe(false)
+    expect(describeAgentError('model-unavailable', 'x').hint).toBe(
+      'This model is not available to the signed-in account. Pick another in the agent settings.'
+    )
   })
 
   it('falls back to unknown for codes it has not seen', () => {

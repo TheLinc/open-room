@@ -1,6 +1,10 @@
 import { createRoot } from 'react-dom/client'
 import App from '../overlay/App'
 import '../overlay/overlay.css'
+import { followSystemColorScheme } from './src/lib/theme'
+
+// The overlay follows the same theme as the main window, by the same route.
+followSystemColorScheme()
 
 /**
  * The overlay's entry point.
