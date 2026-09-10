@@ -326,8 +326,8 @@ export function AgentEditor({
                     <FieldLabel htmlFor="name">Name</FieldLabel>
                     <Input id="name" placeholder="Atlas" {...form.register('name')} />
                     <FieldDescription>
-                      What you call this agent. It will also be its wake word once wake words ship;
-                      for now, address it with a push-to-talk shortcut.
+                      What you call this agent. With wake words on, saying “Hey” and this name
+                      addresses it; the push-to-talk shortcut works either way.
                     </FieldDescription>
                     <FieldError errors={[form.formState.errors.name]} />
                     {nameWarnings.map((warning) => (

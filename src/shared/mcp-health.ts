@@ -7,6 +7,8 @@
  * something is newly wrong, not on every turn.
  */
 
+import { plural } from './plural'
+
 export type McpStatus = 'connected' | 'failed' | 'needs-auth' | 'pending' | 'disabled'
 
 export type McpServerHealth = {
@@ -81,8 +83,6 @@ export function withMcpDetail(
 }
 
 export type McpSeverity = 'ok' | 'warn' | 'error'
-
-const plural = (n: number, noun: string): string => `${n} ${noun}${n === 1 ? '' : 's'}`
 
 /**
  * One line for the header, or nothing when there is nothing to say. The

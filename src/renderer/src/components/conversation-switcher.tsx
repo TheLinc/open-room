@@ -41,13 +41,13 @@ export function ConversationSwitcher({
   }
 
   return (
-    <div className="relative">
+    <div className="relative min-w-0">
       <Button
         variant="ghost"
         size="sm"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
-        className="max-w-[22rem] justify-start gap-1.5 font-normal"
+        className="max-w-full justify-start gap-1.5 font-normal sm:max-w-[22rem]"
       >
         <span className="truncate">{active?.title ?? 'New conversation'}</span>
         <ChevronDown className="size-3.5 shrink-0 opacity-60" />

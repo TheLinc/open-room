@@ -17,6 +17,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu'
+import { plural } from '@shared/plural'
 import type { CaptureSnapshot } from '@shared/ipc'
 import type { Agent } from '@shared/agent'
 import { colorHexFor } from '@shared/agent-colors'
@@ -371,7 +372,9 @@ export function AgentChat({
           />
           <div className="min-w-0">
             <div className="flex items-center gap-1">
-              <h2 className="truncate text-base font-semibold tracking-tight">
+              {/* The name never truncates; the conversation title beside it
+                  gives way first, since the name is what identifies the pane. */}
+              <h2 className="shrink-0 text-base font-semibold tracking-tight">
                 {agent.config.name}
               </h2>
               {agent.config.persistSession && (
@@ -385,12 +388,13 @@ export function AgentChat({
                 />
               )}
             </div>
-            <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <p className="flex flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
               {busy && <Loader2 className="size-3 animate-spin" />}
               {STATE_LABEL[runtime.state]}
               {runtime.usage.numTurns > 0 && (
                 <span>
-                  · {runtime.usage.numTurns} turns · ${runtime.usage.totalCostUsd.toFixed(4)}
+                  · {plural(runtime.usage.numTurns, 'turn')} · $
+                  {runtime.usage.totalCostUsd.toFixed(4)}
                 </span>
               )}
               {agent.config.wsl && (

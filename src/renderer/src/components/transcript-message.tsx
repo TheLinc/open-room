@@ -1,5 +1,6 @@
 import { memo } from 'react'
 import { Brain, ChevronRight, CircleAlert, Layers, Terminal, Wrench } from 'lucide-react'
+import { plural } from '@shared/plural'
 import type { TranscriptEntry } from '@shared/agent-runtime'
 import { cn } from '@/lib/utils'
 import { isCommandEcho, resultRow } from '@/lib/transcript'
@@ -272,7 +273,7 @@ export const TranscriptMessage = memo(function TranscriptMessage({
         <Terminal className="size-3.5 shrink-0" />
         <span>
           {row.label}
-          {typeof message.num_turns === 'number' && ` · ${message.num_turns} turns`}
+          {typeof message.num_turns === 'number' && ` · ${plural(message.num_turns, 'turn')}`}
           {typeof message.total_cost_usd === 'number' && ` · $${message.total_cost_usd.toFixed(4)}`}
         </span>
       </div>
