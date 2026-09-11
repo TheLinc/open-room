@@ -48,7 +48,7 @@ import { checkModelAccess, type ModelAccess } from './model-access'
 import { ArchiveStore } from './archive-store'
 import { ArchiveSweeper } from './archive-sweeper'
 import { removeConversation } from './remove-conversation'
-import type { LoginStatus } from '@shared/login'
+import { distrosOf, type LoginSnapshot, type LoginStatus } from '@shared/login'
 import { ConversationStore } from './conversation-store'
 import { findGit, Git, spawnGit } from './git'
 import { WorktreeManager } from './worktrees'
@@ -192,12 +192,14 @@ async function primeSpeech(): Promise<void> {
 let accountQuota: RateLimitStatus | null = null
 
 /**
- * The machine's Claude Code login, checked at launch by asking the SDK's own
- * binary. Like quota it belongs to the account, not to any agent. It is
- * rechecked when the user asks and when an agent fails for want of it — the
- * one event that says the launch-time answer has gone stale.
+ * The Claude Code logins agents can run on: the host's, asked of the SDK's
+ * own binary, and one per WSL distro some agent uses, asked inside that
+ * distro. Each is its own `~/.claude`, and a token expiring on the host says
+ * nothing about the distro's. Rechecked when the user asks, when an agent
+ * fails for want of a login (the one event that says the launch-time answer
+ * has gone stale), and when an agent is saved into a distro not yet probed.
  */
-let accountLogin: LoginStatus = { state: 'unknown' }
+let accountLogin: LoginSnapshot = { host: { state: 'unknown' }, wsl: {} }
 
 /**
  * Which models that login can use, asked of the same binary once the login
@@ -233,19 +235,29 @@ const sweeper = new ArchiveSweeper({
   log: (message) => console.warn(message)
 })
 
-async function recheckLogin(): Promise<LoginStatus> {
-  const status = await checkLogin()
-  accountLogin = status
-  broadcastLogin(status)
-  // Sequenced after the login, not alongside it: a signed-out account has no
+async function recheckLogin(): Promise<LoginSnapshot> {
+  // The distro probes run alongside the host's: each is a `wsl.exe` spawn of
+  // a few hundred milliseconds, and nothing about one depends on another.
+  const distros = wsl?.available ? distrosOf((await store.list()).agents.map((a) => a.config)) : []
+  const [host, ...perDistro] = await Promise.all([
+    checkLogin(),
+    ...distros.map((distro): Promise<[string, LoginStatus]> =>
+      wsl!.checkLogin(distro).then((status) => [distro, status])
+    )
+  ])
+  accountLogin = { host, wsl: Object.fromEntries(perDistro) }
+  broadcastLogin(accountLogin)
+  // Sequenced after the login, not alongside it: a signed-out host has no
   // picker to read, and the probe would only spend a spawn to learn that.
-  if (status.state === 'signed-in') {
+  // The picker is the host binary's, so a distro-only login leaves it
+  // unknown, which allows every model.
+  if (host.state === 'signed-in') {
     void checkModelAccess().then((access) => {
       accountModelAccess = access
       broadcastModelAccess(access)
     })
   }
-  return status
+  return accountLogin
 }
 
 /** The version last announced by notification, so each one is announced once. */

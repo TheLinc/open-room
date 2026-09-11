@@ -1,35 +1,42 @@
 import { useState } from 'react'
 import { ExternalLink, KeyRound, RefreshCw } from 'lucide-react'
-import type { LoginStatus } from '@shared/login'
+import { distrosOf, loginGate, type Environment, type LoginSnapshot } from '@shared/login'
 import { Button } from '@/components/ui/button'
 
 const INSTALL_URL = 'https://docs.anthropic.com/en/docs/claude-code/setup'
 
 /**
- * What the window shows instead of the agent list while no Claude Code
- * login is usable.
+ * What the window shows instead of the agent list while no environment the
+ * agents run in has a usable Claude Code login.
  *
- * Open Room runs agents on the account signed in to Claude Code on this
- * machine and never handles keys of its own, so there is nothing to type
- * here — only the two things the user has to do elsewhere, and a button to
- * check again. The login itself is a browser flow the CLI drives; it cannot
- * be run from inside the app.
+ * Open Room runs agents on the account signed in to Claude Code and never
+ * handles keys of its own, so there is nothing to type here — only the
+ * things the user has to do elsewhere, and a button to check again. The
+ * login itself is a browser flow the CLI drives; it cannot be run from
+ * inside the app. Each environment gets its own step: the host's login and
+ * a WSL distro's are separate `~/.claude` directories, and signing in on one
+ * side does nothing for the other.
  */
 export function FirstRun({
-  status,
+  snapshot,
+  agents,
   onRecheck
 }: {
-  status: LoginStatus
-  onRecheck: () => Promise<LoginStatus>
+  snapshot: LoginSnapshot
+  agents: readonly Environment[]
+  onRecheck: () => Promise<LoginSnapshot>
 }): React.JSX.Element {
   const [checking, setChecking] = useState(false)
-  const [lastResult, setLastResult] = useState<LoginStatus['state'] | null>(null)
+  const [stillOut, setStillOut] = useState(false)
+
+  const hostUsed = agents.length === 0 || agents.some((agent) => !agent.wsl)
+  const distros = distrosOf(agents).filter((d) => snapshot.wsl[d]?.state === 'signed-out')
 
   const recheck = async (): Promise<void> => {
     setChecking(true)
     try {
       const result = await onRecheck()
-      setLastResult(result.state)
+      setStillOut(loginGate(result, agents) === 'first-run')
     } finally {
       setChecking(false)
     }
@@ -44,7 +51,7 @@ export function FirstRun({
         </div>
 
         <p className="text-sm text-muted-foreground">
-          Open Room runs its agents on the Claude Code account signed in on this computer. It never
+          Open Room runs its agents on the Claude Code account signed in where they run. It never
           asks for an API key and never uses anyone else&apos;s account — every agent&apos;s usage
           bills the login below, exactly as the terminal does.
         </p>
@@ -61,11 +68,19 @@ export function FirstRun({
               Setup guide <ExternalLink className="size-3" />
             </a>
           </li>
-          <li>
-            Open a terminal, run{' '}
-            <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">claude</code> and
-            follow the sign-in prompt. A browser window completes it.
-          </li>
+          {hostUsed && (
+            <li>
+              Open a terminal, run <Code>claude</Code> and follow the sign-in prompt. A browser
+              window completes it.
+            </li>
+          )}
+          {distros.map((distro) => (
+            <li key={distro}>
+              For agents in <span className="font-medium">{distro}</span>: run{' '}
+              <Code>wsl -d {distro}</Code>, then <Code>claude</Code>, and follow the sign-in prompt.
+              The distro has its own login.
+            </li>
+          ))}
           <li>Come back here and check again.</li>
         </ol>
 
@@ -73,23 +88,13 @@ export function FirstRun({
           <Button onClick={() => void recheck()} disabled={checking}>
             <RefreshCw className={checking ? 'animate-spin' : ''} /> Check again
           </Button>
-          {lastResult === 'signed-out' && (
-            <span className="text-sm text-muted-foreground">Still signed out.</span>
-          )}
-          {lastResult === 'unknown' && (
-            <span className="text-sm text-muted-foreground">
-              Could not check. You can still try an agent.
-            </span>
-          )}
+          {stillOut && <span className="text-sm text-muted-foreground">Still signed out.</span>}
         </div>
-
-        {status.state === 'unknown' && (
-          <p className="text-xs text-muted-foreground">
-            The login check could not run, so this may be a false alarm. Agents will tell you if
-            they cannot sign in.
-          </p>
-        )}
       </div>
     </div>
   )
+}
+
+function Code({ children }: { children: React.ReactNode }): React.JSX.Element {
+  return <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">{children}</code>
 }

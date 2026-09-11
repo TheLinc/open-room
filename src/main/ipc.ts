@@ -12,7 +12,7 @@ import type { MicrophoneDevice } from '@shared/voice-input'
 import { appSettingsSchema, type AppSettings } from '@shared/settings'
 import { sanitizeOverrides } from '@shared/session-overrides'
 import { acceptImage, acceptPrompt, type ImageAttachment } from '@shared/attachments'
-import type { LoginStatus } from '@shared/login'
+import type { LoginSnapshot } from '@shared/login'
 import type { ModelAccess } from '@shared/model-access'
 import { latestActive } from '@shared/archive'
 import type { ArchiveStore } from './archive-store'
@@ -63,13 +63,13 @@ export function registerIpcHandlers(
    */
   readQuota: () => RateLimitStatus | null = () => null,
   login: {
-    read: () => LoginStatus
-    recheck: () => Promise<LoginStatus>
+    read: () => LoginSnapshot
+    recheck: () => Promise<LoginSnapshot>
     /** Which models the account can use; read on demand like quota. */
     modelAccess: () => ModelAccess
   } = {
-    read: () => ({ state: 'unknown' }),
-    recheck: async () => ({ state: 'unknown' }),
+    read: () => ({ host: { state: 'unknown' }, wsl: {} }),
+    recheck: async () => ({ host: { state: 'unknown' }, wsl: {} }),
     modelAccess: () => ({ state: 'unknown' })
   },
   /**
@@ -152,6 +152,13 @@ export function registerIpcHandlers(
     return store.list()
   })
 
+  // An agent saved into a distro the launch check never saw would otherwise
+  // read as `unknown` until the next recheck; one probe now keeps the pane
+  // honest. A distro already in the snapshot is left alone.
+  const probeNewDistro = (config: { distro: string } | null): void => {
+    if (config && !(config.distro in login.read().wsl)) void login.recheck()
+  }
+
   ipcMain.handle(IpcChannel.createAgent, async (_e, agent: Agent): Promise<MutationResult> => {
     return guard(async () => {
       const id = slugifyAgentName(agent.config.name)
@@ -160,6 +167,7 @@ export function registerIpcHandlers(
         throw new Error(`An agent named “${agent.config.name}” already exists.`)
       }
       await store.write({ ...agent, config: { ...agent.config, id } })
+      probeNewDistro(agent.config.wsl)
     })
   })
 
@@ -172,6 +180,7 @@ export function registerIpcHandlers(
         throw new Error('That agent no longer exists on disk.')
       }
       await store.write({ ...agent, config: parsed })
+      probeNewDistro(parsed.wsl)
     })
   })
 
@@ -368,8 +377,8 @@ export function registerIpcHandlers(
   )
 
   ipcMain.handle(IpcChannel.getQuota, (): RateLimitStatus | null => readQuota())
-  ipcMain.handle(IpcChannel.getLogin, (): LoginStatus => login.read())
-  ipcMain.handle(IpcChannel.recheckLogin, (): Promise<LoginStatus> => login.recheck())
+  ipcMain.handle(IpcChannel.getLogin, (): LoginSnapshot => login.read())
+  ipcMain.handle(IpcChannel.recheckLogin, (): Promise<LoginSnapshot> => login.recheck())
   ipcMain.handle(IpcChannel.getModelAccess, (): ModelAccess => login.modelAccess())
   ipcMain.handle(IpcChannel.getUpdate, (): UpdateSnapshot => updates.read())
   ipcMain.handle(IpcChannel.recheckUpdate, (): Promise<UpdateSnapshot> => updates.recheck())
@@ -506,8 +515,8 @@ export function broadcastUpdate(snapshot: UpdateSnapshot): void {
   broadcast(IpcChannel.updateChanged, snapshot)
 }
 
-export function broadcastLogin(status: LoginStatus): void {
-  broadcast(IpcChannel.loginChanged, status)
+export function broadcastLogin(snapshot: LoginSnapshot): void {
+  broadcast(IpcChannel.loginChanged, snapshot)
 }
 
 export function broadcastModelAccess(access: ModelAccess): void {

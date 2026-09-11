@@ -10,7 +10,8 @@ import { SettingsDialog, type SettingsHighlight } from '@/components/settings-di
 import { QuotaBanner } from '@/components/quota-banner'
 import { UpdateBanner } from '@/components/update-banner'
 import { FirstRun } from '@/components/first-run'
-import type { LoginStatus } from '@shared/login'
+import { loginGate } from '@shared/login'
+import { useLogin } from '@/hooks/use-login'
 import { TitleBar } from '@/components/title-bar'
 import { useSettings } from '@/hooks/use-settings'
 import { Button } from '@/components/ui/button'
@@ -28,15 +29,20 @@ function App(): React.JSX.Element {
   // settings normally never replays the flash.
   const [settingsHighlight, setSettingsHighlight] = useState<SettingsHighlight | null>(null)
 
-  // The account, not any agent: while no login is usable the whole window is
-  // the first-run screen. Signed-in and unknown both show the app — unknown
-  // means the check could not run, and a working install must not be locked
-  // out by its own diagnostic.
-  const [login, setLogin] = useState<LoginStatus>({ state: 'signed-in' })
-  useEffect(() => {
-    void window.openRoom.getLogin().then(setLogin)
-    return window.openRoom.onLoginChanged(setLogin)
-  }, [])
+  // One login per environment, and the first-run screen only while no
+  // environment the agents use has one. A host token that expired while a
+  // distro's stayed good used to lock the whole window; now the host agents
+  // say so in their panes and the WSL agents keep working. Signed-in and
+  // unknown both show the app: unknown means the check could not run, and a
+  // working install must not be locked out by its own diagnostic. The list
+  // is part of the decision, so it waits for the list.
+  const login = useLogin()
+  const gate = loading
+    ? 'open'
+    : loginGate(
+        login,
+        agents.map((a) => a.config)
+      )
 
   // Held here rather than in the dialog: the same failures belong against the
   // per-agent field in the editor, and both need them whether or not the
@@ -102,8 +108,12 @@ function App(): React.JSX.Element {
       {/* `min-h-0` so the row can shrink below its content and let the panes
           scroll, rather than pushing the window taller than the screen. */}
       <div className="flex min-h-0 flex-1 border-t border-border">
-        {login.state === 'signed-out' ? (
-          <FirstRun status={login} onRecheck={() => window.openRoom.recheckLogin()} />
+        {gate === 'first-run' ? (
+          <FirstRun
+            snapshot={login}
+            agents={agents.map((a) => a.config)}
+            onRecheck={() => window.openRoom.recheckLogin()}
+          />
         ) : (
           <>
             <AgentSidebar

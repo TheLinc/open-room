@@ -138,9 +138,9 @@ export class WslRuntime {
   }
 
   /**
-   * The distro's own login, checked the way the host's is. Not called yet
-   * anywhere in the app; it exists as the hook for a future per-distro
-   * login surface.
+   * The distro's own login, checked the way the host's is. `recheckLogin`
+   * in `index.ts` runs it for every distro some agent uses, and the result
+   * lands in the `LoginSnapshot` beside the host's.
    */
   async checkLogin(distro: string): Promise<LoginStatus> {
     if (!this.run) return { state: 'unknown' }

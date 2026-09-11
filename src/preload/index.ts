@@ -11,7 +11,7 @@ import type {
 } from '@shared/agent-runtime'
 import type { Conversation, ConversationPage } from '@shared/conversation'
 import type { SessionOverridePatch } from '@shared/session-overrides'
-import type { LoginStatus } from '@shared/login'
+import type { LoginSnapshot } from '@shared/login'
 import type { ModelAccess } from '@shared/model-access'
 import type { UpdateSnapshot } from '@shared/updates'
 import type { AppSettings } from '@shared/settings'
@@ -138,10 +138,10 @@ const openRoom: OpenRoomApi = {
   listVoices: (): Promise<SystemVoice[]> => ipcRenderer.invoke(IpcChannel.listVoices),
 
   getQuota: (): Promise<RateLimitStatus | null> => ipcRenderer.invoke(IpcChannel.getQuota),
-  getLogin: (): Promise<LoginStatus> => ipcRenderer.invoke(IpcChannel.getLogin),
-  recheckLogin: (): Promise<LoginStatus> => ipcRenderer.invoke(IpcChannel.recheckLogin),
-  onLoginChanged: (listener: (status: LoginStatus) => void) =>
-    subscribe(IpcChannel.loginChanged, (payload) => listener(payload as LoginStatus)),
+  getLogin: (): Promise<LoginSnapshot> => ipcRenderer.invoke(IpcChannel.getLogin),
+  recheckLogin: (): Promise<LoginSnapshot> => ipcRenderer.invoke(IpcChannel.recheckLogin),
+  onLoginChanged: (listener: (snapshot: LoginSnapshot) => void) =>
+    subscribe(IpcChannel.loginChanged, (payload) => listener(payload as LoginSnapshot)),
   getModelAccess: (): Promise<ModelAccess> => ipcRenderer.invoke(IpcChannel.getModelAccess),
   onModelAccessChanged: (listener: (access: ModelAccess) => void) =>
     subscribe(IpcChannel.modelAccessChanged, (payload) => listener(payload as ModelAccess)),

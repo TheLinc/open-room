@@ -59,6 +59,8 @@ import {
 } from '@shared/slash-commands'
 import { MAX_RETAINED_ENTRIES } from '@/hooks/use-sessions'
 import { useModelAccess } from '@/hooks/use-model-access'
+import { useLogin } from '@/hooks/use-login'
+import { loginNotice } from '@shared/login'
 import { modelUnavailableLine } from '@shared/model-access'
 import { FilePicker } from '@/components/file-picker'
 import { applyMention, filterFiles, mentionAt } from '@shared/file-mentions'
@@ -107,6 +109,9 @@ export function AgentChat({
   const [draft, setDraft] = useState('')
   const modelAccess = useModelAccess()
   const modelUnavailable = modelUnavailableLine(modelAccess, agent.config.model)
+  // This agent's environment, not the machine: a host agent while the host
+  // token has expired, a WSL agent while its distro's has.
+  const signedOut = loginNotice(useLogin(), agent.config)
   const [sendError, setSendError] = useState<string | null>(null)
   const [images, setImages] = useState<ImageAttachment[]>([])
   const [files, setFiles] = useState<FileAttachment[]>([])
@@ -578,14 +583,18 @@ export function AgentChat({
 
       {/* Said before the agent runs, not after it fails: the plan check is
           account state the launch probe already answered. */}
-      {modelUnavailable && (
-        <div
-          role="status"
-          className="flex items-start gap-2 border-b border-amber-500/30 bg-amber-500/5 px-6 py-2 text-sm text-amber-500"
-        >
-          <CircleAlert className="mt-0.5 size-4 shrink-0" />
-          <span>{modelUnavailable}</span>
-        </div>
+      {[signedOut, modelUnavailable].map(
+        (line) =>
+          line && (
+            <div
+              key={line}
+              role="status"
+              className="flex items-start gap-2 border-b border-amber-500/30 bg-amber-500/5 px-6 py-2 text-sm text-amber-500"
+            >
+              <CircleAlert className="mt-0.5 size-4 shrink-0" />
+              <span>{line}</span>
+            </div>
+          )
       )}
 
       {runtime.error && (

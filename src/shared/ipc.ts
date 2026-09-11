@@ -10,7 +10,7 @@ import type {
 import type { Conversation, ConversationPage } from './conversation'
 import type { ModelAccess } from './model-access'
 import type { SessionOverridePatch } from './session-overrides'
-import type { LoginStatus } from './login'
+import type { LoginSnapshot } from './login'
 import type { UpdateSnapshot } from './updates'
 import type { HotkeyFailure } from './hotkeys'
 import type { AppSettings } from './settings'
@@ -318,13 +318,15 @@ export type OpenRoomApi = {
   onQuotaChanged: (listener: (limit: RateLimitStatus | null) => void) => () => void
 
   /**
-   * Whether the machine's Claude Code login is usable. Checked at launch and
-   * again on request; `unknown` means the check itself could not run, and
-   * agents are still allowed to try.
+   * The Claude Code logins agents can run on: the host's and one per WSL
+   * distro some agent uses. Checked at launch and again on request;
+   * `unknown` means a check could not run, and agents are still allowed to
+   * try. `loginGate` in `@shared/login` decides whether the window is the
+   * first-run screen.
    */
-  getLogin: () => Promise<LoginStatus>
-  recheckLogin: () => Promise<LoginStatus>
-  onLoginChanged: (listener: (status: LoginStatus) => void) => () => void
+  getLogin: () => Promise<LoginSnapshot>
+  recheckLogin: () => Promise<LoginSnapshot>
+  onLoginChanged: (listener: (snapshot: LoginSnapshot) => void) => () => void
 
   /**
    * Which models the signed-in account can use, asked of the bundled CLI
