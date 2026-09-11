@@ -23,7 +23,7 @@ const toolUse = (): TranscriptEntry =>
     type: 'assistant',
     message: {
       role: 'assistant',
-      content: [{ type: 'tool_use', id: 't', name: 'Bash', input: {} }]
+      content: [{ type: 'tool_use', id: 't', name: 'Bash', input: { command: 'ls' } }]
     }
   })
 const toolResult = (): TranscriptEntry =>
@@ -79,9 +79,76 @@ describe('foldTurns', () => {
     expect(kinds(rows)).toEqual(['entry', 'fold:Worked for 4s · $0.0651', 'entry', 'after'])
   })
 
-  it('never folds a turn that is still running', () => {
+  it('shows each turn its own cost, since the result total is the session total', () => {
+    const turn = (at: number, total: number): TranscriptEntry[] => [
+      prompt('go', at),
+      toolUse(),
+      toolResult(),
+      assistantText('done'),
+      entry(
+        { type: 'result', subtype: 'success', is_error: false, total_cost_usd: total },
+        {
+          receivedAt: at + 1000
+        }
+      )
+    ]
+    const rows = foldTurns([...turn(1000, 0.05), ...turn(3000, 0.08), ...turn(5000, 0.02)], {
+      live: true
+    })
+    const labels = rows.flatMap((row) => (row.kind === 'fold' ? [row.label] : []))
+    // 0.05 first, then the step to 0.08; a total that fell means the session
+    // restarted and the count began again.
+    expect(labels).toEqual([
+      'Worked for 1s · $0.0500',
+      'Worked for 1s · $0.0300',
+      'Worked for 1s · $0.0200'
+    ])
+  })
+
+  it("collapses a live turn's activity behind one live row naming the latest call", () => {
     const rows = foldTurns([prompt('go', 1000), thinking(), toolUse()], { live: true })
-    expect(kinds(rows)).toEqual(['entry', 'entry', 'entry'])
+    expect(kinds(rows)).toEqual(['entry', 'fold:Running `ls`'])
+    const fold = rows[1]
+    expect(fold.kind === 'fold' && fold.live).toBe(true)
+    expect(fold.kind === 'fold' && fold.hidden.length).toBe(2)
+  })
+
+  it('keeps prose visible live and gives each run of activity its own row', () => {
+    const rows = foldTurns(
+      [
+        prompt('go', 1000),
+        toolUse(),
+        toolResult(),
+        assistantText('halfway'),
+        thinking(),
+        toolUse()
+      ],
+      { live: true }
+    )
+    expect(kinds(rows)).toEqual(['entry', 'fold:1 call', 'entry', 'fold:Running `ls`'])
+    expect(rows[1].kind === 'fold' && rows[1].live).toBe(false)
+    expect(rows[3].kind === 'fold' && rows[3].live).toBe(true)
+  })
+
+  it('keys the live row by its first entry, so the settled fold inherits the expansion', () => {
+    const p = prompt('go', 1000)
+    const first = thinking()
+    const live = foldTurns([p, first, toolUse()], { live: true })
+    const settled = foldTurns(
+      [p, first, toolUse(), toolResult(), assistantText('done'), result(1500)],
+      {
+        live: true
+      }
+    )
+    const key = (rows: ReturnType<typeof foldTurns>): number | null =>
+      rows.find((row) => row.kind === 'fold')?.key ?? null
+    expect(key(live)).toBe(first.seq)
+    expect(key(settled)).toBe(first.seq)
+  })
+
+  it('does not collapse history, which is never live', () => {
+    const rows = foldTurns([prompt('go'), thinking(), toolUse()], { live: false })
+    expect(kinds(rows)).toEqual(['entry', 'fold:Worked'])
   })
 
   it('leaves a turn with nothing to hide alone', () => {
