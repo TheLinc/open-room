@@ -14,6 +14,7 @@ import { colorHexFor } from '@shared/agent-colors'
 import { isTransient, type AgentRuntime } from '@shared/agent-runtime'
 import type { AgentLoadError } from '@shared/ipc'
 import { cn } from '@/lib/utils'
+import { PixelDesk } from '@/components/pixel-desk'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -98,7 +99,13 @@ function RowMenu({
           <MoreHorizontal />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" onClick={(event) => event.stopPropagation()}>
+      {/* The primitive sizes the menu to its trigger, and the trigger is a
+          28 px icon button, so the labels wrapped. Sized to the content. */}
+      <DropdownMenuContent
+        align="start"
+        className="w-max min-w-40"
+        onClick={(event) => event.stopPropagation()}
+      >
         <DropdownMenuItem onSelect={onEdit}>
           <Pencil />
           Edit agent
@@ -115,7 +122,7 @@ function RowMenu({
           }}
         >
           <Trash2 />
-          {confirming ? 'Click again to delete' : 'Delete agent'}
+          {confirming ? 'Confirm delete' : 'Delete agent'}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
@@ -168,12 +175,15 @@ export function AgentSidebar({
                 <button
                   type="button"
                   onClick={() => onSelect(agent.config.id)}
-                  className="flex min-w-0 flex-1 items-center gap-2.5 px-2 py-2 text-left"
+                  className="flex min-w-0 flex-1 items-center gap-2.5 px-2 py-1.5 text-left"
                 >
-                  <span
-                    aria-hidden
-                    className="size-2.5 shrink-0 rounded-full"
-                    style={{ backgroundColor: colorHexFor(agent.config.color) }}
+                  {/* The agent at its desk, in its colour: the site's crew,
+                      one per row. The status dot after the name keeps
+                      carrying state by rhythm; the figure carries identity. */}
+                  <PixelDesk
+                    variant={agent.config.avatar}
+                    color={colorHexFor(agent.config.color)}
+                    className="h-7 shrink-0"
                   />
                   <span className="flex-1 truncate">{agent.config.name}</span>
                   <StatusDot runtime={runtimeFor(agent.config.id)} />
@@ -204,10 +214,18 @@ export function AgentSidebar({
         </div>
       </ScrollArea>
 
+      {/* An empty desk from the landing page, seat waiting: the app's
+          characters are the site's, and this is the first place a new user
+          looks for them. */}
       {agents.length === 0 && errors.length === 0 && (
-        <p className="px-4 pb-4 text-sm text-muted-foreground">
-          No agents yet. Create one to get started.
-        </p>
+        <div className="flex flex-col items-center gap-3 px-4 pb-6 text-center text-muted-foreground">
+          <PixelDesk className="w-28" />
+          <p className="text-sm">
+            No agents yet.
+            <br />
+            Create one to take the desk.
+          </p>
+        </div>
       )}
     </aside>
   )

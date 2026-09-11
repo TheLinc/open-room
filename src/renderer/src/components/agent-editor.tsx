@@ -32,6 +32,9 @@ import {
   type ToolPermission
 } from '@/lib/agent-form'
 import { cn } from '@/lib/utils'
+import { PixelFigure } from '@/components/pixel-figure'
+import { PIXEL_VARIANTS } from '@shared/pixel-variants'
+import { colorHexFor } from '@shared/agent-colors'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -386,6 +389,47 @@ export function AgentEditor({
                       />
                       <FieldDescription>
                         Identifies the agent in the sidebar and while it is listening.
+                      </FieldDescription>
+                    </Field>
+
+                    <Field>
+                      <FieldLabel>Character</FieldLabel>
+                      <Controller
+                        control={form.control}
+                        name="avatar"
+                        render={({ field }) => {
+                          const hex = colorHexFor(form.watch('color'))
+                          return (
+                            <div className="flex flex-wrap gap-2">
+                              {PIXEL_VARIANTS.map((variant) => (
+                                <button
+                                  key={variant.id}
+                                  type="button"
+                                  aria-label={variant.label}
+                                  title={variant.label}
+                                  aria-pressed={field.value === variant.id}
+                                  onClick={() => field.onChange(variant.id)}
+                                  className={cn(
+                                    'flex h-16 w-16 items-center justify-center rounded-md border-2 p-2 transition-colors',
+                                    field.value === variant.id
+                                      ? 'border-foreground bg-muted'
+                                      : 'border-transparent hover:bg-muted/50'
+                                  )}
+                                >
+                                  <PixelFigure
+                                    variant={variant.id}
+                                    color={hex}
+                                    className="h-full"
+                                  />
+                                </button>
+                              ))}
+                            </div>
+                          )
+                        }}
+                      />
+                      <FieldDescription>
+                        The character, in the agent&apos;s colour. At its desk beside its name in the
+                        sidebar.
                       </FieldDescription>
                     </Field>
 
@@ -995,7 +1039,7 @@ export function AgentEditor({
                 onBlur={() => setConfirmingDelete(false)}
               >
                 <Trash2 />
-                {confirmingDelete ? 'Click again to delete' : 'Delete'}
+                {confirmingDelete ? 'Confirm delete' : 'Delete'}
               </Button>
             )}
 

@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { AGENT_COLOR_IDS } from './agent-colors'
+import { DEFAULT_PIXEL_VARIANT, PIXEL_VARIANT_IDS } from './pixel-variants'
 
 /**
  * The agent domain model, shared by main (validation, persistence) and
@@ -122,6 +123,12 @@ export const agentConfigSchema = z.object({
   id: z.string().regex(/^[a-z0-9-]+$/, 'Invalid agent id'),
   name: agentNameSchema,
   color: z.enum(AGENT_COLOR_IDS),
+  /**
+   * Which of the landing page's five pixel characters stands for the agent,
+   * drawn in `color`. Defaulted so a config written before the field
+   * existed still has a face.
+   */
+  avatar: z.enum(PIXEL_VARIANT_IDS).default(DEFAULT_PIXEL_VARIANT),
   model: z.enum(MODEL_IDS),
   effort: z.enum(EFFORT_LEVELS).optional(),
   fallbackModel: z.enum(MODEL_IDS).optional(),
@@ -217,6 +224,7 @@ export function createDefaultAgent(name: string, workspacePath: string, color: s
       id: slugifyAgentName(name),
       name: name.trim(),
       color,
+      avatar: DEFAULT_PIXEL_VARIANT,
       model: 'claude-sonnet-5',
       workspacePath,
       mcpServers: {},

@@ -56,6 +56,7 @@ describe('agentConfigSchema', () => {
     // running in its workspace.
     expect(parsed.worktrees).toBe(false)
     expect(parsed.tts).toEqual({ enabled: false })
+    expect(parsed.avatar).toBe('clawd')
     expect(parsed.mcpServers).toEqual({})
   })
 

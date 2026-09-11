@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { PIXEL_VARIANT_IDS } from '@shared/pixel-variants'
 import {
   AGENT_COLOR_IDS,
   agentNameSchema,
@@ -38,6 +39,7 @@ export const agentFormSchema = z
   .object({
     name: agentNameSchema,
     color: z.enum(AGENT_COLOR_IDS),
+    avatar: z.enum(PIXEL_VARIANT_IDS),
     workspacePath: z.string().min(1, 'Choose a workspace folder'),
     model: z.enum(MODEL_IDS),
     effort: z.union([z.enum(EFFORT_LEVELS), z.literal(OPTIONAL_SELECT)]),
@@ -136,6 +138,7 @@ export function toFormValues(agent: Agent, tools: readonly string[]): AgentFormV
   return {
     name: config.name,
     color: config.color,
+    avatar: config.avatar,
     workspacePath: config.workspacePath,
     model: config.model,
     effort: config.effort ?? OPTIONAL_SELECT,
@@ -181,6 +184,7 @@ export function toAgent(values: AgentFormValues, id?: string): Agent {
       id: id ?? slugifyAgentName(values.name),
       name: values.name.trim(),
       color: values.color,
+      avatar: values.avatar,
       model: values.model,
       ...(values.effort ? { effort: values.effort } : {}),
       ...(values.fallbackModel ? { fallbackModel: values.fallbackModel } : {}),

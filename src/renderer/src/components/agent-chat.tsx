@@ -562,7 +562,9 @@ export function AgentChat({
                 <MoreHorizontal />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
+            {/* Sized for the two-line items: the primitive would match the
+                icon trigger's width and wrap every description. */}
+            <DropdownMenuContent align="end" className="w-96">
               {agent.config.persistSession && (
                 <DropdownMenuItem
                   disabled={!conversations.active || conversations.active.archivedAt !== undefined}
