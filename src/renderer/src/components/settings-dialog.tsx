@@ -19,6 +19,7 @@ import {
   type SettingsHighlight,
   type SettingsPage
 } from '@/lib/dialog-pages'
+import { describeCheck } from '@/lib/update-check-line'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -45,21 +46,6 @@ const SYSTEM_DEFAULT = '__default__'
  * the same webcam again, which is three ways of saying two things.
  */
 const ALIASES = new Set(['default', 'communications'])
-
-/** One line under "Check now": what the last check found, against what is running. */
-function describeCheck(status: UpdateStatus, version: string): string {
-  const running = version ? `Running ${version}.` : ''
-  switch (status.state) {
-    case 'unchecked':
-      return running
-    case 'current':
-      return `${running} This is the latest release.`.trim()
-    case 'available':
-      return `${running} ${status.release.version} is available.`.trim()
-    case 'failed':
-      return `${running} Could not check: ${status.message}`.trim()
-  }
-}
 
 /** Windows appends a USB vendor:product pair that means nothing to a user. */
 function deviceLabel(label: string): string {
