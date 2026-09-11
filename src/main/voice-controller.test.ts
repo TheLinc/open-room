@@ -24,7 +24,13 @@ function harness(overrides: Partial<VoiceControllerDeps> = {}) {
     stopCapture: vi.fn(),
     discardCapture: vi.fn()
   }
-  const sidecar = { transcribe: vi.fn().mockResolvedValue('deploy the branch') }
+  const live = {
+    start: vi.fn().mockResolvedValue(undefined),
+    feed: vi.fn(),
+    finish: vi.fn().mockResolvedValue('deploy the branch'),
+    cancel: vi.fn()
+  }
+  const sidecar = { live }
   // `send` takes the Agent object, not an id — see AgentSupervisor.send.
   const supervisor = { send: vi.fn().mockResolvedValue({ ok: true }) }
   const sideQuestions = { ask: vi.fn().mockResolvedValue({ ok: true, answer: 'It is deployed.' }) }
@@ -273,7 +279,8 @@ describe('VoiceController', () => {
 
     await speak(controller)
 
-    expect(sidecar.transcribe).toHaveBeenCalled()
+    expect(sidecar.live.start).toHaveBeenCalled()
+    expect(sidecar.live.finish).toHaveBeenCalled()
     expect(supervisor.send).toHaveBeenCalledWith(ATLAS, 'deploy the branch', [], { byVoice: true })
     expect(lastState().phase).toBe('dispatched')
     expect(lastState().transcript).toBe('deploy the branch')
@@ -281,7 +288,7 @@ describe('VoiceController', () => {
 
   it('dispatches nothing when the transcript is empty', async () => {
     const { controller, sidecar, supervisor, lastState } = harness()
-    sidecar.transcribe.mockResolvedValue('')
+    sidecar.live.finish.mockResolvedValue('')
 
     await speak(controller)
 
@@ -291,7 +298,7 @@ describe('VoiceController', () => {
 
   it('surfaces a transcription failure rather than blipping forever', async () => {
     const { controller, sidecar, supervisor, lastState } = harness()
-    sidecar.transcribe.mockRejectedValue(new Error('No speech-to-text model is loaded.'))
+    sidecar.live.finish.mockRejectedValue(new Error('No speech-to-text model is loaded.'))
 
     await speak(controller)
 

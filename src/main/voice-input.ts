@@ -28,6 +28,8 @@ export type CaptureEvent =
   | { type: 'stopRequested' }
   | { type: 'cancelRequested' }
   | { type: 'audioReady' }
+  /** The live transcript settled a little more. */
+  | { type: 'partial'; committed: string; tentative: string }
   | { type: 'transcript'; text: string }
   | { type: 'failed'; message: string }
   | { type: 'dismiss' }
@@ -41,6 +43,7 @@ export type CaptureState = {
   aside: boolean
   queued: boolean
   answer: string
+  partial: { committed: string; tentative: string }
 }
 
 export type CaptureCommand =
@@ -60,7 +63,8 @@ export const IDLE_CAPTURE: CaptureState = {
   message: '',
   aside: false,
   queued: false,
-  answer: ''
+  answer: '',
+  partial: { committed: '', tentative: '' }
 }
 
 type Result = { state: CaptureState; commands: CaptureCommand[] }
@@ -146,6 +150,15 @@ export function reduce(state: CaptureState, event: CaptureEvent): Result {
     case 'audioReady':
       if (state.phase !== 'transcribing') return { state, commands: [] }
       return { state, commands: ['transcribe'] }
+
+    case 'partial':
+      // Only while the audio is in play: a partial that lands after the
+      // final text would put stale words on a dispatched bubble.
+      if (!isActive(state.phase)) return { state, commands: [] }
+      return {
+        state: { ...state, partial: { committed: event.committed, tentative: event.tentative } },
+        commands: []
+      }
 
     case 'transcript': {
       if (state.phase !== 'transcribing') return { state, commands: [] }

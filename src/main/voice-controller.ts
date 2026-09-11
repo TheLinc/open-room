@@ -22,7 +22,15 @@ import {
 
 export type VoiceControllerDeps = {
   overlay: { send: (state: OverlayState) => void; hide: () => void }
-  sidecar: { transcribe: (samples: Float32Array) => Promise<string> }
+  /** The live capture: opened on start, fed as chunks arrive, finished for the text. */
+  sidecar: {
+    live: {
+      start: () => Promise<void>
+      feed: (samples: Float32Array) => void
+      finish: () => Promise<string>
+      cancel: () => void
+    }
+  }
   /** `AgentSupervisor.send` takes the Agent object, not an id. */
   supervisor: {
     send: (
@@ -143,7 +151,18 @@ export class VoiceController {
     this.apply({ type: 'spoken', agentId, text, aside })
   }
 
-  /** A finished capture, straight from the overlay. */
+  /** One chunk of the open capture, straight from the overlay. */
+  onChunkBase64(pcm: string): void {
+    if (this.state.phase !== 'listening') return
+    this.deps.sidecar.live.feed(decodePcm(pcm))
+  }
+
+  /** The live transcript settled a little more. */
+  onPartial(partial: { committed: string; tentative: string }): void {
+    this.apply({ type: 'partial', ...partial })
+  }
+
+  /** The end of a capture: whatever the overlay still held past the last chunk. */
   onAudioBase64(pcm: string): Promise<void> {
     return this.onAudio(decodePcm(pcm))
   }
@@ -152,7 +171,8 @@ export class VoiceController {
     this.apply({ type: 'audioReady' })
 
     try {
-      const text = await this.deps.sidecar.transcribe(samples)
+      this.deps.sidecar.live.feed(samples)
+      const text = await this.deps.sidecar.live.finish()
       this.apply({ type: 'transcript', text })
     } catch (error) {
       this.apply({
@@ -195,6 +215,9 @@ export class VoiceController {
   private run(command: CaptureCommand): void {
     switch (command) {
       case 'start-audio':
+        // The session opens alongside the microphone. A failure here (no
+        // model loaded) surfaces when `finish` is asked for the text.
+        void this.deps.sidecar.live.start().catch(() => {})
         this.deps.startCapture()
         // Escape exists only for the life of a capture: the overlay is
         // `focusable: false` and can never receive a keypress itself, and
@@ -208,6 +231,7 @@ export class VoiceController {
         break
 
       case 'discard-audio':
+        this.deps.sidecar.live.cancel()
         this.deps.discardCapture()
         this.deps.unregisterEscape()
         break
@@ -301,7 +325,8 @@ export class VoiceController {
       message: this.state.message,
       aside: this.state.aside,
       queued: this.state.queued,
-      answer: this.state.answer
+      answer: this.state.answer,
+      partial: this.state.partial
     }
   }
 }

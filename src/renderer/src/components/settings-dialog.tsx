@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Download, Loader2 } from 'lucide-react'
-import { findEntry, formatBytes, totalBytes } from '@shared/model-catalog'
+import { STT_MODEL_ID, findEntry, formatBytes, totalBytes } from '@shared/model-catalog'
 import type { HotkeyFailure } from '@shared/hotkeys'
 import type { MicrophoneDevice } from '@shared/voice-input'
 import type { SttStatus } from '@shared/voice-rpc'
@@ -35,7 +35,6 @@ import {
 } from '@/components/ui/select'
 
 /** The only speech model Phase 5a wires up. */
-const STT_MODEL_ID = 'whisper-tiny-en'
 
 /** Radix Select cannot hold an empty string, and empty is "system default". */
 const SYSTEM_DEFAULT = '__default__'

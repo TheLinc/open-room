@@ -33,9 +33,39 @@ export type VoiceRequest =
       /** Base64 of a Float32Array of 16 kHz mono samples. */
       params: { pcm: string }
     }
+  /**
+   * A live capture: audio arrives in chunks while the user talks and is
+   * decoded as it grows, with partials sent back as notifications. One live
+   * session at a time; `startLive` replaces any that is open.
+   */
+  | { id: number; method: 'startLive' }
+  | { id: number; method: 'feedLive'; params: { pcm: string } }
+  /** Ends the session and returns the whole text as `{ text }`. */
+  | { id: number; method: 'finishLive' }
+  | { id: number; method: 'cancelLive' }
 
 export type VoiceResponse =
   { id: number; ok: true; result?: unknown } | { id: number; ok: false; error: string }
+
+/**
+ * Sidecar → main without a request to answer. The only one so far is the
+ * live transcript settling; it has no id, which is how the client tells it
+ * from a response.
+ */
+export type VoiceNotification = {
+  event: 'partial'
+  committed: string
+  tentative: string
+}
+
+export function isVoiceNotification(value: unknown): value is VoiceNotification {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    !('id' in value) &&
+    (value as { event?: unknown }).event === 'partial'
+  )
+}
 
 /** Whether the neural model is present and usable. */
 export type KokoroStatus = {

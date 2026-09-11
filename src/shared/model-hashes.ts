@@ -16,6 +16,34 @@
 export type ModelHash = { sha256: string; sizeBytes: number }
 
 export const MODEL_HASHES: Record<string, ModelHash> = {
+  'moonshine-base-en/config.json': {
+    sha256: 'fab7241d1e9fc6c2370c4c6dfb5da79bb54d67ed9ab6b507ac51d29d2abe01d1',
+    sizeBytes: 922
+  },
+  'moonshine-base-en/generation_config.json': {
+    sha256: 'f9b3f711b57be7def2e50a8942f64f36ee0a55fad5b84ff93a687b6c5bcc1d44',
+    sizeBytes: 147
+  },
+  'moonshine-base-en/onnx/decoder_model_merged.onnx': {
+    sha256: '58778763ca8438963190244d6b26572bdca2cedec56a4b91e828f3f2d69ef3c5',
+    sizeBytes: 166211345
+  },
+  'moonshine-base-en/onnx/encoder_model.onnx': {
+    sha256: '153e128e7abd64a74ee47f2c3f585c3171c4d46cbb368b032827934c4e01e779',
+    sizeBytes: 80818781
+  },
+  'moonshine-base-en/preprocessor_config.json': {
+    sha256: 'fa43a7017ef85cd1d0fba0d9aae77c8adb16990ae6f11115631f41ec5d8aa679',
+    sizeBytes: 128
+  },
+  'moonshine-base-en/tokenizer_config.json': {
+    sha256: 'edaee394565d428ea98a663ae7209cdcfeefc5585c42d7a570ff7c986df2cd15',
+    sizeBytes: 135735
+  },
+  'moonshine-base-en/tokenizer.json': {
+    sha256: '7b913404bdd039af4756783218af4440bc07fb7d6d8258d677e34f95b3ec416f',
+    sizeBytes: 3761754
+  },
   'silero-vad/silero_vad.onnx': {
     sha256: 'a4a068cd6cf1ea8355b84327595838ca748ec29a25bc91fc82e6c299ccdc5808',
     sizeBytes: 2243022

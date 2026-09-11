@@ -4,6 +4,10 @@ import { resolveMicrophone } from '@shared/voice-input'
 // `new URL('./pcm-worklet.ts', import.meta.url)` would emit the TypeScript
 // source as an asset and the browser would choke on it at `addModule`.
 import pcmWorkletUrl from './pcm-worklet.ts?worker&url'
+import type { WorkletMessage } from './pcm-worklet'
+
+/** How often a streaming capture posts a chunk. The sidecar decodes on its own clock. */
+const CHUNK_MS = 300
 
 /**
  * Owns the microphone.
@@ -37,8 +41,14 @@ export class Capture {
   private frame = new Float32Array(1024)
   private pending: ((samples: Float32Array) => void) | null = null
 
-  /** Opens the microphone and starts collecting. Rejects if it cannot. */
-  async start(): Promise<void> {
+  /**
+   * Opens the microphone and starts collecting. Rejects if it cannot.
+   *
+   * With `onChunk`, audio streams out every `CHUNK_MS` as it is captured
+   * and `stop` returns only the tail past the last chunk; without it, the
+   * whole capture is held and returned on `stop` or `flush`.
+   */
+  async start(options: { onChunk?: (samples: Float32Array) => void } = {}): Promise<void> {
     // Idempotent: a second trigger arriving before the first teardown should
     // not leave an orphaned stream holding the microphone open.
     this.teardown()
@@ -59,10 +69,20 @@ export class Capture {
     this.analyser.fftSize = 2048
 
     this.node = new AudioWorkletNode(context, 'pcm-collector')
-    this.node.port.onmessage = (event: MessageEvent<Float32Array>): void => {
+    this.node.port.onmessage = (event: MessageEvent<WorkletMessage>): void => {
+      if (event.data.type === 'chunk') {
+        options.onChunk?.(event.data.samples)
+        return
+      }
       const resolve = this.pending
       this.pending = null
-      resolve?.(event.data)
+      resolve?.(event.data.samples)
+    }
+    if (options.onChunk) {
+      this.node.port.postMessage({
+        type: 'stream',
+        everySamples: Math.round((CHUNK_MS / 1000) * 16_000)
+      })
     }
 
     source.connect(this.analyser)

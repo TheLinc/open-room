@@ -3,17 +3,16 @@ import { join } from 'node:path'
 import { env, pipeline, type AutomaticSpeechRecognitionPipeline } from '@huggingface/transformers'
 
 /**
- * Speech to text via Whisper.
+ * Speech to text on transformers.js and onnxruntime, the same stack Kokoro
+ * already uses, so voice input adds a model download rather than a second
+ * inference engine. The plan originally called for whisper.cpp, which would
+ * have meant native bindings and a separate binary for no measured benefit.
  *
- * Runs on transformers.js and onnxruntime, the same stack Kokoro already
- * uses, so voice input adds a model download rather than a second inference
- * engine. The plan originally called for whisper.cpp, which would have meant
- * native bindings and a separate binary for no measured benefit.
- *
- * `tiny.en` is the default on measurement: for a 2.6s clip it transcribed in
- * 387ms against `base.en`'s 621ms, with identical output on the samples
- * tested. Wake words and short commands are what this handles, and tiny is
- * comfortably accurate enough for them.
+ * The model is Moonshine (`STT_MODEL_ID` in the catalog), chosen over
+ * Whisper tiny on measurement: the same words, with punctuation and casing,
+ * at a cost that scales with the audio rather than Whisper's fixed 30 s
+ * window, which is what lets `LiveSession` decode the growing capture once a
+ * second. The Whisper entries stay loadable; `transcribe` chunks for them.
  */
 
 /** Whisper is trained on 16 kHz mono; anything else must be resampled first. */
@@ -33,6 +32,8 @@ export function sttModelRoot(): string {
 
 let instance: AutomaticSpeechRecognitionPipeline | null = null
 let loading: Promise<AutomaticSpeechRecognitionPipeline> | null = null
+/** Which catalog model `instance` is, since the decode options depend on it. */
+let loadedId = ''
 
 export function isSttLoaded(): boolean {
   return instance !== null
@@ -70,6 +71,7 @@ export function loadStt(
     })
       .then((asr) => {
         instance = asr
+        loadedId = modelId
         return asr
       })
       .catch((error) => {
@@ -97,7 +99,12 @@ export async function transcribe(samples: Float32Array): Promise<string> {
   // hide a 147 MB download behind what looks like a transcription call.
   if (!instance) throw new Error('No speech-to-text model is loaded.')
 
-  const result = await instance(samples)
+  // Whisper's window is 30 s and the pipeline truncates past it unless told
+  // to chunk. Measured on a 42 s clip: 84 of 118 words came back without
+  // this, with no error, so a long dictated prompt lost its second half
+  // silently. Moonshine has no such window and takes the audio as it is.
+  const options = loadedId.startsWith('whisper') ? { chunk_length_s: 30, stride_length_s: 5 } : {}
+  const result = await instance(samples, options)
   const text = Array.isArray(result) ? result[0]?.text : result.text
 
   return cleanTranscript(text ?? '')

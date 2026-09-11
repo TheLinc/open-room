@@ -8,7 +8,8 @@ const listening: CaptureState = {
   message: '',
   aside: false,
   queued: false,
-  answer: ''
+  answer: '',
+  partial: { committed: '', tentative: '' }
 }
 
 /** Drives the reducer through a sequence, returning the state it lands in. */

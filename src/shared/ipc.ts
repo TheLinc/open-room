@@ -145,7 +145,9 @@ export const IpcChannel = {
   overlayStopCapture: 'overlay:stop-capture',
   /** main → overlay, close the microphone and throw the audio away. */
   overlayDiscardCapture: 'overlay:discard-capture',
-  /** overlay → main, the finished capture as base64 PCM. */
+  /** overlay → main, one chunk of the open capture as base64 PCM, while the user talks. */
+  overlayChunk: 'overlay:chunk',
+  /** overlay → main, the tail of the capture past the last chunk, as base64 PCM. */
   overlayAudio: 'overlay:audio',
   /** main → overlay, begin or end always-on wake listening. */
   overlayStartWake: 'overlay:start-wake',

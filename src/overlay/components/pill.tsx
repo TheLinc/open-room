@@ -29,8 +29,13 @@ export function Pill({
   const dispatched = state.phase === 'dispatched'
   const asking = state.phase === 'asking'
   const answered = state.phase === 'answered'
-  // The bubbles with a second line: a prompt, a question, or an answer.
-  const wide = dispatched || asking || answered
+  // The transcript settling while the microphone is open.
+  const live =
+    (state.phase === 'listening' || state.phase === 'transcribing') &&
+    (state.partial.committed !== '' || state.partial.tentative !== '')
+  // The bubbles with a second line: a prompt, a question, an answer, or the
+  // live transcript.
+  const wide = dispatched || asking || answered || live
 
   const glyph =
     state.phase === 'listening' ? (
@@ -102,6 +107,26 @@ export function Pill({
       {state.aside && wide ? (
         <div className="text-[9px] leading-normal tracking-wide text-or-fg/50 uppercase">
           Side question
+        </div>
+      ) : null}
+
+      {/* Committed words in full, the tentative tail dimmed: what two decodes
+          agreed on against what the latest one proposes. Anchored at the
+          bottom so a long dictation shows its newest words. */}
+      {live ? (
+        <div
+          className="flex max-h-[4.5em] flex-col justify-end overflow-hidden text-[10px] leading-[1.5]"
+          aria-live="polite"
+        >
+          <div>
+            <span className="text-or-fg/85">{state.partial.committed}</span>
+            {state.partial.tentative ? (
+              <span className="text-or-fg/45">
+                {state.partial.committed ? ' ' : ''}
+                {state.partial.tentative}
+              </span>
+            ) : null}
+          </div>
         </div>
       ) : null}
 

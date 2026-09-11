@@ -9,7 +9,9 @@ import {
   type VadStatus,
   type SystemVoice,
   type VoiceRequest,
-  type VoiceResponse
+  type VoiceResponse,
+  isVoiceNotification,
+  type VoiceNotification
 } from '@shared/voice-rpc'
 
 /**
@@ -32,6 +34,7 @@ type Pending = {
 export class VoiceSidecar {
   private child: ChildProcess | null = null
   private buffer = ''
+  private listeners = new Set<(notification: VoiceNotification) => void>()
   private nextId = 1
   private readonly pending = new Map<number, Pending>()
   private restarts = 0
@@ -108,11 +111,21 @@ export class VoiceSidecar {
     this.child = null
   }
 
+  /** Sidecar → main messages that answer no request: the live transcript settling. */
+  onNotification(listener: (notification: VoiceNotification) => void): () => void {
+    this.listeners.add(listener)
+    return () => this.listeners.delete(listener)
+  }
+
   private onData(chunk: string): void {
     const { messages, rest } = decodeMessages(this.buffer + chunk)
     this.buffer = rest
 
     for (const message of messages) {
+      if (isVoiceNotification(message)) {
+        for (const listener of this.listeners) listener(message)
+        continue
+      }
       const response = message as VoiceResponse
       const pending = this.pending.get(response.id)
       if (!pending) continue
@@ -232,6 +245,29 @@ export class VoiceSidecar {
       params: { pcm: encodePcm(samples) }
     }))
     return (result ?? { speech: false }) as ListenResult
+  }
+
+  /** Opens a live capture; partials arrive through `onNotification`. */
+  async startLive(): Promise<void> {
+    await this.request((id) => ({ id, method: 'startLive' }))
+  }
+
+  /** One chunk of the open capture. Nothing to await: the answer is a partial. */
+  feedLive(samples: Float32Array): void {
+    void this.request((id) => ({
+      id,
+      method: 'feedLive',
+      params: { pcm: encodePcm(samples) }
+    })).catch(() => {})
+  }
+
+  async finishLive(): Promise<string> {
+    const result = await this.request((id) => ({ id, method: 'finishLive' }))
+    return (result as { text: string }).text
+  }
+
+  cancelLive(): void {
+    void this.request((id) => ({ id, method: 'cancelLive' })).catch(() => {})
   }
 
   async transcribe(samples: Float32Array): Promise<string> {

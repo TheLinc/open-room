@@ -103,7 +103,49 @@ function whisperFiles(id: string, base: string): ModelFile[] {
  * markedly slower than fp32 — so the smaller file would buy a worse model.
  * That is why "tiny" still means 147 MB.
  */
+const MOONSHINE = 'https://huggingface.co/onnx-community/moonshine-base-ONNX/resolve/main'
+
+/**
+ * The same layout as Whisper's, measured the same way: what the pipeline
+ * wrote to a scratch cache when it loaded `moonshine-base-ONNX` at fp32.
+ */
+const MOONSHINE_FILES = [
+  'onnx/decoder_model_merged.onnx',
+  'onnx/encoder_model.onnx',
+  'tokenizer.json',
+  'tokenizer_config.json',
+  'config.json',
+  'generation_config.json',
+  'preprocessor_config.json'
+] as const
+
+/**
+ * The speech-to-text model the app runs. One id rather than a setting: the
+ * sidecar loads it and the settings dialog describes its download, and the
+ * two must agree.
+ *
+ * Moonshine rather than Whisper, on measurement (2026-09-11, three clips of
+ * 5, 13 and 42 s): the same words as Whisper tiny, with punctuation and
+ * casing, at a cost that scales with the audio rather than Whisper's fixed
+ * 30 s window (1 s of audio decoded in 55 ms against Whisper's 280 ms), which
+ * is what makes re-decoding the live buffer once a second affordable. The
+ * Whisper entries stay catalogued for anyone who has them installed.
+ */
+export const STT_MODEL_ID = 'moonshine-base-en'
+
 export const CATALOG: CatalogEntry[] = [
+  {
+    id: 'moonshine-base-en',
+    kind: 'stt',
+    label: 'Moonshine Base (English)',
+    description: 'Fast, with punctuation. Live transcript while you talk.',
+    license: 'MIT',
+    attribution: 'Moonshine — Useful Sensors; ONNX conversion by onnx-community',
+    homepage: 'https://huggingface.co/onnx-community/moonshine-base-ONNX',
+    files: MOONSHINE_FILES.map((name) =>
+      recordedFile('moonshine-base-en', name, `${MOONSHINE}/${name}`)
+    )
+  },
   {
     id: 'whisper-tiny-en',
     kind: 'stt',

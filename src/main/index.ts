@@ -568,7 +568,15 @@ const controller = new VoiceController({
     },
     hide: () => overlay.hide()
   },
-  sidecar: voice,
+  // The live capture, decoded in the sidecar as its audio arrives.
+  sidecar: {
+    live: {
+      start: () => voice.startLive(),
+      feed: (samples) => voice.feedLive(samples),
+      finish: () => voice.finishLive(),
+      cancel: () => voice.cancelLive()
+    }
+  },
   supervisor,
   sideQuestions,
   readSettings: () => store.readSettings(),
@@ -895,8 +903,23 @@ app.whenReady().then(async () => {
     overlay.setHitBox(box)
   })
 
+  ipcMain.on(IpcChannel.overlayChunk, (_event, pcm: string) => {
+    controller.onChunkBase64(pcm)
+  })
+
   ipcMain.on(IpcChannel.overlayAudio, (_event, pcm: string) => {
     void controller.onAudioBase64(pcm)
+  })
+
+  // The transcript settling while the user talks, from the sidecar's decode
+  // loop to the pill.
+  voice.onNotification((notification) => {
+    if (notification.event === 'partial') {
+      controller.onPartial({
+        committed: notification.committed,
+        tentative: notification.tentative
+      })
+    }
   })
 
   // Validated rather than trusted: the payload is whatever the window holding

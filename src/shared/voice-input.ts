@@ -34,6 +34,11 @@ export type OverlayState = {
   queued: boolean
   /** Shown in the `answered` phase. */
   answer: string
+  /**
+   * The transcript settling while the user talks: words two decodes agreed
+   * on, then the tail the latest decode proposes.
+   */
+  partial: { committed: string; tentative: string }
 }
 
 export const HIDDEN_OVERLAY: OverlayState = {
@@ -46,7 +51,8 @@ export const HIDDEN_OVERLAY: OverlayState = {
   message: '',
   aside: false,
   queued: false,
-  answer: ''
+  answer: '',
+  partial: { committed: '', tentative: '' }
 }
 
 /** One entry in the working-agent HUD. */

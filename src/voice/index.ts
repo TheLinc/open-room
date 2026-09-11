@@ -2,9 +2,11 @@ import {
   decodeMessages,
   encodeMessage,
   type VoiceRequest,
-  type VoiceResponse
+  type VoiceResponse,
+  type VoiceNotification
 } from '@shared/voice-rpc'
-import { findEntry } from '@shared/model-catalog'
+import { STT_MODEL_ID, findEntry } from '@shared/model-catalog'
+import { LiveSession } from './live-session'
 import { listSystemVoices, synthesize } from './synth'
 import { ModelManager } from './model-manager'
 import { WavPlayer } from './player'
@@ -29,14 +31,12 @@ const player = new WavPlayer()
 // downloads to one directory while the loader looks in another.
 const models = new ModelManager(process.env.OPEN_ROOM_MODELS || undefined)
 
-/**
- * The only speech-to-text model this phase wires up.
- *
- * `whisper-base-en` is catalogued and downloadable but not selectable yet —
- * choosing between them is a settings surface Phase 5b can add once there is
- * a reason to prefer the slower one.
- */
-const STT_MODEL_ID = 'whisper-tiny-en'
+/** The one live capture, decoded as its audio arrives. */
+let live: LiveSession | null = null
+
+function notify(notification: VoiceNotification): void {
+  process.stdout.write(encodeMessage(notification))
+}
 
 /** The only voice-activity model, and the gate that makes listening affordable. */
 const VAD_MODEL_ID = 'silero-vad'
@@ -212,6 +212,38 @@ async function handle(request: VoiceRequest): Promise<unknown> {
       const samples = decodeSamples(request.params.pcm)
       return { text: await transcribe(samples) }
     }
+
+    /**
+     * A capture decoded as it grows. `startLive` loads the model if it is
+     * not yet in memory, the same way `transcribe` does, so the first
+     * partial is late rather than the whole capture failing.
+     */
+    case 'startLive': {
+      const { isSttLoaded, loadStt, transcribe } = await sttModule()
+      if (!isSttLoaded()) await loadStt(STT_MODEL_ID)
+      live?.cancel()
+      live = new LiveSession({
+        transcribe,
+        onPartial: (partial) => notify({ event: 'partial', ...partial })
+      })
+      return null
+    }
+
+    case 'feedLive':
+      live?.feed(decodeSamples(request.params.pcm))
+      return null
+
+    case 'finishLive': {
+      const session = live
+      live = null
+      if (!session) throw new Error('No live capture is open.')
+      return { text: await session.finish() }
+    }
+
+    case 'cancelLive':
+      live?.cancel()
+      live = null
+      return null
 
     case 'stop':
       player.stop()

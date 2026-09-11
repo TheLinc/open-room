@@ -139,7 +139,12 @@ const overlay = {
   onDiscardCapture: (listener: () => void): (() => void) =>
     onSignal(IpcChannel.overlayDiscardCapture, listener),
 
-  /** The finished capture, base64 PCM. */
+  /** One chunk of the open capture, base64 PCM, sent while the user talks. */
+  reportChunk: (pcm: string): void => {
+    ipcRenderer.send(IpcChannel.overlayChunk, pcm)
+  },
+
+  /** The end of the capture: whatever was collected past the last chunk, base64 PCM. */
   reportAudio: (pcm: string): void => {
     ipcRenderer.send(IpcChannel.overlayAudio, pcm)
   },

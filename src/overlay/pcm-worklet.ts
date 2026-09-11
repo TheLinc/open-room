@@ -6,10 +6,12 @@
  * waveform is being animated. Dropping audio because a React render ran long
  * is not a trade worth making.
  *
- * The processor keeps every frame and hands the lot over on `flush`, rather
- * than streaming chunks across the port. Whisper needs the whole utterance
- * before it can transcribe anything, so streaming would buy latency we cannot
- * spend and cost a message per 8 ms.
+ * Two modes. Always-on listening keeps every frame and hands the lot over
+ * on `flush`, since a segment is judged whole. A push-to-talk capture
+ * streams: once told to, the processor posts a chunk every `everySamples`
+ * (300 ms, not one per 8 ms quantum) so the sidecar can decode the
+ * transcript while the user is still talking, and `flush` returns only
+ * what came after the last chunk.
  */
 
 /**
@@ -27,6 +29,11 @@ type WorkletCommand =
   | { type: 'flush' }
   /** Throw away everything but the last `keepSamples`, as pre-roll. */
   | { type: 'drop'; keepSamples?: number }
+  /** Post a chunk every `everySamples` instead of holding the audio. */
+  | { type: 'stream'; everySamples: number }
+
+/** What the processor posts back. */
+export type WorkletMessage = { type: 'chunk' | 'flush'; samples: Float32Array }
 declare function registerProcessor(name: string, constructor: new () => AudioWorkletProcessor): void
 
 /**
@@ -42,11 +49,18 @@ const MAX_SAMPLES = 16_000 * 60
 class PcmCollector extends AudioWorkletProcessor {
   private chunks: Float32Array[] = []
   private length = 0
+  /** Streaming when set: the chunk size to post at. */
+  private streamEvery = 0
 
   constructor() {
     super()
     this.port.onmessage = (event: MessageEvent<WorkletCommand>): void => {
       const command = event.data
+
+      if (command.type === 'stream') {
+        this.streamEvery = command.everySamples
+        return
+      }
 
       if (command.type === 'drop') {
         // Everything but a tail of pre-roll. Always-on listening throws away
@@ -59,8 +73,13 @@ class PcmCollector extends AudioWorkletProcessor {
       const merged = this.take()
       // Transferred rather than copied: a 30 s capture is 1.9 MB, and
       // structured-cloning it would duplicate that on the document's heap.
-      this.port.postMessage(merged, [merged.buffer])
+      this.post('flush', merged)
     }
+  }
+
+  private post(type: WorkletMessage['type'], samples: Float32Array): void {
+    const message: WorkletMessage = { type, samples }
+    this.port.postMessage(message, [samples.buffer])
   }
 
   /** Everything collected so far, emptying the buffer. */
@@ -98,6 +117,7 @@ class PcmCollector extends AudioWorkletProcessor {
     // The render quantum is reused between calls, so it has to be copied.
     this.chunks.push(new Float32Array(channel))
     this.length += channel.length
+    if (this.streamEvery > 0 && this.length >= this.streamEvery) this.post('chunk', this.take())
     return true
   }
 }

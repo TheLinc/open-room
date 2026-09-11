@@ -80,7 +80,9 @@ export default function App(): React.JSX.Element | null {
 
     const offStart = window.overlay.onStartCapture(() => {
       void capture
-        .start()
+        // Streamed as it is captured, so the transcript settles on the pill
+        // while the user is still talking.
+        .start({ onChunk: (samples) => window.overlay.reportChunk(encodePcm(samples)) })
         .then(() => {
           endpointer = new Endpointer()
           startedAt = performance.now()
