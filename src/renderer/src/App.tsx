@@ -7,7 +7,9 @@ import { AgentSidebar } from '@/components/agent-sidebar'
 import { AgentChat } from '@/components/agent-chat'
 import { AgentEditor } from '@/components/agent-editor'
 import { SettingsDialog, type SettingsHighlight } from '@/components/settings-dialog'
-import { QuotaBanner } from '@/components/quota-banner'
+import { QuotaBanner, QuotaPill } from '@/components/quota-banner'
+import { useQuota } from '@/hooks/use-quota'
+import { quotaKey } from '@shared/quota'
 import { UpdateBanner } from '@/components/update-banner'
 import { FirstRun } from '@/components/first-run'
 import { loginGate } from '@shared/login'
@@ -37,6 +39,12 @@ function App(): React.JSX.Element {
   // working install must not be locked out by its own diagnostic. The list
   // is part of the decision, so it waits for the list.
   const login = useLogin()
+
+  // The quota banner's dismissal, remembered against the event it was for:
+  // a reached limit collapses to a pill in the title bar, a warning goes.
+  const quota = useQuota()
+  const [dismissedQuota, setDismissedQuota] = useState<string | null>(null)
+  const quotaHidden = dismissedQuota !== null && dismissedQuota === quotaKey(quota)
   const gate = loading
     ? 'open'
     : loginGate(
@@ -101,80 +109,88 @@ function App(): React.JSX.Element {
 
   return (
     <div className="flex h-screen flex-col bg-background text-foreground">
-      <TitleBar />
+      <TitleBar
+        trailing={
+          quotaHidden ? <QuotaPill limit={quota} onExpand={() => setDismissedQuota(null)} /> : null
+        }
+      />
       <UpdateBanner />
-      <QuotaBanner />
+      {!quotaHidden && (
+        <QuotaBanner limit={quota} onDismiss={() => setDismissedQuota(quotaKey(quota))} />
+      )}
 
       {/* `min-h-0` so the row can shrink below its content and let the panes
           scroll, rather than pushing the window taller than the screen. */}
       <div className="flex min-h-0 flex-1 border-t border-border">
-        {gate === 'first-run' ? (
-          <FirstRun
-            snapshot={login}
-            agents={agents.map((a) => a.config)}
-            onRecheck={() => window.openRoom.recheckLogin()}
+        {/* The sidebar stays whatever the login says. The sign-in screen used
+            to replace the whole window, which with no agents left nothing to
+            click: an install whose only usable login is inside a WSL distro
+            could not add the WSL agent that would have opened the app. */}
+        <>
+          <AgentSidebar
+            agents={agents}
+            errors={errors}
+            selectedId={selected?.config.id ?? null}
+            runtimeFor={sessions.runtimeFor}
+            onSelect={setSelectedId}
+            onCreate={openNew}
+            onOpenSettings={() => setSettingsOpen(true)}
+            // The editor is keyed to the selected agent, so editing from a
+            // row selects it first; that is also what a user expects to see
+            // behind the dialog.
+            onEdit={(id) => {
+              setSelectedId(id)
+              openEdit()
+            }}
+            onDelete={(id) => void deleteAgent(id)}
           />
-        ) : (
-          <>
-            <AgentSidebar
-              agents={agents}
-              errors={errors}
-              selectedId={selected?.config.id ?? null}
-              runtimeFor={sessions.runtimeFor}
-              onSelect={setSelectedId}
-              onCreate={openNew}
-              onOpenSettings={() => setSettingsOpen(true)}
-              // The editor is keyed to the selected agent, so editing from a
-              // row selects it first; that is also what a user expects to see
-              // behind the dialog.
-              onEdit={(id) => {
-                setSelectedId(id)
-                openEdit()
-              }}
-              onDelete={(id) => void deleteAgent(id)}
-            />
 
-            <main className="flex min-w-0 flex-1 flex-col">
-              {selected ? (
-                <AgentChat
-                  key={selected.config.id}
-                  agent={selected}
-                  runtime={selectedRuntime}
-                  entries={sessions.entriesFor(selected.config.id)}
-                  truncated={sessions.truncatedFor(selected.config.id)}
-                  permissions={sessions.permissionsFor(selected.config.id)}
-                  conversations={conversations}
-                  onEdit={openEdit}
-                  voiceEnabled={Boolean(settings?.voiceInputEnabled || settings?.wakeWordEnabled)}
-                  archiveRetentionDays={settings?.archiveRetentionDays ?? 30}
-                  onOpenVoiceSettings={() => {
-                    setSettingsHighlight('voice-input')
-                    setSettingsOpen(true)
-                  }}
-                />
-              ) : (
-                <div className="flex flex-1 flex-col items-center justify-center gap-4 p-8 text-center">
-                  <div className="flex flex-col gap-1">
-                    <h2 className="text-lg font-semibold tracking-tight">
-                      {loading ? 'Loading agents…' : 'No agents yet'}
-                    </h2>
-                    {!loading && (
-                      <p className="max-w-sm text-sm text-muted-foreground">
-                        An agent is a named Claude Code session with its own model, tools, and role.
-                        Create one and give it a folder to work in.
-                      </p>
-                    )}
-                  </div>
+          <main className="flex min-w-0 flex-1 flex-col">
+            {gate === 'first-run' ? (
+              <FirstRun
+                snapshot={login}
+                agents={agents.map((a) => a.config)}
+                onRecheck={() => window.openRoom.recheckLogin()}
+              />
+            ) : selected ? (
+              <AgentChat
+                key={selected.config.id}
+                agent={selected}
+                runtime={selectedRuntime}
+                entries={sessions.entriesFor(selected.config.id)}
+                truncated={sessions.truncatedFor(selected.config.id)}
+                permissions={sessions.permissionsFor(selected.config.id)}
+                conversations={conversations}
+                onEdit={openEdit}
+                voiceEnabled={Boolean(settings?.voiceInputEnabled || settings?.wakeWordEnabled)}
+                archiveRetentionDays={settings?.archiveRetentionDays ?? 30}
+                onOpenVoiceSettings={() => {
+                  setSettingsHighlight('voice-input')
+                  setSettingsOpen(true)
+                }}
+              />
+            ) : (
+              <div className="flex flex-1 flex-col items-center justify-center gap-4 p-8 text-center">
+                <div className="flex flex-col gap-1">
+                  <h2 className="text-lg font-semibold tracking-tight">
+                    {loading ? 'Loading agents…' : 'No agents yet'}
+                  </h2>
                   {!loading && (
-                    <Button onClick={openNew}>
-                      <Plus /> New agent
-                    </Button>
+                    <p className="max-w-sm text-sm text-muted-foreground">
+                      An agent is a named Claude Code session with its own model, tools, and role.
+                      Create one and give it a folder to work in.
+                    </p>
                   )}
                 </div>
-              )}
-            </main>
-          </>
-        )}
+                {!loading && (
+                  <Button onClick={openNew}>
+                    <Plus /> New agent
+                  </Button>
+                )}
+              </div>
+            )}
+          </main>
+        </>
       </div>
 
       <AgentEditor

@@ -14,6 +14,31 @@ import type { RateLimitStatus } from './agent-runtime'
 
 export type QuotaSeverity = 'none' | 'warning' | 'reached'
 
+/**
+ * How long until the reported window resets, or null when the payload did
+ * not say or the limit is not worth a timer.
+ *
+ * The event that clears a limit arrives once per turn, so a limit hit at
+ * midnight stayed on screen until someone ran an agent after the reset.
+ * `resetsAt` is the payload's own answer to when it ends; main clears the
+ * banner then and the next turn confirms it either way. Clamped at zero so
+ * a reset already past clears at once.
+ */
+export function msUntilReset(limit: RateLimitStatus | null, now: number): number | null {
+  if (!limit || quotaSeverity(limit) === 'none' || !limit.resetsAt) return null
+  return Math.max(0, limit.resetsAt * 1000 - now)
+}
+
+/**
+ * What a dismissal is remembered against: this window, at this severity,
+ * until this reset. A new event that changes any of them shows the banner
+ * again; the heartbeat repeating the same one does not.
+ */
+export function quotaKey(limit: RateLimitStatus | null): string | null {
+  if (!limit || quotaSeverity(limit) === 'none') return null
+  return `${limit.status}:${limit.rateLimitType ?? ''}:${limit.resetsAt ?? ''}`
+}
+
 export function quotaSeverity(limit: RateLimitStatus | null): QuotaSeverity {
   if (!limit) return 'none'
   if (limit.status === 'rejected') return 'reached'

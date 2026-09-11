@@ -72,7 +72,7 @@ import { IpcChannel } from '@shared/ipc'
 import type { RateLimitStatus } from '@shared/agent-runtime'
 import { pipsFor } from '@shared/pips'
 import { mostRecentAwaiting } from '@shared/awaiting'
-import { describeQuota, quotaSeverity, shouldNotifyQuota } from '@shared/quota'
+import { describeQuota, msUntilReset, quotaSeverity, shouldNotifyQuota } from '@shared/quota'
 import { decodePcm } from '@shared/pcm'
 import {
   isOverlayEvent,
@@ -339,11 +339,27 @@ function updateSnapshot(): UpdateSnapshot {
  * a stall nobody finds. The notification fires on a step up and nothing else
  * — the event itself arrives about once per turn.
  */
+/** Clears a reached or warned limit when its window resets, whether or not a turn runs. */
+let quotaResetTimer: NodeJS.Timeout | null = null
+
 function onQuotaReported(limit: RateLimitStatus): void {
   const previous = accountQuota
   accountQuota = limit
   broadcastQuota(limit)
   void pushHud()
+
+  if (quotaResetTimer) clearTimeout(quotaResetTimer)
+  quotaResetTimer = null
+  const wait = msUntilReset(limit, Date.now())
+  if (wait !== null) {
+    quotaResetTimer = setTimeout(() => {
+      quotaResetTimer = null
+      if (accountQuota !== limit) return
+      accountQuota = null
+      broadcastQuota(null)
+      void pushHud()
+    }, wait)
+  }
 
   if (!shouldNotifyQuota(previous, limit)) return
 

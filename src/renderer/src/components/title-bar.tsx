@@ -25,7 +25,19 @@ import logoUrl from '@/assets/logo.png'
  */
 const IS_MAC = navigator.userAgent.includes('Macintosh')
 
-export function TitleBar(): React.JSX.Element {
+/**
+ * Room on the right for the OS's own caption buttons on Windows, which are
+ * drawn over this strip by `titleBarOverlay`; macOS keeps its buttons on
+ * the left, where `IS_MAC` already reserves the space.
+ */
+const TRAILING_INSET = IS_MAC ? 12 : 148
+
+export function TitleBar({
+  trailing
+}: {
+  /** Small, persistent status that must survive a banner being dismissed. */
+  trailing?: React.ReactNode
+}): React.JSX.Element {
   return (
     <header
       // Tailwind has no utility for this, and it is the one property the
@@ -53,6 +65,11 @@ export function TitleBar(): React.JSX.Element {
         />
         <span className="text-xs font-medium tracking-tight text-foreground/90">Open Room</span>
       </div>
+      {trailing ? (
+        <div className="ml-auto flex items-center" style={{ paddingRight: TRAILING_INSET }}>
+          {trailing}
+        </div>
+      ) : null}
     </header>
   )
 }

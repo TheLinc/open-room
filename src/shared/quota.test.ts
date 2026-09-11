@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import type { RateLimitStatus } from './agent-runtime'
-import { describeQuota, overageBlocked, quotaSeverity, shouldNotifyQuota } from './quota'
+import {
+  describeQuota,
+  msUntilReset,
+  overageBlocked,
+  quotaKey,
+  quotaSeverity,
+  shouldNotifyQuota
+} from './quota'
 
 const reached: RateLimitStatus = { status: 'rejected', rateLimitType: 'five_hour' }
 const warning: RateLimitStatus = { status: 'allowed_warning', rateLimitType: 'five_hour' }
@@ -107,5 +114,36 @@ describe('shouldNotifyQuota', () => {
   it('notifies on the very first event when nothing is known yet', () => {
     expect(shouldNotifyQuota(null, reached)).toBe(true)
     expect(shouldNotifyQuota(null, allowed)).toBe(false)
+  })
+})
+
+describe('msUntilReset', () => {
+  it('counts down to the reset time in the payload, clamped at zero', () => {
+    expect(msUntilReset({ ...reached, resetsAt: 1_000 }, 400_000)).toBe(600_000)
+    expect(msUntilReset({ ...reached, resetsAt: 1_000 }, 5_000_000)).toBe(0)
+  })
+
+  it('sets no timer for an allowed heartbeat or a payload without a reset time', () => {
+    expect(msUntilReset(allowed, 0)).toBeNull()
+    expect(msUntilReset(reached, 0)).toBeNull()
+    expect(msUntilReset(null, 0)).toBeNull()
+  })
+})
+
+describe('quotaKey', () => {
+  it('is stable across the heartbeat repeating the same limit', () => {
+    expect(quotaKey({ ...reached, resetsAt: 1 })).toBe(quotaKey({ ...reached, resetsAt: 1 }))
+  })
+
+  it('changes with the window, the severity or the reset time', () => {
+    const base = quotaKey({ ...reached, resetsAt: 1 })
+    expect(quotaKey({ ...warning, resetsAt: 1 })).not.toBe(base)
+    expect(quotaKey({ ...reached, resetsAt: 2 })).not.toBe(base)
+    expect(quotaKey({ ...reached, rateLimitType: 'seven_day', resetsAt: 1 })).not.toBe(base)
+  })
+
+  it('is null while there is nothing to dismiss', () => {
+    expect(quotaKey(allowed)).toBeNull()
+    expect(quotaKey(null)).toBeNull()
   })
 })

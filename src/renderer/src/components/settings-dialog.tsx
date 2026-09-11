@@ -4,7 +4,6 @@ import { STT_MODEL_ID, findEntry, formatBytes, totalBytes } from '@shared/model-
 import type { HotkeyFailure } from '@shared/hotkeys'
 import type { MicrophoneDevice } from '@shared/voice-input'
 import type { SttStatus } from '@shared/voice-rpc'
-import type { UpdateStatus } from '@shared/updates'
 import type { AppSettings } from '@shared/settings'
 import { useSettings } from '@/hooks/use-settings'
 import { useStaticDialog } from '@/hooks/use-static-dialog'
@@ -20,6 +19,7 @@ import {
   type SettingsPage
 } from '@/lib/dialog-pages'
 import { describeCheck } from '@/lib/update-check-line'
+import { useUpdate } from '@/hooks/use-update'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -85,19 +85,26 @@ export function SettingsDialog({
   // after this opened, and devices come and go while it is open.
   useEffect(() => window.openRoom.onMicrophonesChanged(setMicrophones), [])
 
-  // The update check's last result, and the version it compared against.
-  const [update, setUpdate] = useState<UpdateStatus>({ state: 'unchecked' })
+  // The update check's last result and the action it offers, shared with
+  // the banner so a found update reads the same in both places; plus the
+  // version it compared against.
+  const {
+    snapshot: updateSnapshot,
+    action: updateAct,
+    refusal: updateRefusal,
+    act: runUpdate,
+    recheck: recheckUpdate
+  } = useUpdate()
+  const update = updateSnapshot.status
   const [appVersion, setAppVersion] = useState('')
   const [checking, setChecking] = useState(false)
   useEffect(() => {
-    void window.openRoom.getUpdate().then((snapshot) => setUpdate(snapshot.status))
     void window.openRoom.getAppInfo().then((info) => setAppVersion(info.version))
-    return window.openRoom.onUpdateChanged((snapshot) => setUpdate(snapshot.status))
   }, [])
   const checkNow = async (): Promise<void> => {
     setChecking(true)
     try {
-      setUpdate((await window.openRoom.recheckUpdate()).status)
+      await recheckUpdate()
     } finally {
       setChecking(false)
     }
@@ -173,7 +180,7 @@ export function SettingsDialog({
 
   /**
    * Which switch is waiting on the model download offer. The switches used
-   * to be disabled until Whisper was installed, with the download at the
+   * to be disabled until the speech model was installed, with the download at the
    * bottom of the dialog — a dead control with its explanation somewhere
    * else, which read as broken. Flipping one now offers the download in
    * place; declining cancels the enable (the setting was never written).
@@ -638,21 +645,41 @@ export function SettingsDialog({
                     />
                   </div>
 
+                  {/* Once a version is known, the button is the same action
+                      the banner offers, filled, and "Check now" steps aside:
+                      there is nothing left for it to find. */}
                   <div className="flex items-center gap-3">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      disabled={checking}
-                      onClick={() => void checkNow()}
-                    >
-                      {checking ? <Loader2 className="animate-spin" /> : null}
-                      {checking ? 'Checking…' : 'Check now'}
-                    </Button>
+                    {updateAct ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        disabled={updateAct.kind === 'busy'}
+                        onClick={() => void runUpdate()}
+                      >
+                        {updateAct.kind === 'busy' ? <Loader2 className="animate-spin" /> : null}
+                        {updateAct.label}
+                      </Button>
+                    ) : (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={checking}
+                        onClick={() => void checkNow()}
+                      >
+                        {checking ? <Loader2 className="animate-spin" /> : null}
+                        {checking ? 'Checking…' : 'Check now'}
+                      </Button>
+                    )}
                     <p className="text-xs text-muted-foreground">
                       {describeCheck(update, appVersion)}
                     </p>
                   </div>
+                  {(updateRefusal ?? updateAct?.note) && (
+                    <p className="text-xs text-muted-foreground">
+                      {updateRefusal ?? updateAct?.note}
+                    </p>
+                  )}
                 </section>
               )}
 
