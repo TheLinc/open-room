@@ -50,51 +50,17 @@ export type ModelStatus = {
   progress?: number
 }
 
-const TINY = 'https://huggingface.co/onnx-community/whisper-tiny.en/resolve/main'
-const BASE = 'https://huggingface.co/onnx-community/whisper-base.en/resolve/main'
-
-/**
- * The files transformers.js fetches for an ASR pipeline at `dtype: 'fp32'`.
- *
- * Derived rather than guessed: the pipeline was run once against a scratch
- * cache and this is exactly what it wrote — no more, and nothing missing. The
- * two repositories share a layout, so one list serves both. Largest first, so
- * a failed download fails early rather than after the small files succeed.
- */
-const WHISPER_FILES = [
-  'onnx/decoder_model_merged.onnx',
-  'onnx/encoder_model.onnx',
-  'tokenizer.json',
-  'tokenizer_config.json',
-  'config.json',
-  'generation_config.json',
-  'preprocessor_config.json'
-] as const
-
 /** One file whose size and checksum come from the generated record. */
 function recordedFile(id: string, name: string, url: string): ModelFile {
   const recorded = MODEL_HASHES[`${id}/${name}`]
   return { name, url, sha256: recorded?.sha256 ?? '', sizeBytes: recorded?.sizeBytes ?? 0 }
 }
 
-/** Sizes and checksums come from the generated record, not from here. */
-function whisperFiles(id: string, base: string): ModelFile[] {
-  return WHISPER_FILES.map((name) => {
-    const recorded = MODEL_HASHES[`${id}/${name}`]
-    return {
-      name,
-      url: `${base}/${name}`,
-      sha256: recorded?.sha256 ?? '',
-      sizeBytes: recorded?.sizeBytes ?? 0
-    }
-  })
-}
-
 /**
  * Speech-to-text models.
  *
- * These are the ONNX conversions, not whisper.cpp's GGML weights: `stt.ts`
- * runs Whisper on transformers.js and onnxruntime, the stack Kokoro already
+ * These are ONNX conversions, not GGML weights for a native runtime: `stt.ts`
+ * runs the model on transformers.js and onnxruntime, the stack Kokoro already
  * uses, so voice input costs a model download rather than a second inference
  * engine and a native binding.
  *
@@ -106,8 +72,9 @@ function whisperFiles(id: string, base: string): ModelFile[] {
 const MOONSHINE = 'https://huggingface.co/onnx-community/moonshine-base-ONNX/resolve/main'
 
 /**
- * The same layout as Whisper's, measured the same way: what the pipeline
- * wrote to a scratch cache when it loaded `moonshine-base-ONNX` at fp32.
+ * The files transformers.js fetches for the ASR pipeline at `dtype: 'fp32'`:
+ * what it wrote to a scratch cache when it loaded `moonshine-base-ONNX`, no
+ * more and nothing missing. Largest first, so a failed download fails early.
  */
 const MOONSHINE_FILES = [
   'onnx/decoder_model_merged.onnx',
@@ -129,7 +96,8 @@ const MOONSHINE_FILES = [
  * casing, at a cost that scales with the audio rather than Whisper's fixed
  * 30 s window (1 s of audio decoded in 55 ms against Whisper's 280 ms), which
  * is what makes re-decoding the live buffer once a second affordable. The
- * Whisper entries stay catalogued for anyone who has them installed.
+ * Whisper entries were removed once nothing loaded them (0.5.0 shipped
+ * Moonshine); a leftover `stt/whisper-*` directory is inert.
  */
 export const STT_MODEL_ID = 'moonshine-base-en'
 
@@ -147,30 +115,11 @@ export const CATALOG: CatalogEntry[] = [
     )
   },
   {
-    id: 'whisper-tiny-en',
-    kind: 'stt',
-    label: 'Whisper Tiny (English)',
-    description: 'Fastest. Enough for wake words and short commands.',
-    license: 'Apache-2.0',
-    attribution: 'Whisper — OpenAI; ONNX conversion by onnx-community',
-    homepage: 'https://huggingface.co/onnx-community/whisper-tiny.en',
-    files: whisperFiles('whisper-tiny-en', TINY)
-  },
-  {
-    id: 'whisper-base-en',
-    kind: 'stt',
-    label: 'Whisper Base (English)',
-    description: 'More accurate on longer sentences. Roughly twice the size.',
-    license: 'Apache-2.0',
-    attribution: 'Whisper — OpenAI; ONNX conversion by onnx-community',
-    homepage: 'https://huggingface.co/onnx-community/whisper-base.en',
-    files: whisperFiles('whisper-base-en', BASE)
-  },
-  {
     id: 'silero-vad',
     kind: 'vad',
     label: 'Silero VAD',
-    description: 'Decides which sounds are speech, so Whisper only runs on the ones that are.',
+    description:
+      'Decides which sounds are speech, so the speech model only runs on the ones that are.',
     license: 'MIT',
     attribution: 'Silero VAD — Silero Team; ONNX conversion by onnx-community',
     homepage: 'https://huggingface.co/onnx-community/silero-vad',

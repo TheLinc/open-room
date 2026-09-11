@@ -3,7 +3,7 @@ import { phoneticKeys } from './phonetics'
 /**
  * Finding "hey <agent>" at the front of a transcript.
  *
- * Matching is phonetic, not lexical: this runs against open Whisper
+ * Matching is phonetic, not lexical: this runs against open speech
  * transcription, where the name arrives as whatever the model heard. `Atlas`
  * and `Atlus` are the same sound and must both hit; edit distance would also
  * accept `Atlas` for `Atlantic`, which is a different word entirely.
@@ -46,7 +46,7 @@ export type WakeMatch = {
 }
 
 /**
- * Lexical, not phonetic: these are common words Whisper transcribes
+ * Lexical, not phonetic: these are common words the model transcribes
  * reliably, and a phonetic match would let "buy the weigh" through.
  */
 const ASIDE_MARKERS = [['by', 'the', 'way'], ['btw'], ['quick', 'question'], ['side', 'question']]
@@ -61,7 +61,7 @@ function stripAside(rest: string[]): { aside: boolean; rest: string[] } {
 }
 
 /**
- * Whisper renders the prefix loosely and it is the one word we require, so a
+ * The model renders the prefix loosely and it is the one word we require, so a
  * couple of near-homophones are accepted. None of these can appear at the
  * front of a spoken agent line, so widening this does not weaken the
  * self-trigger guarantee.

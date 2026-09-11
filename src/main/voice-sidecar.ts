@@ -236,7 +236,7 @@ export class VoiceSidecar {
 
   /**
    * One always-on listening segment. Gated by VAD in the sidecar, so most
-   * calls return `{ speech: false }` without Whisper ever running.
+   * calls return `{ speech: false }` without the speech model ever running.
    */
   async listen(samples: Float32Array): Promise<ListenResult> {
     const result = await this.request((id) => ({

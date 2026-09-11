@@ -12,10 +12,10 @@ import { env, pipeline, type AutomaticSpeechRecognitionPipeline } from '@hugging
  * Whisper tiny on measurement: the same words, with punctuation and casing,
  * at a cost that scales with the audio rather than Whisper's fixed 30 s
  * window, which is what lets `LiveSession` decode the growing capture once a
- * second. The Whisper entries stay loadable; `transcribe` chunks for them.
+ * second. Whisper is gone from the catalog; nothing loads it any more.
  */
 
-/** Whisper is trained on 16 kHz mono; anything else must be resampled first. */
+/** The model is trained on 16 kHz mono; anything else must be resampled first. */
 export const STT_SAMPLE_RATE = 16_000
 
 /**
@@ -32,8 +32,6 @@ export function sttModelRoot(): string {
 
 let instance: AutomaticSpeechRecognitionPipeline | null = null
 let loading: Promise<AutomaticSpeechRecognitionPipeline> | null = null
-/** Which catalog model `instance` is, since the decode options depend on it. */
-let loadedId = ''
 
 export function isSttLoaded(): boolean {
   return instance !== null
@@ -48,7 +46,7 @@ export function isSttLoaded(): boolean {
  * copy in a second cache directory.
  *
  * `modelId` is the catalog id, which is also the directory name — so
- * `whisper-tiny-en` resolves to `<models>/stt/whisper-tiny-en/`.
+ * `moonshine-base-en` resolves to `<models>/stt/moonshine-base-en/`.
  */
 export function loadStt(
   modelId: string,
@@ -71,7 +69,6 @@ export function loadStt(
     })
       .then((asr) => {
         instance = asr
-        loadedId = modelId
         return asr
       })
       .catch((error) => {
@@ -99,19 +96,18 @@ export async function transcribe(samples: Float32Array): Promise<string> {
   // hide a 147 MB download behind what looks like a transcription call.
   if (!instance) throw new Error('No speech-to-text model is loaded.')
 
-  // Whisper's window is 30 s and the pipeline truncates past it unless told
-  // to chunk. Measured on a 42 s clip: 84 of 118 words came back without
-  // this, with no error, so a long dictated prompt lost its second half
-  // silently. Moonshine has no such window and takes the audio as it is.
-  const options = loadedId.startsWith('whisper') ? { chunk_length_s: 30, stride_length_s: 5 } : {}
-  const result = await instance(samples, options)
+  // No chunking options: Moonshine has no fixed window and takes the audio
+  // as it is. (Whisper's pipeline truncated at 30 s unless told to chunk,
+  // measured as 84 of 118 words on a 42 s clip with no error; that is one
+  // reason it is gone.)
+  const result = await instance(samples)
   const text = Array.isArray(result) ? result[0]?.text : result.text
 
   return cleanTranscript(text ?? '')
 }
 
 /**
- * Strips Whisper's bracketed annotations for non-speech audio — `[BLANK_AUDIO]`,
+ * Strips the model's bracketed annotations for non-speech audio — `[BLANK_AUDIO]`,
  * `(wind blowing)` and similar. They are transcription metadata, not something
  * anyone said, and passing them to an agent as a prompt would be nonsense.
  */

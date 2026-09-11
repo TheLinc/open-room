@@ -3,7 +3,7 @@
  *
  * This is the cheap first gate. It runs on the AnalyserNode the overlay
  * already polls, costs nothing, and exists so that Silero — and behind it
- * Whisper — only ever see audio that might be someone talking. Amplitude
+ * the speech model — only ever see audio that might be someone talking. Amplitude
  * cannot tell speech from a slammed door, and it is not trying to: rejecting
  * a silent room is the whole job, and Silero decides the rest.
  *

@@ -165,7 +165,7 @@ export function reduce(state: CaptureState, event: CaptureEvent): Result {
 
       const text = event.text.trim()
 
-      // Whisper returns nothing for audio under 200ms and for a room with no
+      // The model returns nothing for audio under 200ms and for a room with no
       // speech in it. Dispatching an empty prompt to an agent with shell
       // access would be worse than dispatching nothing.
       if (!text) {

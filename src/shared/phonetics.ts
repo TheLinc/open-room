@@ -1,7 +1,7 @@
 import { doubleMetaphone } from 'double-metaphone'
 
 /**
- * Agent names are matched against Whisper transcripts, not typed text, so
+ * Agent names are matched against speech transcripts, not typed text, so
  * collisions are acoustic rather than lexical. `Sky` and `Skye` differ by one
  * character and are indistinguishable when spoken; `Atlas` and `Atlas-2`
  * differ by two and are also indistinguishable. Edit distance is the wrong

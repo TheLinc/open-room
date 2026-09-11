@@ -4,10 +4,10 @@ import { join } from 'node:path'
 /**
  * Voice activity detection via Silero.
  *
- * This is the gate that makes always-on listening affordable. Whisper costs
+ * This is the gate that makes always-on listening affordable. Transcription costs
  * hundreds of milliseconds per segment; Silero costs 0.15 ms per 32 ms frame
  * — measured, a real-time factor of roughly 0.005 — so running it on
- * everything and Whisper only on what it accepts is three orders of magnitude
+ * everything and the model only on what it accepts is three orders of magnitude
  * cheaper than transcribing every noise in the room.
  *
  * It also rejects what an amplitude gate cannot. A 220 Hz tone at half scale

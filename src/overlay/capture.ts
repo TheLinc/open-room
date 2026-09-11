@@ -19,7 +19,7 @@ const CHUNK_MS = 300
  * AnalyserNode driving the waveform belongs here too, next to the stream it
  * analyses.
  *
- * The context is opened at 16 kHz so Chromium does the resampling: Whisper is
+ * The context is opened at 16 kHz so Chromium does the resampling: the model is
  * trained on 16 kHz mono, and the sidecar's protocol expects exactly that.
  */
 export class Capture {

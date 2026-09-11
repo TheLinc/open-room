@@ -91,7 +91,7 @@ export type KokoroStatus = {
 export type ListenResult = {
   /** Whether Silero thought this was speech at all. */
   speech: boolean
-  /** Present only when it was; the empty string when Whisper heard nothing. */
+  /** Present only when it was; the empty string when the model heard nothing. */
   text?: string
 }
 
