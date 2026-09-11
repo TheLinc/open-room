@@ -108,11 +108,19 @@ describe('agentQueryOptions optional model settings', () => {
   })
 
   it('augments the Claude Code preset rather than replacing it', () => {
-    expect(build().systemPrompt).toEqual({
-      type: 'preset',
-      preset: 'claude_code',
-      append: '# Role'
-    })
+    const prompt = build().systemPrompt as { type: string; preset: string; append: string }
+    expect(prompt.type).toBe('preset')
+    expect(prompt.preset).toBe('claude_code')
+    expect(prompt.append.endsWith('# Role')).toBe(true)
+  })
+
+  it('tells the agent its name, from the config rather than the role file', () => {
+    const prompt = build().systemPrompt as { append: string }
+    expect(prompt.append).toContain('You are Atlas')
+    // The name is renameable and the id is not; the prompt follows the name.
+    const renamed = build(agent({ name: 'Juno' })).systemPrompt as { append: string }
+    expect(renamed.append).toContain('You are Juno')
+    expect(renamed.append).not.toContain('Atlas')
   })
 })
 

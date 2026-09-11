@@ -12,6 +12,25 @@ import { SPEAK_TOOL_NAME, VOICE_SERVER_NAME } from './speak-tool'
  * an agent whose tool access silently widens, or whose API key stops being
  * stripped, still works perfectly and bills the wrong account.
  */
+/**
+ * The one thing the role file cannot say for itself: who the agent is.
+ *
+ * The Claude Code preset introduces the model as Claude Code and the role
+ * file is the user's, so nothing told an agent its name; asked, it answered
+ * "Claude", which was the honest answer to the question it had been given.
+ * Built from the config at every spawn rather than written into AGENT.md,
+ * because the name is renameable and a line in the template would go stale
+ * on the first rename.
+ */
+export function identityPreamble(name: string): string {
+  return [
+    `You are ${name}, one of several named agents in Open Room, a desktop app`,
+    'that runs Claude Code agents side by side. The user addresses you by that',
+    `name, by voice or in your chat pane. When asked who you are, answer as ${name}.`,
+    'You are still Claude Code underneath, and can say so if asked what runs you.'
+  ].join('\n')
+}
+
 export function agentQueryOptions(
   agent: Agent,
   resumeSessionId: string | null,
@@ -49,7 +68,11 @@ export function agentQueryOptions(
   const settings = effectiveSettings(config, overrides)
 
   return {
-    systemPrompt: { type: 'preset', preset: 'claude_code', append: agent.context },
+    systemPrompt: {
+      type: 'preset',
+      preset: 'claude_code',
+      append: `${identityPreamble(config.name)}\n\n${agent.context}`
+    },
     /**
      * No filesystem settings. An agent gets the MCP servers its own config
      * names, and nothing else.
