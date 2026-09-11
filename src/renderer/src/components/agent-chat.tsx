@@ -62,6 +62,7 @@ import { useModelAccess } from '@/hooks/use-model-access'
 import { useLogin } from '@/hooks/use-login'
 import { loginNotice } from '@shared/login'
 import { modelUnavailableLine } from '@shared/model-access'
+import { switchConfirmCopy, switchNeedsConfirm } from '@/lib/switch-guard'
 import { FilePicker } from '@/components/file-picker'
 import { applyMention, filterFiles, mentionAt } from '@shared/file-mentions'
 import { addFile, appendMentions, type FileAttachment } from '@shared/file-attachments'
@@ -128,6 +129,8 @@ export function AgentChat({
   const dragDepth = useRef(0)
   const fileInput = useRef<HTMLInputElement>(null)
   const composerBox = useRef<HTMLDivElement>(null)
+  /** The floating group at the scroller's end, whose height is not transcript. */
+  const floating = useRef<HTMLDivElement>(null)
   const bottom = useRef<HTMLDivElement>(null)
   const scroller = useRef<HTMLDivElement>(null)
   const pinned = useRef(true)
@@ -181,6 +184,7 @@ export function AgentChat({
               label={item.label}
               count={item.hidden.length}
               expanded={open}
+              live={item.live}
               onToggle={() => toggleFold(item.key)}
             />
             {open && item.hidden.map((entry) => <Fragment key={entry.seq}>{row(entry)}</Fragment>)}
@@ -213,7 +217,11 @@ export function AgentChat({
   // them down mid-scroll while an agent streams is the classic chat-log
   // annoyance.
   useEffect(() => {
-    if (pinned.current) bottom.current?.scrollIntoView({ block: 'end' })
+    // The scroller's own end, not the sentinel's: scrollIntoView aligns the
+    // sentinel with the viewport's bottom edge, which the floating composer
+    // covers, so the newest row landed behind the bar.
+    const el = scroller.current
+    if (pinned.current && el) el.scrollTop = el.scrollHeight
   }, [entries, permissions, historyVisible.length])
 
   /**
@@ -236,7 +244,11 @@ export function AgentChat({
   const onScroll = (): void => {
     const el = scroller.current
     if (!el) return
-    pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80
+    // The floating composer is part of the scroll height, so a reader whose
+    // last message sits just behind the bar is at the bottom in every sense
+    // that matters; count its height into the slack.
+    const slack = 80 + (floating.current?.offsetHeight ?? 0)
+    pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < slack
 
     // Load the previous page before the reader actually reaches the top, so
     // the fetch usually lands before they get there.
@@ -471,6 +483,11 @@ export function AgentChat({
                   onArchive={(id) => void conversations.archive(id)}
                   onRestore={(id) => void conversations.restore(id)}
                   archiveRetentionDays={archiveRetentionDays}
+                  confirmBeforeLeaving={
+                    switchNeedsConfirm(runtime.state, permissions.length)
+                      ? (action) => switchConfirmCopy(agent.config.name, action, permissions.length)
+                      : null
+                  }
                 />
               )}
             </div>
@@ -478,7 +495,7 @@ export function AgentChat({
               {busy && <Loader2 className="size-3 animate-spin" />}
               {STATE_LABEL[runtime.state]}
               {runtime.usage.numTurns > 0 && (
-                <span>
+                <span title="Since this session started. Ending the session starts the count again.">
                   · {plural(runtime.usage.numTurns, 'turn')} · $
                   {runtime.usage.totalCostUsd.toFixed(4)}
                 </span>
@@ -617,279 +634,301 @@ export function AgentChat({
         </div>
       )}
 
-      <div ref={scroller} onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
-        {truncated && (
-          <p className="pb-4 text-center text-xs text-muted-foreground">
-            Showing the most recent {MAX_RETAINED_ENTRIES} messages. Earlier ones remain in the
-            session transcript on disk.
-          </p>
-        )}
-
-        {conversations.hasEarlier && (
-          <div className="flex items-center justify-center gap-2 pb-4 text-xs text-muted-foreground">
-            <Loader2 className="size-3.5 animate-spin" />
-            Loading earlier messages…
-          </div>
-        )}
-
-        {historyVisible.length > 0 && (
-          <div className="flex flex-col gap-3 pb-3">
-            {renderRows(historyVisible, false, (entry, i) => {
-              const message = entry.message as { type?: string }
-              // Persisted history never carries the SDK's `result` message —
-              // only Claude Code's own user/assistant transcript reaches
-              // disk — so a turn boundary here has to be inferred from where
-              // the next prompt starts, unlike the live list below.
-              const isTurnEnd =
-                message.type === 'assistant' &&
-                (i === historyVisible.length - 1 || isPrompt(historyVisible[i + 1]))
-              return isTurnEnd ? (
-                <FilesChanged
-                  agentId={agent.config.id}
-                  cwd={runtime.cwd ?? agent.config.workspacePath}
-                  files={filesChangedIn(turnBefore(historyVisible, i + 1).map((e) => e.message))}
-                />
-              ) : null
-            })}
-          </div>
-        )}
-
-        {historyVisible.length > 0 && (
-          <div className="flex items-center gap-3 py-3 text-xs text-muted-foreground">
-            <span className="h-px flex-1 bg-border" />
-            <span>
-              Resumed
-              {conversations.active
-                ? ` · last active ${describeLastActive(conversations.active.lastModified)}`
-                : ''}
-            </span>
-            <span className="h-px flex-1 bg-border" />
-          </div>
-        )}
-
-        {visible.length === 0 && permissions.length === 0 && historyVisible.length === 0 ? (
-          <div className="flex h-full flex-col items-center justify-center gap-1 text-center">
-            <p className="text-sm text-muted-foreground">
-              Nothing yet. Ask {agent.config.name} to do something.
+      <div
+        ref={scroller}
+        onScroll={onScroll}
+        className="flex min-h-0 flex-1 flex-col overflow-y-auto"
+      >
+        <div className="shrink-0 px-6 py-4">
+          {truncated && (
+            <p className="pb-4 text-center text-xs text-muted-foreground">
+              Showing the most recent {MAX_RETAINED_ENTRIES} messages. Earlier ones remain in the
+              session transcript on disk.
             </p>
-            <p className="max-w-sm text-xs text-muted-foreground">
-              It runs in {runtime.cwd ?? agent.config.workspacePath}
-              {agent.config.wsl ? ` inside ${agent.config.wsl.distro}` : ''}
-              {agent.config.worktrees && !runtime.cwd
-                ? ' — each new conversation in its own git worktree'
-                : ''}
-            </p>
-          </div>
-        ) : (
-          <div className="flex flex-col gap-3">
-            {renderRows(visible, true, (entry, i) => {
-              const message = entry.message as { type?: string; subtype?: string }
-              const isTurnEnd = message.type === 'result' && !isCommandResult(message)
-              return isTurnEnd ? (
-                <FilesChanged
-                  agentId={agent.config.id}
-                  cwd={runtime.cwd ?? agent.config.workspacePath}
-                  files={filesChangedIn(turnBefore(visible, i).map((e) => e.message))}
-                />
-              ) : null
-            })}
-            {permissions.map((request) => (
-              <PermissionPrompt key={request.id} request={request} agentName={agent.config.name} />
-            ))}
-            <div ref={bottom} />
-          </div>
-        )}
-      </div>
+          )}
 
-      {dragging && (
-        <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-lg border-2 border-dashed border-primary/60 bg-background/80 text-sm">
-          Drop to attach
+          {conversations.hasEarlier && (
+            <div className="flex items-center justify-center gap-2 pb-4 text-xs text-muted-foreground">
+              <Loader2 className="size-3.5 animate-spin" />
+              Loading earlier messages…
+            </div>
+          )}
+
+          {historyVisible.length > 0 && (
+            <div className="flex flex-col gap-3 pb-3">
+              {renderRows(historyVisible, false, (entry, i) => {
+                const message = entry.message as { type?: string }
+                // Persisted history never carries the SDK's `result` message —
+                // only Claude Code's own user/assistant transcript reaches
+                // disk — so a turn boundary here has to be inferred from where
+                // the next prompt starts, unlike the live list below.
+                const isTurnEnd =
+                  message.type === 'assistant' &&
+                  (i === historyVisible.length - 1 || isPrompt(historyVisible[i + 1]))
+                return isTurnEnd ? (
+                  <FilesChanged
+                    agentId={agent.config.id}
+                    cwd={runtime.cwd ?? agent.config.workspacePath}
+                    files={filesChangedIn(turnBefore(historyVisible, i + 1).map((e) => e.message))}
+                  />
+                ) : null
+              })}
+            </div>
+          )}
+
+          {historyVisible.length > 0 && (
+            <div className="flex items-center gap-3 py-3 text-xs text-muted-foreground">
+              <span className="h-px flex-1 bg-border" />
+              <span>
+                Resumed
+                {conversations.active
+                  ? ` · last active ${describeLastActive(conversations.active.lastModified)}`
+                  : ''}
+              </span>
+              <span className="h-px flex-1 bg-border" />
+            </div>
+          )}
+
+          {visible.length === 0 && permissions.length === 0 && historyVisible.length === 0 ? (
+            <div className="flex h-full flex-col items-center justify-center gap-1 text-center">
+              <p className="text-sm text-muted-foreground">
+                Nothing yet. Ask {agent.config.name} to do something.
+              </p>
+              <p className="max-w-sm text-xs text-muted-foreground">
+                It runs in {runtime.cwd ?? agent.config.workspacePath}
+                {agent.config.wsl ? ` inside ${agent.config.wsl.distro}` : ''}
+                {agent.config.worktrees && !runtime.cwd
+                  ? ' — each new conversation in its own git worktree'
+                  : ''}
+              </p>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-3">
+              {renderRows(visible, true, (entry, i) => {
+                const message = entry.message as { type?: string; subtype?: string }
+                const isTurnEnd = message.type === 'result' && !isCommandResult(message)
+                return isTurnEnd ? (
+                  <FilesChanged
+                    agentId={agent.config.id}
+                    cwd={runtime.cwd ?? agent.config.workspacePath}
+                    files={filesChangedIn(turnBefore(visible, i).map((e) => e.message))}
+                  />
+                ) : null
+              })}
+              {permissions.map((request) => (
+                <PermissionPrompt
+                  key={request.id}
+                  request={request}
+                  agentName={agent.config.name}
+                />
+              ))}
+              <div ref={bottom} />
+            </div>
+          )}
         </div>
-      )}
 
-      <WorkingIndicator state={runtime.state} startedAt={startedAt} entries={entries} />
-
-      <div className="border-t border-border px-6 py-3">
-        {sendError && (
-          <p role="alert" className="pb-2 text-sm text-destructive">
-            {sendError}
-          </p>
-        )}
-        <AsideCard
-          aside={runtime.aside}
-          onDismiss={() => void window.openRoom.dismissAside(agent.config.id)}
-        />
-        <QueuedPrompts agentId={agent.config.id} queued={runtime.queued} />
-        <AttachmentChips
-          images={images}
-          files={files}
-          onRemove={(i) => setImages((prev) => prev.filter((_, j) => j !== i))}
-          onRemoveFile={(i) => setFiles((prev) => prev.filter((_, j) => j !== i))}
-        />
-        {attachError && <p className="pt-2 text-xs text-destructive">{attachError}</p>}
-        <div className="relative pt-2">
-          {pickerOpen && (
-            <CommandPicker
-              commands={matches}
-              selected={selected}
-              onPick={pick}
-              onHover={setSelected}
+        {/* The composer floats over the transcript rather than sitting under
+            it: sticky at the bottom of the scroller, pushed there by mt-auto
+            while the transcript is short, so messages scroll up behind it.
+            A gradient above fades them out and the strip itself is a blurred
+            wash of the page colour, so a line half behind the bar reads as
+            behind it and the box stays legible whatever it covers. */}
+        <div ref={floating} className="sticky bottom-0 z-10 mt-auto shrink-0">
+          <div
+            aria-hidden
+            className="pointer-events-none h-8 bg-gradient-to-t from-background/85 to-transparent"
+          />
+          <div className="bg-background/85 px-6 pb-3 backdrop-blur-md">
+            <WorkingIndicator state={runtime.state} startedAt={startedAt} />
+            {sendError && (
+              <p role="alert" className="pb-2 text-sm text-destructive">
+                {sendError}
+              </p>
+            )}
+            <AsideCard
+              aside={runtime.aside}
+              onDismiss={() => void window.openRoom.dismissAside(agent.config.id)}
             />
-          )}
-          {filePickerOpen && (
-            <FilePicker
-              files={fileMatches}
-              selected={fileSelected}
-              onPick={pickFile}
-              onHover={setFileSelected}
+            <QueuedPrompts agentId={agent.config.id} queued={runtime.queued} />
+            <AttachmentChips
+              images={images}
+              files={files}
+              onRemove={(i) => setImages((prev) => prev.filter((_, j) => j !== i))}
+              onRemoveFile={(i) => setFiles((prev) => prev.filter((_, j) => j !== i))}
             />
-          )}
-          {/* Hidden picker behind the paperclip: same treatment as a drop,
+            {attachError && <p className="pt-2 text-xs text-destructive">{attachError}</p>}
+            <div className="relative pt-2">
+              {pickerOpen && (
+                <CommandPicker
+                  commands={matches}
+                  selected={selected}
+                  onPick={pick}
+                  onHover={setSelected}
+                />
+              )}
+              {filePickerOpen && (
+                <FilePicker
+                  files={fileMatches}
+                  selected={fileSelected}
+                  onPick={pickFile}
+                  onHover={setFileSelected}
+                />
+              )}
+              {/* Hidden picker behind the paperclip: same treatment as a drop,
               so images inline and everything else becomes a chip. Clearing
               value lets the same file be picked twice in a row. */}
-          <input
-            ref={fileInput}
-            type="file"
-            multiple
-            hidden
-            onChange={(e) => {
-              attachAny(Array.from(e.target.files ?? []))
-              e.target.value = ''
-            }}
-          />
-          {/* One box, two layouts. Row: attach · text · send, vertically
+              <input
+                ref={fileInput}
+                type="file"
+                multiple
+                hidden
+                onChange={(e) => {
+                  attachAny(Array.from(e.target.files ?? []))
+                  e.target.value = ''
+                }}
+              />
+              {/* One box, two layouts. Row: attach · text · send, vertically
               centred. Wrapped: the textarea takes the whole first row
               (order-first + basis-full under flex-wrap) and the buttons
               fall to a bottom row, send pushed right by its ml-auto. The
               box carries the border and focus ring; the textarea is bare. */}
-          <div
-            ref={composerBox}
-            className="flex flex-wrap items-center gap-1 rounded-2xl border border-input px-2 py-1.5 transition-colors focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50 dark:bg-input/30"
-          >
-            <Button
-              size="icon"
-              variant="ghost"
-              className="size-8 shrink-0 rounded-full"
-              title="Attach files"
-              aria-label="Attach files"
-              onClick={() => fileInput.current?.click()}
-            >
-              <Paperclip />
-            </Button>
-            <Textarea
-              ref={input}
-              value={draft}
-              onChange={(e) => {
-                setDraft(e.target.value)
-                setCaret(e.currentTarget.selectionStart ?? 0)
-              }}
-              onKeyUp={(e) => setCaret(e.currentTarget.selectionStart ?? 0)}
-              onClick={(e) => setCaret(e.currentTarget.selectionStart ?? 0)}
-              onPaste={(e) => {
-                const files = imageFiles(e.clipboardData?.items)
-                if (files.length === 0) return
-                e.preventDefault()
-                void attach(files)
-              }}
-              onKeyDown={(e) => {
-                if (filePickerOpen && fileMatches.length > 0) {
-                  if (e.key === 'ArrowDown') {
+              <div
+                ref={composerBox}
+                className="flex flex-wrap items-center gap-1 rounded-2xl border border-input bg-background px-2 py-1.5 shadow-lg shadow-black/10 transition-colors focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50 dark:bg-card dark:shadow-black/40"
+              >
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="size-8 shrink-0 rounded-full"
+                  title="Attach files"
+                  aria-label="Attach files"
+                  onClick={() => fileInput.current?.click()}
+                >
+                  <Paperclip />
+                </Button>
+                <Textarea
+                  ref={input}
+                  value={draft}
+                  onChange={(e) => {
+                    setDraft(e.target.value)
+                    setCaret(e.currentTarget.selectionStart ?? 0)
+                  }}
+                  onKeyUp={(e) => setCaret(e.currentTarget.selectionStart ?? 0)}
+                  onClick={(e) => setCaret(e.currentTarget.selectionStart ?? 0)}
+                  onPaste={(e) => {
+                    const files = imageFiles(e.clipboardData?.items)
+                    if (files.length === 0) return
                     e.preventDefault()
-                    setFileSelected((i) => (i + 1) % fileMatches.length)
-                    return
-                  }
-                  if (e.key === 'ArrowUp') {
-                    e.preventDefault()
-                    setFileSelected((i) => (i - 1 + fileMatches.length) % fileMatches.length)
-                    return
-                  }
-                  if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) {
-                    e.preventDefault()
-                    pickFile(fileMatches[Math.min(fileSelected, fileMatches.length - 1)])
-                    return
-                  }
-                }
-                if (filePickerOpen && e.key === 'Escape') {
-                  e.preventDefault()
-                  if (mention) setDismissedMention({ start: mention.start, query: mention.query })
-                  return
-                }
-                if (pickerOpen && matches.length > 0) {
-                  if (e.key === 'ArrowDown') {
-                    e.preventDefault()
-                    setSelected((i) => (i + 1) % matches.length)
-                    return
-                  }
-                  if (e.key === 'ArrowUp') {
-                    e.preventDefault()
-                    setSelected((i) => (i - 1 + matches.length) % matches.length)
-                    return
-                  }
-                  if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) {
-                    e.preventDefault()
-                    pick(matches[Math.min(selected, matches.length - 1)])
-                    return
-                  }
-                }
-                if (pickerOpen && e.key === 'Escape') {
-                  e.preventDefault()
-                  setDraft('')
-                  return
-                }
-                // Enter sends; Shift+Enter is a newline, matching every chat
-                // input people already use.
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault()
-                  void submit()
-                }
-              }}
-              placeholder={`Ask ${agent.config.name} to do something…`}
-              className={cn(
-                'max-h-40 min-h-0 min-w-24 flex-1 resize-none rounded-none border-0 bg-transparent p-1.5 shadow-none focus-visible:border-transparent focus-visible:ring-0 dark:bg-transparent',
-                multiline && 'order-first basis-full'
-              )}
-            />
-            {/* The same toggle as the push-to-talk hotkey, aimed at this
+                    void attach(files)
+                  }}
+                  onKeyDown={(e) => {
+                    if (filePickerOpen && fileMatches.length > 0) {
+                      if (e.key === 'ArrowDown') {
+                        e.preventDefault()
+                        setFileSelected((i) => (i + 1) % fileMatches.length)
+                        return
+                      }
+                      if (e.key === 'ArrowUp') {
+                        e.preventDefault()
+                        setFileSelected((i) => (i - 1 + fileMatches.length) % fileMatches.length)
+                        return
+                      }
+                      if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) {
+                        e.preventDefault()
+                        pickFile(fileMatches[Math.min(fileSelected, fileMatches.length - 1)])
+                        return
+                      }
+                    }
+                    if (filePickerOpen && e.key === 'Escape') {
+                      e.preventDefault()
+                      if (mention)
+                        setDismissedMention({ start: mention.start, query: mention.query })
+                      return
+                    }
+                    if (pickerOpen && matches.length > 0) {
+                      if (e.key === 'ArrowDown') {
+                        e.preventDefault()
+                        setSelected((i) => (i + 1) % matches.length)
+                        return
+                      }
+                      if (e.key === 'ArrowUp') {
+                        e.preventDefault()
+                        setSelected((i) => (i - 1 + matches.length) % matches.length)
+                        return
+                      }
+                      if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) {
+                        e.preventDefault()
+                        pick(matches[Math.min(selected, matches.length - 1)])
+                        return
+                      }
+                    }
+                    if (pickerOpen && e.key === 'Escape') {
+                      e.preventDefault()
+                      setDraft('')
+                      return
+                    }
+                    // Enter sends; Shift+Enter is a newline, matching every chat
+                    // input people already use.
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault()
+                      void submit()
+                    }
+                  }}
+                  placeholder={`Ask ${agent.config.name} to do something…`}
+                  className={cn(
+                    'max-h-40 min-h-0 min-w-24 flex-1 resize-none rounded-none border-0 bg-transparent p-1.5 shadow-none focus-visible:border-transparent focus-visible:ring-0 dark:bg-transparent',
+                    multiline && 'order-first basis-full'
+                  )}
+                />
+                {/* The same toggle as the push-to-talk hotkey, aimed at this
                 agent: click to start a capture, click again to stop and
                 send. With voice off it opens Settings on the switch instead
                 of doing nothing — main re-checks every precondition anyway,
                 so this gate is presentation, not the guard. */}
-            <Button
-              size="icon"
-              variant="ghost"
-              className={cn(
-                'ml-auto size-8 shrink-0 rounded-full',
-                listening && 'text-destructive'
-              )}
-              title={
-                !voiceEnabled
-                  ? 'Voice input is off — opens Settings'
-                  : listening
-                    ? 'Stop and send'
-                    : `Talk to ${agent.config.name}`
-              }
-              aria-label={listening ? 'Stop and send' : `Talk to ${agent.config.name}`}
-              onClick={() => {
-                if (!voiceEnabled) onOpenVoiceSettings()
-                else window.openRoom.triggerVoiceCapture(agent.config.id)
-              }}
-            >
-              <Mic className={cn(listening && 'animate-pulse')} />
-            </Button>
-            <Button
-              onClick={() => void submit()}
-              disabled={!draft.trim() && images.length === 0 && files.length === 0}
-              size="icon"
-              className="size-8 shrink-0 rounded-full"
-              title={busy ? 'Queue for after this turn' : 'Send'}
-            >
-              {/* ArrowUp, not the paper plane: the plane's diagonal mass
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className={cn(
+                    'ml-auto size-8 shrink-0 rounded-full',
+                    listening && 'text-destructive'
+                  )}
+                  title={
+                    !voiceEnabled
+                      ? 'Voice input is off — opens Settings'
+                      : listening
+                        ? 'Stop and send'
+                        : `Talk to ${agent.config.name}`
+                  }
+                  aria-label={listening ? 'Stop and send' : `Talk to ${agent.config.name}`}
+                  onClick={() => {
+                    if (!voiceEnabled) onOpenVoiceSettings()
+                    else window.openRoom.triggerVoiceCapture(agent.config.id)
+                  }}
+                >
+                  <Mic className={cn(listening && 'animate-pulse')} />
+                </Button>
+                <Button
+                  onClick={() => void submit()}
+                  disabled={!draft.trim() && images.length === 0 && files.length === 0}
+                  size="icon"
+                  className="size-8 shrink-0 rounded-full"
+                  title={busy ? 'Queue for after this turn' : 'Send'}
+                >
+                  {/* ArrowUp, not the paper plane: the plane's diagonal mass
                   reads off-center in a circle however exactly it is placed. */}
-              {busy ? <ListPlus /> : <ArrowUp />}
-            </Button>
+                  {busy ? <ListPlus /> : <ArrowUp />}
+                </Button>
+              </div>
+            </div>
           </div>
         </div>
       </div>
+
+      {dragging && (
+        <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center rounded-lg border-2 border-dashed border-primary/60 bg-background/80 text-sm">
+          Drop to attach
+        </div>
+      )}
     </div>
   )
 }
