@@ -85,7 +85,7 @@ export function UpdateBanner(): React.JSX.Element | null {
   return (
     <div
       role="status"
-      className="border-b border-sky-500/25 bg-sky-500/5 px-6 py-1.5 text-xs text-sky-300"
+      className="border-b border-sky-500/25 bg-sky-500/5 px-6 py-1.5 text-xs text-sky-700 dark:text-sky-300"
     >
       <div className="flex items-center gap-2">
         <ArrowUpCircle className="size-3.5 shrink-0" />
@@ -111,7 +111,7 @@ export function UpdateBanner(): React.JSX.Element | null {
           <X className="size-3.5" />
         </Button>
       </div>
-      {note && <p className="mt-1 pl-5.5 text-sky-300/70">{note}</p>}
+      {note && <p className="mt-1 pl-5.5 text-sky-700/70 dark:text-sky-300/70">{note}</p>}
     </div>
   )
 }
