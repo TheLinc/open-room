@@ -12,7 +12,7 @@ import { useQuota } from '@/hooks/use-quota'
 import { quotaKey } from '@shared/quota'
 import { UpdateBanner } from '@/components/update-banner'
 import { FirstRun } from '@/components/first-run'
-import { loginGate } from '@shared/login'
+import { loginGate, noAgentsLoginNotice } from '@shared/login'
 import { useLogin } from '@/hooks/use-login'
 import { TitleBar } from '@/components/title-bar'
 import { useSettings } from '@/hooks/use-settings'
@@ -39,6 +39,13 @@ function App(): React.JSX.Element {
   // working install must not be locked out by its own diagnostic. The list
   // is part of the decision, so it waits for the list.
   const login = useLogin()
+  // For the empty state's login notice: a WSL agent needs no host login,
+  // which is only worth saying on Windows.
+  const [platform, setPlatform] = useState('')
+  useEffect(() => {
+    void window.openRoom.getAppInfo().then((info) => setPlatform(info.platform))
+  }, [])
+  const noAgentsNotice = noAgentsLoginNotice(login, platform)
 
   // The quota banner's dismissal, remembered against the event it was for:
   // a reached limit collapses to a pill in the title bar, a warning goes.
@@ -186,6 +193,16 @@ function App(): React.JSX.Element {
                   <Button onClick={openNew}>
                     <Plus /> New agent
                   </Button>
+                )}
+                {/* Not a wall: an agent that runs in WSL needs no host login,
+                    and the + button has to stay reachable to add one. */}
+                {!loading && noAgentsNotice && (
+                  <p
+                    role="status"
+                    className="max-w-md rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-left text-xs text-amber-500"
+                  >
+                    {noAgentsNotice}
+                  </p>
                 )}
               </div>
             )}

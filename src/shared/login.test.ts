@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { distrosOf, loginFor, loginGate, loginNotice, type LoginSnapshot } from './login'
+import {
+  distrosOf,
+  loginFor,
+  loginGate,
+  loginNotice,
+  noAgentsLoginNotice,
+  type LoginSnapshot
+} from './login'
 
 const signedIn = { state: 'signed-in' } as const
 const signedOut = { state: 'signed-out' } as const
@@ -38,11 +45,8 @@ describe('loginFor', () => {
 })
 
 describe('loginGate', () => {
-  it('shows first run when there are no agents and the host is signed out', () => {
-    expect(loginGate(snapshot(signedOut), [])).toBe('first-run')
-  })
-
-  it('opens when there are no agents and the host is signed in', () => {
+  it('opens with no agents whatever the host says, since nothing can fail to run', () => {
+    expect(loginGate(snapshot(signedOut), [])).toBe('open')
     expect(loginGate(snapshot(signedIn), [])).toBe('open')
   })
 
@@ -87,5 +91,20 @@ describe('loginNotice', () => {
     expect(loginNotice(snapshot(signedIn, { Ubuntu: signedOut }), ubuntu)).toBe(
       'Claude Code inside Ubuntu is not signed in. Run `wsl -d Ubuntu`, then `claude`, and sign in.'
     )
+  })
+})
+
+describe('noAgentsLoginNotice', () => {
+  it('says nothing while the host is signed in or unknown', () => {
+    expect(noAgentsLoginNotice(snapshot(signedIn), 'win32')).toBeNull()
+    expect(noAgentsLoginNotice(snapshot(unknown), 'win32')).toBeNull()
+  })
+
+  it('names what a host agent needs, and on Windows that a WSL agent does not', () => {
+    const line = noAgentsLoginNotice(snapshot(signedOut), 'win32')
+    expect(line).toContain('not signed in')
+    expect(line).toContain('run `claude`')
+    expect(line).toContain('WSL')
+    expect(noAgentsLoginNotice(snapshot(signedOut), 'darwin')).not.toContain('WSL')
   })
 })

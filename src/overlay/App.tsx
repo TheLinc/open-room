@@ -217,5 +217,8 @@ export default function App(): React.JSX.Element | null {
 
   if (!body) return null
 
-  return <div className="flex h-full items-end justify-center pb-3">{body}</div>
+  // Room under the bubble for its shadow: the window is a fixed transparent
+  // rectangle, and a shadow that runs past its bottom edge is cut off in a
+  // hard line. The surface's shadow reaches 40 px below the box.
+  return <div className="flex h-full items-end justify-center pb-12">{body}</div>
 }

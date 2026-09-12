@@ -14,9 +14,11 @@ import type { PixelVariant } from '@shared/pixel-variants'
  * horizontal run so the SVG stays small.
  *
  * The empty desk is drawn by hand from Clawd's furniture with what the body
- * hid filled in: the monitor's bottom bezel, a stand that reaches the desk,
- * a desk surface for it to stand on, and the chair in front. The first cut
- * left the surface unpainted and the monitor read as floating.
+ * hid filled in: the monitor's bottom bezel, a short stand, the desk
+ * surface it stands on, and the chair in front, its back overlapping the
+ * desk and the stand's base so the three read as one piece. It is shorter
+ * than the seated grids; the first cuts left the surface unpainted (the
+ * monitor floated) and then stacked everything without overlap (too tall).
  *
  * The front-facing figures are traced from the site's mascot sheet, an
  * AI-rendered JPEG: each character's pixel size was fitted by overlap
@@ -42,15 +44,10 @@ export const EMPTY_DESK: readonly string[] = [
   '.......kkkkkkkkkkkkkkkk.......',
   '..............kk..............',
   '..............kk..............',
-  '..............kk..............',
   '............kkkkkk............',
-  '..kkkkkkkkkkkkkkkkkkkkkkkkkk..',
-  '..kssssssssssssssssssssssssk..',
-  '...k........kkkkkk........k...',
-  '...k.......kttttttk.......k...',
-  '...k.......kttttttk.......k...',
+  '..kkkkkkkkkkttttttkkkkkkkkkk..',
+  '..ksssssssskttttttkssssssssk..',
   '...k.......kttkkttk.......k...',
-  '...k..........kk..........k...',
   '...k..........kk..........k...',
   '...k..........kk..........k...',
   '...k.......tttkkttt.......k...',
@@ -392,4 +389,111 @@ export function deskRects(rows: readonly string[], palette: DeskPalette): DeskRe
     X: palette.body,
     S: palette.screen
   })
+}
+
+export type Cell = { x: number; y: number }
+export type Run = { x: number; y: number; w: number }
+export type Box = { x: number; y: number; w: number; h: number }
+
+export type DeskLayers = {
+  /** Wood and seat cells with their palette character. */
+  furniture: (Run & { ch: string })[]
+  /** The agent's body minus the hands. */
+  body: Run[]
+  /** Left and right forearms at desk height; they take turns rising to type. */
+  handL: Run[]
+  handR: Run[]
+  /** The monitor's screen, one rect, recoloured when the agent is working. */
+  screen: Box
+  /** Row index of the desk top. */
+  deskRow: number
+}
+
+/** Merge horizontally adjacent cells into runs, one rect each. */
+export function runsOf(cells: Cell[]): Run[] {
+  const sorted = [...cells].sort((a, b) => a.y - b.y || a.x - b.x)
+  const runs: Run[] = []
+  for (const c of sorted) {
+    const last = runs[runs.length - 1]
+    if (last && last.y === c.y && last.x + last.w === c.x) last.w += 1
+    else runs.push({ x: c.x, y: c.y, w: 1 })
+  }
+  return runs
+}
+
+function bbox(cells: Cell[]): Box {
+  let x0 = Infinity
+  let y0 = Infinity
+  let x1 = -Infinity
+  let y1 = -Infinity
+  for (const c of cells) {
+    x0 = Math.min(x0, c.x)
+    y0 = Math.min(y0, c.y)
+    x1 = Math.max(x1, c.x + 1)
+    y1 = Math.max(y1, c.y + 1)
+  }
+  return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 }
+}
+
+/**
+ * Splits a seated grid into the parts the animation moves or recolours.
+ *
+ * The site's `layersOf` (`crew-layers.ts` in open-room-site), ported as
+ * is: the desk top is the first row where wood reaches both edges; the
+ * screen is the pale block above it; the hands are body cells at desk
+ * height outside the chair, which is the run of seat and wood around the
+ * centre column on the row above the desk.
+ */
+export function deskLayers(rows: readonly string[]): DeskLayers {
+  const width = gridWidth(rows)
+  const cells = (pred: (ch: string, x: number, y: number) => boolean): Cell[] => {
+    const out: Cell[] = []
+    rows.forEach((line, y) => {
+      for (let x = 0; x < line.length; x += 1) if (pred(line[x], x, y)) out.push({ x, y })
+    })
+    return out
+  }
+
+  const deskRow = rows.findIndex(
+    (line) => line.indexOf('k') <= 2 && line.lastIndexOf('k') >= line.length - 3
+  )
+  const screen = bbox(cells((ch, _x, y) => ch === 'S' && y < deskRow - 4))
+
+  const centre = Math.floor(width / 2)
+  const chairLine = rows[deskRow - 1]
+  let chairL = centre
+  let chairR = centre
+  while (chairL > 0 && 'kts'.includes(chairLine[chairL - 1])) chairL -= 1
+  while (chairR < width - 1 && 'kts'.includes(chairLine[chairR + 1])) chairR += 1
+  const isHandRow = (y: number): boolean => y >= deskRow - 2 && y <= deskRow
+  const handL = cells((ch, x, y) => ch === 'X' && isHandRow(y) && x < chairL)
+  const handR = cells((ch, x, y) => ch === 'X' && isHandRow(y) && x > chairR)
+  const hand = new Set([...handL, ...handR].map((c) => `${c.x},${c.y}`))
+  const body = cells((ch, x, y) => ch === 'X' && !hand.has(`${x},${y}`))
+
+  const furniture: (Run & { ch: string })[] = []
+  for (const ch of ['k', 't', 's']) {
+    for (const run of runsOf(cells((c) => c === ch))) furniture.push({ ...run, ch })
+  }
+
+  return {
+    furniture,
+    body: runsOf(body),
+    handL: runsOf(handL),
+    handR: runsOf(handR),
+    screen,
+    deskRow
+  }
+}
+
+/** Lines of output on a busy screen: every other row, ragged widths. */
+export function outputLines(screen: Box): { y: number; w: number }[] {
+  const widths = [0.75, 0.45, 0.9, 0.6]
+  const lines: { y: number; w: number }[] = []
+  for (let i = 0; i < widths.length; i += 1) {
+    const y = screen.y + 1 + i * 2
+    if (y >= screen.y + screen.h - 1) break
+    lines.push({ y, w: Math.max(2, Math.round((screen.w - 2) * widths[i])) })
+  }
+  return lines
 }

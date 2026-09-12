@@ -281,12 +281,14 @@ export function SettingsDialog({
                 edge and is clipped by nothing but its rounded corner; the
                 `pb-4` here is inside the scroll, so the last control keeps its
                 room without a dead band below it. */}
-            {/* `px-1` on both sides is room for the 3 px focus ring inside
-                the clip: measured, a `w-full` control on the clip edge lost
-                its ring. `scrollbar-gutter: stable` keeps the 10 px scrollbar
-                out of that padding whether or not the page scrolls, so the
-                right side never loses the room the left has. */}
-            <div className="min-h-0 flex-1 space-y-8 overflow-x-hidden overflow-y-auto px-1 pb-4 [scrollbar-gutter:stable]">
+            {/* `px-3` on both sides is room inside the clip for the 3 px
+                focus ring and for the highlight ring, which sits 12 px out
+                from a row: measured, a `w-full` control on the clip edge
+                lost its ring, and the highlight lost its sides at 4 px.
+                `scrollbar-gutter: stable` keeps the 10 px scrollbar out of
+                that padding whether or not the page scrolls, so the right
+                side never loses the room the left has. */}
+            <div className="min-h-0 flex-1 space-y-8 overflow-x-hidden overflow-y-auto px-3 pb-4 [scrollbar-gutter:stable]">
               {page === 'general' && (
                 <section className="space-y-4">
                   <h3 className="text-sm font-medium">Agents</h3>

@@ -338,7 +338,7 @@ export function AgentEditor({
             {/* `px-1` is room for the 3 px focus ring inside the clip, and
                 the stable gutter keeps the scrollbar out of it; see the same
                 container in settings-dialog.tsx. */}
-            <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-1 [scrollbar-gutter:stable]">
+            <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-3 [scrollbar-gutter:stable]">
               <div className="py-2">
                 {page === 'identity' && (
                   <div className="flex flex-col gap-5">
@@ -428,8 +428,8 @@ export function AgentEditor({
                         }}
                       />
                       <FieldDescription>
-                        The character, in the agent&apos;s colour. At its desk beside its name in the
-                        sidebar.
+                        The character, in the agent&apos;s colour. At its desk beside its name in
+                        the sidebar.
                       </FieldDescription>
                     </Field>
 

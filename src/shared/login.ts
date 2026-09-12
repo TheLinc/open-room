@@ -43,26 +43,43 @@ export function loginFor(snapshot: LoginSnapshot, agent: Environment): LoginStat
 }
 
 /**
- * Whether the window is the first-run screen or the app.
+ * Whether the pane is the sign-in screen or the app.
  *
- * First run only when every environment the agents use is known to be
- * signed out; with no agents yet, the host is the environment. One usable
- * environment keeps the app open, and the agents whose environment is
- * signed out say so in their own pane (`loginNotice`). `unknown` never
- * locks anyone out: the check is a diagnostic, and a working install must
- * not be shut behind it.
+ * Sign-in only when every environment the agents use is known to be
+ * signed out. With no agents there is nothing that cannot run, so the app
+ * opens and the empty state carries a notice instead (`noAgentsLoginNotice`):
+ * a wall there told a user whose only login was inside WSL to sign in on
+ * the host before they could add the WSL agent that needed no such thing.
+ * One usable environment keeps the app open, and the agents whose
+ * environment is signed out say so in their own pane (`loginNotice`).
+ * `unknown` never locks anyone out: the check is a diagnostic, and a
+ * working install must not be shut behind it.
  */
 export function loginGate(
   snapshot: LoginSnapshot,
   agents: readonly Environment[]
 ): 'first-run' | 'open' {
-  const hostUsed = agents.length === 0 || agents.some((agent) => !agent.wsl)
+  if (agents.length === 0) return 'open'
   const environments: Environment[] = [
-    ...(hostUsed ? [{ wsl: null }] : []),
+    ...(agents.some((agent) => !agent.wsl) ? [{ wsl: null }] : []),
     ...distrosOf(agents).map((distro) => ({ wsl: { distro } }))
   ]
   const allOut = environments.every((env) => loginFor(snapshot, env).state === 'signed-out')
   return allOut ? 'first-run' : 'open'
+}
+
+/**
+ * The line under "No agents yet" while the host is signed out: what an
+ * agent on this computer would need, and, on Windows, that a WSL agent
+ * does not need it.
+ */
+export function noAgentsLoginNotice(snapshot: LoginSnapshot, platform: string): string | null {
+  if (snapshot.host.state !== 'signed-out') return null
+  const host =
+    'Claude Code on this computer is not signed in. An agent that runs here needs it: open a terminal, run `claude`, and sign in.'
+  return platform === 'win32'
+    ? `${host} An agent that runs inside WSL uses that distro's own login instead.`
+    : host
 }
 
 /** The line an agent's pane shows while its environment is signed out. */

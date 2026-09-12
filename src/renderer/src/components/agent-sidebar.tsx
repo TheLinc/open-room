@@ -14,7 +14,7 @@ import { colorHexFor } from '@shared/agent-colors'
 import { isTransient, type AgentRuntime } from '@shared/agent-runtime'
 import type { AgentLoadError } from '@shared/ipc'
 import { cn } from '@/lib/utils'
-import { PixelDesk } from '@/components/pixel-desk'
+import { PixelDesk, type DeskStatus } from '@/components/pixel-desk'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -43,6 +43,13 @@ type Props = {
  * the app is working while you look at something else. Quota conditions get
  * their own colour, since waiting fixes them and a crash does not.
  */
+/** The desk types while the agent works, and keeps its screen lit once it has answered. */
+function deskStatus(runtime: AgentRuntime): DeskStatus {
+  if (runtime.state === 'working' || runtime.state === 'starting') return 'working'
+  if (runtime.state === 'ready') return 'done'
+  return 'idle'
+}
+
 function StatusDot({ runtime }: { runtime: AgentRuntime }): React.JSX.Element | null {
   if (runtime.state === 'working' || runtime.state === 'starting') {
     return <Loader2 className="size-3 shrink-0 animate-spin text-muted-foreground" />
@@ -183,6 +190,7 @@ export function AgentSidebar({
                   <PixelDesk
                     variant={agent.config.avatar}
                     color={colorHexFor(agent.config.color)}
+                    status={deskStatus(runtimeFor(agent.config.id))}
                     className="h-7 shrink-0"
                   />
                   <span className="flex-1 truncate">{agent.config.name}</span>

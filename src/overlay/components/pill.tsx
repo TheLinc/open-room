@@ -29,6 +29,11 @@ export function Pill({
   const dispatched = state.phase === 'dispatched'
   const asking = state.phase === 'asking'
   const answered = state.phase === 'answered'
+  // A refusal before any agent was chosen ("Voice input is turned off", "No
+  // speech model installed") has no name to head the bubble, so the message
+  // takes the name's place on the one line rather than hanging under an
+  // empty header beside a grey dot.
+  const bareError = state.phase === 'error' && !state.agentName
   // The transcript settling while the microphone is open.
   const live =
     (state.phase === 'listening' || state.phase === 'transcribing') &&
@@ -89,7 +94,7 @@ export function Pill({
 
         <span className="flex min-w-0 items-baseline gap-1.5">
           <span className="truncate text-[11.5px] leading-normal font-semibold text-or-fg">
-            {state.agentName}
+            {bareError ? state.message : state.agentName}
           </span>
           {state.conversationTitle ? (
             <span className="truncate text-[9.5px] leading-normal text-or-fg/50">
@@ -172,7 +177,7 @@ export function Pill({
       {/* Not gated on the error phase: a capture cut by the time-limit
           failsafe still transcribes and dispatches, and the message is how
           the user learns the prompt was truncated. */}
-      {state.message ? (
+      {state.message && !bareError ? (
         <div className="text-[10px] leading-normal text-or-fg/70">{state.message}</div>
       ) : null}
     </div>

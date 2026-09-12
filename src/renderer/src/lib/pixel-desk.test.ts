@@ -6,9 +6,11 @@ import {
   EMPTY_DESK,
   FRONT_GRIDS,
   VARIANT_GRIDS,
+  deskLayers,
   deskRects,
   figureRects,
-  gridWidth
+  gridWidth,
+  outputLines
 } from './pixel-desk'
 
 const desks = [
@@ -18,10 +20,13 @@ const desks = [
 const figures = PIXEL_VARIANT_IDS.map((id) => [id, FRONT_GRIDS[id]] as const)
 
 describe('the desk grids', () => {
-  it.each(desks)('%s is a full rectangle of the shared height', (_, rows) => {
-    expect(rows).toHaveLength(DESK_HEIGHT)
+  it.each(desks)('%s is a full rectangle', (_, rows) => {
     const width = gridWidth(rows)
     for (const row of rows) expect(row).toHaveLength(width)
+  })
+
+  it('draws every seated variant at the shared height', () => {
+    for (const id of PIXEL_VARIANT_IDS) expect(VARIANT_GRIDS[id]).toHaveLength(DESK_HEIGHT)
   })
 
   it.each(desks)('%s uses only the desk palette', (_, rows) => {
@@ -30,10 +35,11 @@ describe('the desk grids', () => {
 
   it('leaves nobody at the empty desk, with a monitor standing on a painted desk', () => {
     expect(EMPTY_DESK.join('')).not.toContain('X')
-    // The stand runs from the bezel down to the desk surface without a gap.
+    // The stand runs from the bezel down to its base without a gap, and the
+    // chair back sits over the desk surface rather than below it.
     const standRows = EMPTY_DESK.map((row) => row.slice(14, 16))
-    expect(standRows.slice(9, 13).every((cells) => cells === 'kk')).toBe(true)
-    expect(EMPTY_DESK[13].replaceAll('.', '')).toMatch(/^k+$/)
+    expect(standRows.slice(9, 11).every((cells) => cells === 'kk')).toBe(true)
+    expect(EMPTY_DESK[12]).toMatch(/^\.\.k+tttttt(k)+\.\.$/)
   })
 })
 
@@ -87,5 +93,40 @@ describe('figureRects', () => {
   it('maps the three figure colours and nothing else', () => {
     const rects = figureRects(FRONT_GRIDS.terminal, { body: 'b', shade: 'd', eye: 'w' })
     expect(new Set(rects.map((r) => r.fill))).toEqual(new Set(['b', 'd', 'w']))
+  })
+})
+
+describe('deskLayers', () => {
+  it.each(PIXEL_VARIANT_IDS)('%s splits into a screen, a desk row, a body and two hands', (id) => {
+    const layers = deskLayers(VARIANT_GRIDS[id])
+    expect(layers.deskRow).toBeGreaterThan(10)
+    expect(layers.screen.h).toBeGreaterThan(3)
+    expect(layers.screen.y + layers.screen.h).toBeLessThan(layers.deskRow)
+    expect(layers.body.length).toBeGreaterThan(0)
+    expect(layers.handL.length).toBeGreaterThan(0)
+    expect(layers.handR.length).toBeGreaterThan(0)
+    // Hands sit at desk height, either side of the chair.
+    for (const run of [...layers.handL, ...layers.handR]) {
+      expect(run.y).toBeGreaterThanOrEqual(layers.deskRow - 2)
+      expect(run.y).toBeLessThanOrEqual(layers.deskRow)
+    }
+  })
+
+  it('keeps every body cell exactly once between body and hands', () => {
+    const rows = VARIANT_GRIDS.clawd
+    const layers = deskLayers(rows)
+    const painted = [...layers.body, ...layers.handL, ...layers.handR].reduce(
+      (sum, run) => sum + run.w,
+      0
+    )
+    expect(painted).toBe(rows.join('').split('X').length - 1)
+  })
+})
+
+describe('outputLines', () => {
+  it('draws every other row inside the screen, never its last row', () => {
+    const lines = outputLines({ x: 8, y: 1, w: 14, h: 7 })
+    expect(lines.map((l) => l.y)).toEqual([2, 4, 6])
+    for (const l of lines) expect(l.w).toBeLessThanOrEqual(12)
   })
 })
