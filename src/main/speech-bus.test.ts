@@ -444,3 +444,56 @@ describe('SpeechBus attention gate', () => {
     expect(bus.isSpeaking).toBe(false)
   })
 })
+
+/**
+ * The HUD keeps an agent's pip up while it has something to say, so it asks
+ * the bus which agents have a line queued or playing, and is told whenever
+ * that answer changes.
+ */
+describe('SpeechBus pending agents', () => {
+  it('reports an agent from enqueue until its line has finished', async () => {
+    const { sink, end } = makeSink()
+    const bus = new SpeechBus(sink, now)
+
+    expect([...bus.pendingAgents()]).toEqual([])
+
+    bus.enqueue(utter('atlas', 'done'))
+    bus.enqueue(utter('scout', 'done'))
+    expect([...bus.pendingAgents()].sort()).toEqual(['atlas', 'scout'])
+
+    await end()
+    expect([...bus.pendingAgents()]).toEqual(['scout'])
+
+    await end()
+    expect([...bus.pendingAgents()]).toEqual([])
+  })
+
+  it('notifies on every change to what is pending', async () => {
+    const { sink, end } = makeSink()
+    const bus = new SpeechBus(sink, now)
+    let notified = 0
+    bus.onActivityChange = () => {
+      notified += 1
+    }
+
+    bus.enqueue(utter('atlas', 'done'))
+    const afterEnqueue = notified
+    expect(afterEnqueue).toBeGreaterThan(0)
+
+    await end()
+    expect(notified).toBeGreaterThan(afterEnqueue)
+    expect([...bus.pendingAgents()]).toEqual([])
+  })
+
+  it('reports nothing after a barge-in', async () => {
+    const { sink } = makeSink()
+    const bus = new SpeechBus(sink, now)
+
+    bus.enqueue(utter('atlas', 'done'))
+    bus.enqueue(utter('scout', 'done'))
+    bus.bargeIn()
+    await settle()
+
+    expect([...bus.pendingAgents()]).toEqual([])
+  })
+})

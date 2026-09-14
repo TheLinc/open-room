@@ -67,7 +67,7 @@ import {
   SPEAK_TOOL_NAME,
   type TurnSpeechState
 } from './speak-tool'
-import { condenseForSpeech, shouldSpeakFallback, speakableAsIs } from './condense'
+import { condenseForSpeech, shouldSpeakFallback, speakableAsIs, speakableLead } from './condense'
 import type { Placement, WorktreeManager } from './worktrees'
 import type { WorktreeRecord } from '@shared/worktrees'
 import { wslPlacement, type WslRuntime } from './wsl'
@@ -527,8 +527,13 @@ export class AgentSupervisor {
       this.runtimeFor(agent.config.id).overrides,
       bundledClaudePath(),
       cwd,
-      agent.config.wsl && this.wsl ? this.wsl.spawnClaude(agent.config.wsl.distro) : undefined
+      this.spawnerFor(agent)
     )
+  }
+
+  /** The WSL spawner for an agent that runs in a distro; undefined for a host agent. */
+  private spawnerFor(agent: Agent): Options['spawnClaudeCodeProcess'] {
+    return agent.config.wsl && this.wsl ? this.wsl.spawnClaude(agent.config.wsl.distro) : undefined
   }
 
   /**
@@ -961,19 +966,38 @@ export class AgentSupervisor {
     })
     if (!speak) return
 
-    // Asking the model costs 8-9s and cannot be made faster, so a reply that
-    // is already short and plain is spoken as written instead.
-    const sentence = speakableAsIs(finalText) ?? (await condenseForSpeech(finalText))
-    if (!sentence) return
+    // The HUD keeps this agent's pip up while the line is on its way: the
+    // turn is over and the state says `ready`, but the user has not heard
+    // the result yet. Cleared once the bus holds the line, or when there is
+    // nothing to say after all.
+    this.patch(config.id, { speechPending: true })
+    try {
+      // Asking the model costs 7-9s and cannot be made faster, so a reply that
+      // is already short and plain is spoken as written, and a structured one
+      // gives up its opening sentences for the same price. Only a reply whose
+      // opening carries code or a path pays the round trip.
+      // The summary comes from the same login as the reply: a WSL agent's
+      // condense turn runs inside its distro, not on the host binary.
+      const sentence =
+        speakableAsIs(finalText) ??
+        speakableLead(finalText) ??
+        (await condenseForSpeech(finalText, {
+          spawnClaudeCodeProcess: this.spawnerFor(session.agent)
+        }))
+      if (!sentence) return
 
-    this.speech.enqueue({
-      id: randomUUID(),
-      agentId: config.id,
-      agentName: name,
-      text: sentence,
-      priority: 'done',
-      queuedAt: Date.now()
-    })
+      this.speech.enqueue({
+        id: randomUUID(),
+        agentId: config.id,
+        agentName: name,
+        text: sentence,
+        priority: 'done',
+        queuedAt: Date.now()
+      })
+    } finally {
+      // After the enqueue, so a HUD refresh between the two reads the bus.
+      this.patch(config.id, { speechPending: false })
+    }
   }
 
   /**

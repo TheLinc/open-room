@@ -79,6 +79,20 @@ export class SpeechBus {
    */
   onSpeakingChange: ((speaking: boolean) => void) | null = null
 
+  /**
+   * Notified whenever the set of agents with a line queued or playing may
+   * have changed. The HUD re-reads `pendingAgents` on it, so an agent's pip
+   * stays up until its line has actually been heard.
+   */
+  onActivityChange: (() => void) | null = null
+
+  /** Agents with an utterance queued or playing right now. */
+  pendingAgents(): Set<string> {
+    const ids = new Set(this.queue.map((utterance) => utterance.agentId))
+    if (this.playing) ids.add(this.playing.utterance.agentId)
+    return ids
+  }
+
   enqueue(utterance: Utterance): void {
     if (utterance.priority === 'progress') {
       // Only the newest progress from an agent is worth hearing; older ones
@@ -90,6 +104,7 @@ export class SpeechBus {
 
     this.queue.push(utterance)
     this.pump()
+    this.onActivityChange?.()
   }
 
   /** Stops playback immediately and abandons the queue. */
@@ -98,6 +113,7 @@ export class SpeechBus {
     // is talking now, and replaying it afterwards would be noise.
     this.queue = []
     this.playing?.controller.abort()
+    this.onActivityChange?.()
   }
 
   private pump(): void {
@@ -133,6 +149,7 @@ export class SpeechBus {
         this.playing = null
         this.onSpeakingChange?.(false)
         this.pump()
+        this.onActivityChange?.()
       })
   }
 

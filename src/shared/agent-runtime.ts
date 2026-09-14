@@ -196,6 +196,15 @@ export type AgentRuntime = {
    * the next prompt and by dismissing the card.
    */
   aside: Aside | null
+  /**
+   * True while the supervisor is preparing a spoken line for a finished
+   * turn and has not yet handed it to the speech bus: the condense round
+   * trip, 7 to 9 s measured. The HUD keeps the agent's pip up on it, since
+   * the turn is over and the state says `ready` while the user is still
+   * waiting to hear the result. Once the line is on the bus, the bus itself
+   * is the record (`SpeechBus.pendingAgents`).
+   */
+  speechPending: boolean
   /** Epoch ms of the last activity, for idle teardown. */
   lastActiveAt: number
 }
@@ -270,6 +279,7 @@ export function emptyRuntime(agentId: string): AgentRuntime {
     cwd: null,
     awaiting: null,
     aside: null,
+    speechPending: false,
     lastActiveAt: Date.now()
   }
 }

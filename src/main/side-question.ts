@@ -2,7 +2,7 @@ import { query, type Options } from '@anthropic-ai/claude-agent-sdk'
 import type { Agent } from '@shared/agent'
 import { buildChildEnv } from './agent-errors'
 import { bundledClaudePath } from './claude-binary'
-import { MAX_SPOKEN_CHARS } from './condense'
+import { flattenMarkup, MAX_SPOKEN_CHARS } from './condense'
 
 /**
  * A side question: answered now, from the conversation's context, and kept
@@ -66,12 +66,10 @@ export function sideQuestionOptions(
  * is shown in the pane.
  */
 export function speakableAnswer(answer: string): string {
-  const flat = answer
-    .replace(/[`*_#>]/g, '')
-    .replace(/^\s*[-•]\s*/gm, '')
-    .replace(/\s*\n+\s*/g, ' ')
-    .replace(/\s{2,}/g, ' ')
-    .trim()
+  // Unlike the silence fallback, an answer is always spoken: the user asked
+  // and is waiting. So code spans lose their marks here rather than sending
+  // the answer anywhere else.
+  const flat = flattenMarkup(answer).replace(/[`#>]/g, '').trim()
   if (flat.length <= MAX_SPOKEN_CHARS) return flat
 
   const sentences = flat.match(/[^.!?]+[.!?]+(\s|$)/g) ?? [flat]

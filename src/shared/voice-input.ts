@@ -66,8 +66,11 @@ export type PipEntry = {
    * `needs-attention` because the roster labels that one "needs permission",
    * which would be a lie for a rate-limited agent. `asking` is an agent that
    * spoke a question or blocker and ended its turn on it: idle, and waiting.
+   * `speaking` is an agent with a line still to be heard: being condensed,
+   * queued on the bus, or playing. Its turn is over, so without this the pip
+   * vanished up to fifteen seconds before the sound.
    */
-  state: 'working' | 'needs-attention' | 'asking' | 'paused'
+  state: 'working' | 'needs-attention' | 'asking' | 'paused' | 'speaking'
   /**
    * The prompt blocking a `needs-attention` agent, enough for the roster to
    * answer it in place. Absent in every other state.

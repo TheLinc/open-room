@@ -460,7 +460,8 @@ async function pushHud(): Promise<void> {
     agents,
     supervisor.allRuntimes(),
     supervisor.pendingRequests(),
-    quotaSeverity(accountQuota) === 'reached'
+    quotaSeverity(accountQuota) === 'reached',
+    speech.pendingAgents()
   )
 
   const focused = mainWindow !== null && !mainWindow.isDestroyed() && mainWindow.isFocused()
@@ -648,6 +649,10 @@ const wake = new WakeController({
 // runtime self-trigger defences; the echo check covers what is already in
 // flight when this fires.
 speech.onSpeakingChange = (speaking) => wake.setSpeaking(speaking)
+
+// An agent's pip stays up until its line has been heard, so the HUD follows
+// the bus's queue as well as the runtimes.
+speech.onActivityChange = () => void pushHud()
 
 /** The device label the wake listener's current stream was opened on. */
 let lastMicrophone: string | null = null

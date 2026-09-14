@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { MAX_SPOKEN_CHARS, speakableAsIs } from './condense'
+import { MAX_SPOKEN_CHARS, speakableAsIs, speakableLead } from './condense'
 
 /**
  * Asking the model to condense costs 8-9s and cannot be made faster — the
@@ -66,5 +66,64 @@ describe('speakableAsIs', () => {
     expect(speakableAsIs('It worked — all done, thanks!')).not.toBeNull()
     expect(speakableAsIs('Yes: the build passed (finally).')).not.toBeNull()
     expect(speakableAsIs('I found 42 files, and none were stale.')).not.toBeNull()
+  })
+})
+
+/**
+ * A reply with a list or emphasis used to go to the model on that alone,
+ * and the model call is 7 to 9 s of silence after the turn. Most such
+ * replies open with a plain sentence or two; those are spoken as written
+ * and only the structure is dropped. Anything with code or a path in its
+ * opening still goes to the model.
+ */
+describe('speakableLead', () => {
+  it('speaks the leading sentences with the markup flattened', () => {
+    const reply = [
+      'I looked at the three files.',
+      '',
+      '- **Tests** pass',
+      '- Nothing is committed yet.'
+    ].join('\n')
+    expect(speakableLead(reply)).toBe(
+      'I looked at the three files. Tests pass Nothing is committed yet.'
+    )
+  })
+
+  it('stops before the first sentence carrying code or a path', () => {
+    expect(speakableLead('Done.\n\nRun `npm test` to check.')).toBe('Done.')
+    expect(speakableLead('All green.\n\nThe change is in src/main/condense.ts now.')).toBe(
+      'All green.'
+    )
+  })
+
+  it('falls through to the model when the opening sentence is unspeakable', () => {
+    expect(speakableLead('I edited src/main/condense.ts to fix it. All tests pass.')).toBeNull()
+    expect(speakableLead('```\nnpm test\n```\nAll good.')).toBeNull()
+  })
+
+  it('speaks link text rather than the address', () => {
+    expect(speakableLead('See [the release notes](https://example.com/notes) for details.')).toBe(
+      'See the release notes for details.'
+    )
+  })
+
+  it('drops numbered list markers and headings', () => {
+    expect(speakableLead('## Summary\n\n1. Reviewed the plan.\n2. Nothing else changed.')).toBe(
+      'Summary Reviewed the plan. Nothing else changed.'
+    )
+  })
+
+  it('stays under the spoken limit on whole sentences', () => {
+    const sentence = 'This sentence is here to fill the reply with ordinary words.'
+    const reply = Array.from({ length: 8 }, () => sentence).join('\n\n- ')
+    const lead = speakableLead(reply)
+    expect(lead).not.toBeNull()
+    expect(lead!.length).toBeLessThanOrEqual(MAX_SPOKEN_CHARS)
+    expect(lead!.endsWith('.')).toBe(true)
+  })
+
+  it('is null for nothing', () => {
+    expect(speakableLead('')).toBeNull()
+    expect(speakableLead('\n\n- \n')).toBeNull()
   })
 })

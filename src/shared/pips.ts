@@ -9,7 +9,8 @@ const STATE_ORDER: Record<PipEntry['state'], number> = {
   'needs-attention': 0,
   asking: 1,
   paused: 2,
-  working: 3
+  working: 3,
+  speaking: 4
 }
 
 /**
@@ -31,6 +32,14 @@ const STATE_ORDER: Record<PipEntry['state'], number> = {
  * They appear even when idle, because the failure it describes is precisely
  * that nothing is happening and nothing says why.
  *
+ * An agent with a line still to be heard stays up as `speaking` until it has
+ * been heard. Its turn is over and its state is `ready`, so the pip used to
+ * vanish at the result while the condense call, synthesis and the player
+ * took up to fifteen seconds more. `speaking` holds the bus's view (queued or
+ * playing); `runtime.speechPending` is the supervisor's, while the line is
+ * still being prepared. Either keeps the pip; any other state on the same
+ * agent outranks it, since a mid-task progress line is a detail of working.
+ *
  * The sort is stable, so pips keep their positions while unrelated runtimes
  * update. The cluster is on screen for minutes at a time and it is a click
  * target — reshuffling under the pointer would make it unusable.
@@ -39,7 +48,8 @@ export function pipsFor(
   agents: Agent[],
   runtimes: AgentRuntime[],
   pendingPermissions: PermissionRequest[],
-  quotaReached = false
+  quotaReached = false,
+  speaking: ReadonlySet<string> = new Set()
 ): PipEntry[] {
   const byId = new Map(agents.map((agent) => [agent.config.id, agent]))
   const entries: PipEntry[] = []
@@ -57,8 +67,9 @@ export function pipsFor(
     // an agent that simply has nothing to do.
     const hasSession = runtime.state === 'working' || runtime.state === 'ready'
     const paused = quotaReached && hasSession
+    const hasLine = runtime.speechPending || speaking.has(runtime.agentId)
 
-    if (!request && !asking && !paused && runtime.state !== 'working') continue
+    if (!request && !asking && !paused && !hasLine && runtime.state !== 'working') continue
 
     const base = {
       agentId: runtime.agentId,
@@ -79,8 +90,12 @@ export function pipsFor(
       })
     } else if (asking) {
       entries.push({ ...base, state: 'asking', question: asking.text })
+    } else if (paused) {
+      entries.push({ ...base, state: 'paused' })
+    } else if (runtime.state === 'working') {
+      entries.push({ ...base, state: 'working' })
     } else {
-      entries.push({ ...base, state: paused ? 'paused' : 'working' })
+      entries.push({ ...base, state: 'speaking' })
     }
   }
 

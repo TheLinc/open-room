@@ -234,6 +234,31 @@ body {
   opacity: 0.4;
 }
 
+/*
+ * Speaking is the pill's vocabulary, not the ring's: a ring means "waiting
+ * for you", and nothing is. The dot keeps the working breath and emits light
+ * instead, a soft disc in the agent's colour pulsing at the same cadence as
+ * the pill's halo when a voice plays. Opacity only, so it stays off the main
+ * thread like everything else here.
+ */
+@keyframes or-glow {
+  from {
+    opacity: 0.12;
+  }
+  to {
+    opacity: 0.45;
+  }
+}
+
+.or-pip-speaking::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: 9999px;
+  background: var(--or-pip-color);
+  animation: or-glow 2100ms ease-in-out infinite alternate;
+}
+
 /* The glyph slot holds one value at a time; changes cross-fade rather than
    morph — indistinguishable at 11px and vastly simpler. */
 .or-glyph {
@@ -258,6 +283,12 @@ body {
   .or-pip-attn::after,
   .or-pip-asking::after {
     animation: none;
+  }
+
+  /* The glow holds steady rather than pulsing; the dot's slow breath still moves. */
+  .or-pip-speaking::after {
+    animation: none;
+    opacity: 0.3;
   }
 
   /*

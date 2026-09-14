@@ -67,7 +67,9 @@ export function Roster({
                   ? 'waiting for you'
                   : pip.state === 'paused'
                     ? 'usage limit'
-                    : 'working'}
+                    : pip.state === 'speaking'
+                      ? 'speaking'
+                      : 'working'}
             </span>
           </button>
 

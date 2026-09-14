@@ -199,3 +199,59 @@ describe('pipsFor under account quota', () => {
     ])
   })
 })
+
+/**
+ * An agent with something to say is shown until it has said it. The pip used
+ * to vanish the moment the result arrived, and the line landed up to fifteen
+ * seconds later with nothing on screen in between: the condense call, then
+ * synthesis, then the player. Pending speech comes from two places, the
+ * supervisor while it prepares the line and the bus while it is queued or
+ * playing, and either keeps the pip up.
+ */
+describe('pipsFor with speech pending', () => {
+  const agents = [agent('atlas', 'Atlas', 'cyan'), agent('scout', 'Scout', 'amber')]
+
+  it('shows a ready agent whose line is on the bus', () => {
+    const pips = pipsFor(agents, [runtime('atlas', 'ready')], [], false, new Set(['atlas']))
+    expect(pips.map((p) => [p.agentId, p.state])).toEqual([['atlas', 'speaking']])
+  })
+
+  it('shows an agent whose line is still being prepared', () => {
+    const preparing = { ...runtime('atlas', 'ready'), speechPending: true }
+    const pips = pipsFor(agents, [preparing], [])
+    expect(pips.map((p) => [p.agentId, p.state])).toEqual([['atlas', 'speaking']])
+  })
+
+  it('lets working stand for an agent that also has speech pending', () => {
+    // A mid-task progress line: the activity is the message, speech is a detail.
+    const pips = pipsFor(agents, [runtime('atlas', 'working')], [], false, new Set(['atlas']))
+    expect(pips.map((p) => p.state)).toEqual(['working'])
+  })
+
+  it('sorts speaking after working and lets a permission prompt win', () => {
+    const pips = pipsFor(
+      agents,
+      [runtime('atlas', 'ready'), runtime('scout', 'working')],
+      [],
+      false,
+      new Set(['atlas'])
+    )
+    expect(pips.map((p) => [p.agentId, p.state])).toEqual([
+      ['scout', 'working'],
+      ['atlas', 'speaking']
+    ])
+
+    const blocked = pipsFor(
+      agents,
+      [runtime('atlas', 'ready')],
+      [permission('atlas')],
+      false,
+      new Set(['atlas'])
+    )
+    expect(blocked.map((p) => p.state)).toEqual(['needs-attention'])
+  })
+
+  it('shows nothing for an agent with nothing to say', () => {
+    expect(pipsFor(agents, [runtime('atlas', 'ready')], [], false, new Set())).toEqual([])
+  })
+})

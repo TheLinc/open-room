@@ -1,4 +1,5 @@
-import { query } from '@anthropic-ai/claude-agent-sdk'
+import { query, type Options } from '@anthropic-ai/claude-agent-sdk'
+import { turnOutcome } from '@shared/turn-outcome'
 import { buildChildEnv } from './agent-errors'
 import { bundledClaudePath } from './claude-binary'
 
@@ -80,6 +81,59 @@ export function speakableAsIs(finalText: string): string | null {
   return text
 }
 
+/**
+ * Markdown structure taken out of a reply, leaving the prose on one line.
+ *
+ * Emphasis, headings, blockquotes and list markers go; a link keeps its text
+ * and loses its address. Code spans and fences are left as they are, so a
+ * sentence carrying one still fails `speakableAsIs` and goes to the model.
+ */
+export function flattenMarkup(text: string): string {
+  return text
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/^\s*(?:[-•*+]|\d+[.)])\s+/gm, '')
+    .replace(/^\s*#{1,6}\s+/gm, '')
+    .replace(/^\s*>\s?/gm, '')
+    .replace(/[*_~]/g, '')
+    .replace(/\s*\n+\s*/g, ' ')
+    .replace(/\s{2,}/g, ' ')
+    .trim()
+}
+
+/**
+ * The opening sentences of a structured reply, spoken as written.
+ *
+ * `speakableAsIs` sends any reply with a list, emphasis or a second line to
+ * the model, and that call is 7 to 9 s of silence after the turn (measured
+ * 6.6 s and 9.4 s on the day this was added). Most such replies open with a
+ * plain sentence or two before the structure starts, and those are spoken
+ * here instead, at no cost. Sentences are taken from the flattened text up
+ * to `MAX_SPOKEN_CHARS`, and the walk stops at the first one that is not
+ * speakable on its own; an opening sentence with code or a path in it means
+ * nothing is spoken here and the model still gets the reply. The bias is
+ * unchanged: a lead is spoken only when every sentence in it would have
+ * passed on its own.
+ */
+export function speakableLead(finalText: string): string | null {
+  const flat = flattenMarkup(finalText)
+  if (!flat) return null
+
+  // Split after a terminator followed by space, never on the terminator
+  // alone: `condense.ts` must stay inside its sentence so the path check
+  // sees it, rather than leaving "ts now." behind as a sentence of its own.
+  const sentences = flat.split(/(?<=[.!?])\s+/)
+
+  let lead = ''
+  for (const raw of sentences) {
+    const sentence = raw.trim()
+    if (!speakableAsIs(sentence)) break
+    const next = lead ? `${lead} ${sentence}` : sentence
+    if (next.length > MAX_SPOKEN_CHARS) break
+    lead = next
+  }
+  return lead || null
+}
+
 export function shouldSpeakFallback(turn: {
   ttsEnabled: boolean
   alreadySpoke: boolean
@@ -99,12 +153,48 @@ const INSTRUCTION = [
   'Under 20 words. Reply with the sentence only.'
 ].join(' ')
 
+/**
+ * What the condense turn's result is worth speaking.
+ *
+ * `subtype` and `is_error` disagree on the bundled CLI: an expired or
+ * missing login ends the turn `subtype: 'success'`, `is_error: true`, with
+ * "Failed to authenticate…" in `result`. Reading the subtype alone took that
+ * sentence for the summary and spoke it, while the chat showed the agent's
+ * real reply. The same three-way reading the supervisor applies to a turn
+ * applies here.
+ */
+export function condensedLine(result: {
+  subtype: string
+  is_error?: boolean
+  result?: string
+}): string | null {
+  if (turnOutcome(result, false) !== 'success') return null
+  const line = (result.result ?? '').trim()
+  return line.length > 0 ? line : null
+}
+
+export type CondenseSpawn = {
+  /** The host binary; the default is the SDK's bundled one, unpacked. */
+  claudeExecutable?: string | null
+  /**
+   * How the CLI is started, for an agent whose `claude` runs inside a WSL
+   * distro. The summary must come from the same login as the reply it
+   * summarises: this used to spawn the host binary for every agent, so a
+   * WSL agent signed in only inside its distro got its reply from there and
+   * its spoken summary from a signed-out host.
+   */
+  spawnClaudeCodeProcess?: Options['spawnClaudeCodeProcess']
+}
+
 export async function condenseForSpeech(
   finalText: string,
-  claudeExecutable: string | null = bundledClaudePath()
+  spawnWith: CondenseSpawn = {}
 ): Promise<string | null> {
   const trimmed = finalText.trim()
   if (!trimmed) return null
+  const claudeExecutable =
+    spawnWith.claudeExecutable === undefined ? bundledClaudePath() : spawnWith.claudeExecutable
+  const spawnClaudeCodeProcess = spawnWith.spawnClaudeCodeProcess
 
   try {
     for await (const message of query({
@@ -122,13 +212,16 @@ export async function condenseForSpeech(
         maxTurns: 1,
         persistSession: false,
         env: buildChildEnv(),
-        ...(claudeExecutable ? { pathToClaudeCodeExecutable: claudeExecutable } : {})
+        ...(claudeExecutable ? { pathToClaudeCodeExecutable: claudeExecutable } : {}),
+        ...(spawnClaudeCodeProcess ? { spawnClaudeCodeProcess } : {})
       }
     })) {
       if (message.type === 'result') {
-        if (message.subtype !== 'success') return null
-        const result = message.result.trim()
-        return result.length > 0 ? result : null
+        return condensedLine({
+          subtype: message.subtype,
+          is_error: message.is_error,
+          result: 'result' in message ? message.result : undefined
+        })
       }
     }
   } catch {
