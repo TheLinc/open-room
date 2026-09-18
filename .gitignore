@@ -5,9 +5,8 @@ out
 .eslintcache
 *.log*
 
-# Local working documents — design notes, implementation plan, and agent
-# instructions. Kept out of the repo deliberately.
-CLAUDE.md
+# Local working documents: design notes and the implementation plan, kept out
+# of the repo deliberately. CLAUDE.md is tracked, since it is contributor-facing.
 notes.md
 plan.md
 docs/superpowers/
