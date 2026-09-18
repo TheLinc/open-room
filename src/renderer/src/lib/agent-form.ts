@@ -127,6 +127,29 @@ export function toolPermissionOf(
   return 'ask'
 }
 
+/**
+ * The permission every listed tool shares, or `null` when they differ. The
+ * quick-select on the Permissions page shows this as its value so it reads
+ * as a summary of the list rather than a stale choice, and falls back to a
+ * placeholder the moment one row is changed by hand.
+ */
+export function uniformToolPermission(
+  tools: readonly string[],
+  permissions: Record<string, ToolPermission>
+): ToolPermission | null {
+  if (tools.length === 0) return null
+  const first = permissions[tools[0]] ?? 'ask'
+  return tools.every((tool) => (permissions[tool] ?? 'ask') === first) ? first : null
+}
+
+/** Every listed tool set to one permission, in one edit. */
+export function setAllToolPermissions(
+  tools: readonly string[],
+  permission: ToolPermission
+): Record<string, ToolPermission> {
+  return Object.fromEntries(tools.map((tool) => [tool, permission]))
+}
+
 export function toFormValues(agent: Agent, tools: readonly string[]): AgentFormValues {
   const { config } = agent
 

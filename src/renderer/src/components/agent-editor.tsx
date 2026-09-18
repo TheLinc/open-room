@@ -25,9 +25,11 @@ import type { KokoroStatus, SystemVoice } from '@shared/voice-rpc'
 import { DEFAULT_KOKORO_VOICE, KOKORO_VOICES } from '@shared/kokoro-voices'
 import {
   agentFormSchema,
+  setAllToolPermissions,
   toAgent,
   toFormValues,
   TOOL_PERMISSION_LABELS,
+  uniformToolPermission,
   type AgentFormValues,
   type ToolPermission
 } from '@/lib/agent-form'
@@ -700,19 +702,48 @@ export function AgentEditor({
 
                     <Separator />
 
-                    <div className="flex flex-col gap-1">
-                      <p className="text-sm font-medium">Tools</p>
-                      <p className="text-sm text-muted-foreground">
-                        Every tool is available to the agent. This controls whether it asks you
-                        first.
-                      </p>
-                    </div>
-
                     <Controller
                       control={form.control}
                       name="toolPermissions"
                       render={({ field }) => (
                         <div className="flex flex-col gap-2">
+                          <div className="mb-3 flex items-center justify-between gap-4">
+                            <div className="flex flex-col gap-1">
+                              <p className="text-sm font-medium">Tools</p>
+                              <p className="text-sm text-muted-foreground">
+                                Every tool is available to the agent. This controls whether it
+                                asks you first.
+                              </p>
+                            </div>
+                            {/* Shows the shared setting while every row agrees, and the
+                                placeholder once any row differs, so it never claims a
+                                state the list below does not have. Radix shows the
+                                placeholder only for an empty root value (items are what
+                                reject ''), so mixed travels as ''. */}
+                            <Select
+                              value={
+                                uniformToolPermission(CLAUDE_CODE_TOOLS, field.value ?? {}) ?? ''
+                              }
+                              onValueChange={(next) =>
+                                field.onChange(
+                                  setAllToolPermissions(CLAUDE_CODE_TOOLS, next as ToolPermission)
+                                )
+                              }
+                            >
+                              <SelectTrigger className="w-48" aria-label="Set every tool to">
+                                <SelectValue placeholder="Set all to…" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {(Object.keys(TOOL_PERMISSION_LABELS) as ToolPermission[]).map(
+                                  (permission) => (
+                                    <SelectItem key={permission} value={permission}>
+                                      All: {TOOL_PERMISSION_LABELS[permission].toLowerCase()}
+                                    </SelectItem>
+                                  )
+                                )}
+                              </SelectContent>
+                            </Select>
+                          </div>
                           {CLAUDE_CODE_TOOLS.map((tool) => {
                             const value: ToolPermission = field.value?.[tool] ?? 'ask'
                             return (

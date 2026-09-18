@@ -5,10 +5,40 @@ import {
   parseMcpServers,
   toAgent,
   toFormValues,
-  toolPermissionOf
+  setAllToolPermissions,
+  toolPermissionOf,
+  uniformToolPermission
 } from './agent-form'
 
 const agent = () => createDefaultAgent('Atlas', 'C:/projects/ci', 'amber')
+
+describe('quick-select over every tool', () => {
+  const tools = ['Read', 'Bash', 'Write'] as const
+
+  it('sets every listed tool to the one permission', () => {
+    expect(setAllToolPermissions(tools, 'allow')).toEqual({
+      Read: 'allow',
+      Bash: 'allow',
+      Write: 'allow'
+    })
+  })
+
+  it('reports the shared permission when every tool agrees', () => {
+    expect(uniformToolPermission(tools, setAllToolPermissions(tools, 'deny'))).toBe('deny')
+  })
+
+  it('treats a missing entry as ask, which is what the row shows', () => {
+    expect(uniformToolPermission(tools, { Read: 'ask' })).toBe('ask')
+  })
+
+  it('reports nothing shared once one row differs', () => {
+    expect(uniformToolPermission(tools, { Read: 'allow', Bash: 'allow', Write: 'ask' })).toBeNull()
+  })
+
+  it('reports nothing for an empty tool list', () => {
+    expect(uniformToolPermission([], {})).toBeNull()
+  })
+})
 
 describe('toolPermissionOf', () => {
   it('reports ask for tools in neither list, which is the default', () => {
