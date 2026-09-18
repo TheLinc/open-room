@@ -143,13 +143,25 @@ export function contextSeverity(
   return 'ok'
 }
 
-/** Short enough for a pane header: "19% of 200K". */
+/**
+ * Short enough for a pane header: "19% of 200K", "96% of 1M".
+ *
+ * The window is named rather than dropped because the percentage alone does
+ * not say how much room is left: 96% of 200K is one long turn, 96% of 1M is
+ * an afternoon. The first cut only knew thousands and wrote Fable's window
+ * as "1000K".
+ */
 export function describeContext(usage: ContextUsage | null): string | null {
   if (!usage) return null
   const percent = Math.round(usage.fraction * 100)
-  const window =
-    usage.windowTokens >= 1000
-      ? `${Math.round(usage.windowTokens / 1000)}K`
-      : `${usage.windowTokens}`
-  return `${percent}% of ${window}`
+  return `${percent}% of ${formatWindow(usage.windowTokens)}`
+}
+
+function formatWindow(tokens: number): string {
+  if (tokens >= 1_000_000) {
+    const millions = tokens / 1_000_000
+    return `${Number.isInteger(millions) ? millions : millions.toFixed(1)}M`
+  }
+  if (tokens >= 1000) return `${Math.round(tokens / 1000)}K`
+  return `${tokens}`
 }

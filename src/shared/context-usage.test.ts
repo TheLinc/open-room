@@ -156,6 +156,16 @@ describe('describeContext', () => {
     )
   })
 
+  it('writes a million-token window as 1M, not 1000K', () => {
+    // Fable's window; the first cut only knew thousands and read "96% of 1000K".
+    expect(describeContext({ usedTokens: 960000, windowTokens: 1000000, fraction: 0.96 })).toBe(
+      '96% of 1M'
+    )
+    expect(describeContext({ usedTokens: 600000, windowTokens: 1500000, fraction: 0.4 })).toBe(
+      '40% of 1.5M'
+    )
+  })
+
   it('says nothing when there is nothing to say', () => {
     expect(describeContext(null)).toBeNull()
   })
