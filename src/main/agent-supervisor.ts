@@ -18,6 +18,7 @@ import {
   type TranscriptEntry
 } from '@shared/agent-runtime'
 import { userContent, type ImageAttachment, type UserContentBlock } from '@shared/attachments'
+import type { Utterance } from '@shared/speech'
 import { classifyThrownError, describeAgentError, kindFromAssistantError } from './agent-errors'
 import { describeQuota } from '@shared/quota'
 import { contextUsageFrom } from '@shared/context-usage'
@@ -39,7 +40,7 @@ import {
   stopNeedsInterrupt
 } from '@shared/stop-plan'
 import { sessionScoped } from '@shared/permission-scope'
-import { acknowledgement, openingCandidate, openingLine } from './voice-ack'
+import { acknowledgement, failureLine, openingCandidate, openingLine } from './voice-ack'
 import {
   drain,
   queueActionForResult,
@@ -297,14 +298,14 @@ export class AgentSupervisor {
    * the bus keeps only the newest. Silent for an agent with TTS off; the
    * sink would turn it into a notification, which nobody asked for.
    */
-  private say(agent: Agent, text: string): void {
+  private say(agent: Agent, text: string, priority: Utterance['priority'] = 'progress'): void {
     if (!agent.config.tts.enabled) return
     this.speech.enqueue({
       id: randomUUID(),
       agentId: agent.config.id,
       agentName: agent.config.name,
       text,
-      priority: 'progress',
+      priority,
       queuedAt: Date.now()
     })
   }
@@ -1202,6 +1203,13 @@ export class AgentSupervisor {
         ? { ...error, hint: wslLoginHint(distro) }
         : error
     this.patch(agentId, { state: 'error', error: hinted })
+
+    // A prompt that came by voice was acknowledged aloud ("On it."), so its
+    // failure has to be too, or the room goes quiet on a turn that never
+    // finished. `blocker`, since the user asked and is waiting for a reply,
+    // and it must not be dropped as stale progress behind another voice.
+    const session = this.sessions.get(agentId)
+    if (session?.voiceTurn && hinted) this.say(session.agent, failureLine(hinted), 'blocker')
   }
 
   private patch(agentId: string, changes: Partial<AgentRuntime>): void {

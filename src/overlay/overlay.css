@@ -94,20 +94,6 @@ body {
   }
 }
 
-@keyframes or-radiate {
-  0% {
-    transform: scale(0.5);
-    opacity: 0;
-  }
-  25% {
-    opacity: 0.95;
-  }
-  100% {
-    transform: scale(2.6);
-    opacity: 0;
-  }
-}
-
 @keyframes or-blip {
   0%,
   100% {
@@ -120,37 +106,12 @@ body {
   }
 }
 
-@keyframes or-halo {
-  from {
-    box-shadow:
-      0 10px 30px oklch(0 0 0 / 55%),
-      0 0 0 2px var(--or-halo-soft),
-      0 0 14px var(--or-halo-soft);
-  }
-  to {
-    box-shadow:
-      0 10px 30px oklch(0 0 0 / 55%),
-      0 0 0 4px var(--or-halo-mid),
-      0 0 28px var(--or-halo-strong);
-  }
-}
-
 .or-enter {
   animation: or-enter 180ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.or-arc {
-  opacity: 0;
-  animation: or-radiate 1500ms ease-out infinite;
-}
-
 .or-blip {
   animation: or-blip 1050ms ease-in-out infinite;
-}
-
-/* Only the agent's own voice makes the bubble emit light. */
-.or-emit {
-  animation: or-halo 2100ms ease-in-out infinite alternate;
 }
 
 /*
@@ -259,6 +220,31 @@ body {
   animation: or-glow 2100ms ease-in-out infinite alternate;
 }
 
+/*
+ * Error is a stumble: two short beats, then a long rest. Colour still means
+ * which agent, so the state has to be carried by rhythm, and this one is
+ * unlike the others on purpose — working's even breath, blocked's fast one,
+ * paused's slow one are all regular; a failure is the one that is not.
+ */
+@keyframes or-stumble {
+  0%,
+  40%,
+  100% {
+    opacity: 1;
+  }
+  10%,
+  30% {
+    opacity: 0.3;
+  }
+  20% {
+    opacity: 1;
+  }
+}
+
+.or-pip-error {
+  animation: or-stumble 2600ms linear infinite;
+}
+
 /* The glyph slot holds one value at a time; changes cross-fade rather than
    morph — indistinguishable at 11px and vastly simpler. */
 .or-glyph {
@@ -277,9 +263,7 @@ body {
     animation-name: none;
   }
 
-  .or-arc,
   .or-blip,
-  .or-emit,
   .or-pip-attn::after,
   .or-pip-asking::after {
     animation: none;
@@ -289,6 +273,12 @@ body {
   .or-pip-speaking::after {
     animation: none;
     opacity: 0.3;
+  }
+
+  /* The stumble becomes the same slow breath, held dim so it still differs. */
+  .or-pip-error {
+    animation-name: or-breathe;
+    opacity: 0.6;
   }
 
   /*
@@ -311,9 +301,5 @@ body {
   /* Still slower than a working pip, which is 3400ms here. */
   .or-pip-paused {
     animation-duration: 6000ms;
-  }
-
-  .or-arc {
-    opacity: 0.7;
   }
 }

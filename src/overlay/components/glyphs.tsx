@@ -51,32 +51,6 @@ export function CircleGlyph({ color }: { color: string }): React.JSX.Element {
   )
 }
 
-/**
- * Arcs radiating outward — the agent's voice leaving, rather than a voice
- * being sampled. A different shape, not a different colour of the same shape,
- * so the two are not confusable in peripheral vision.
- */
-export function Arcs({ color }: { color: string }): React.JSX.Element {
-  return (
-    <span aria-hidden className="relative block h-5 w-6 shrink-0">
-      {[0, 1, 2].map((i) => (
-        <span
-          key={i}
-          className="or-arc absolute top-1/2 left-px block size-2 rounded-full"
-          style={{
-            border: `1.4px solid ${color}`,
-            borderLeftColor: 'transparent',
-            borderTopColor: 'transparent',
-            borderBottomColor: 'transparent',
-            marginTop: '-4px',
-            animationDelay: `${i * 500}ms`
-          }}
-        />
-      ))}
-    </span>
-  )
-}
-
 /** Three dots pulsing while the transcript is being produced. */
 export function Shimmer({ color }: { color: string }): React.JSX.Element {
   return (

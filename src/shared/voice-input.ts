@@ -14,7 +14,6 @@ export type OverlayPhase =
   | 'asking'
   /** The side question's answer, spoken and shown. */
   | 'answered'
-  | 'speaking'
   | 'error'
 
 export type OverlayState = {
@@ -68,9 +67,11 @@ export type PipEntry = {
    * spoke a question or blocker and ended its turn on it: idle, and waiting.
    * `speaking` is an agent with a line still to be heard: being condensed,
    * queued on the bus, or playing. Its turn is over, so without this the pip
-   * vanished up to fifteen seconds before the sound.
+   * vanished up to fifteen seconds before the sound. `error` is a turn that
+   * ended in failure: nothing else says so with the window hidden, and a pip
+   * that simply vanished read as a task that finished.
    */
-  state: 'working' | 'needs-attention' | 'asking' | 'paused' | 'speaking'
+  state: 'working' | 'needs-attention' | 'asking' | 'paused' | 'speaking' | 'error'
   /**
    * The prompt blocking a `needs-attention` agent, enough for the roster to
    * answer it in place. Absent in every other state.
@@ -84,6 +85,8 @@ export type PipEntry = {
   }
   /** The line an `asking` agent spoke, verbatim. Absent in every other state. */
   question?: string
+  /** What went wrong, for an `error` agent. Absent in every other state. */
+  error?: string
 }
 
 const HOLD_BASE_MS = 1400

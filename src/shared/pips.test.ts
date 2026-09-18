@@ -255,3 +255,54 @@ describe('pipsFor with speech pending', () => {
     expect(pipsFor(agents, [runtime('atlas', 'ready')], [], false, new Set())).toEqual([])
   })
 })
+
+describe('pipsFor with an errored agent', () => {
+  const agents = [agent('atlas', 'Atlas', 'cyan'), agent('scout', 'Scout', 'amber')]
+  const errored = (agentId: string, message: string): AgentRuntime => ({
+    ...emptyRuntime(agentId),
+    state: 'error',
+    error: { kind: 'crashed', message }
+  })
+
+  it('keeps an errored agent on the HUD, with the message', () => {
+    // The turn is over and nothing else says so: no speech on an error, no
+    // notification, and a vanished pip reads as a finished task.
+    const pips = pipsFor(agents, [errored('atlas', 'Claude Code process exited with code 1')], [])
+
+    expect(pips).toHaveLength(1)
+    expect(pips[0].state).toBe('error')
+    expect(pips[0].error).toBe('Claude Code process exited with code 1')
+  })
+
+  it('sorts an error after a question', () => {
+    // A question can be answered from the roster; an error needs the window.
+    const pips = pipsFor(agents, [errored('atlas', 'boom'), asking('scout', 'Ship it?')], [])
+
+    expect(pips.map((p) => [p.agentId, p.state])).toEqual([
+      ['scout', 'asking'],
+      ['atlas', 'error']
+    ])
+  })
+
+  it('sorts an error before a quota pause', () => {
+    // A pause clears itself when the window resets; an error does not.
+    const pips = pipsFor(agents, [runtime('scout', 'ready'), errored('atlas', 'boom')], [], true)
+
+    expect(pips.map((p) => [p.agentId, p.state])).toEqual([
+      ['atlas', 'error'],
+      ['scout', 'paused']
+    ])
+  })
+
+  it('sorts an error ahead of working agents', () => {
+    const pips = pipsFor(agents, [runtime('scout', 'working'), errored('atlas', 'boom')], [])
+
+    expect(pips.map((p) => p.state)).toEqual(['error', 'working'])
+  })
+
+  it('carries no error on an agent that is merely working', () => {
+    const pips = pipsFor(agents, [runtime('atlas', 'working')], [])
+
+    expect(pips[0].error).toBeUndefined()
+  })
+})

@@ -2,7 +2,7 @@ import { useEffect } from 'react'
 import type { OverlayState } from '@shared/voice-input'
 import { useHitBox } from '../use-hit-box'
 import { Waveform } from './waveform'
-import { Arcs, CircleGlyph, MicGlyph, Shimmer, TickGlyph } from './glyphs'
+import { CircleGlyph, MicGlyph, Shimmer, TickGlyph } from './glyphs'
 
 /**
  * The bottom-centre bubble.
@@ -58,8 +58,6 @@ export function Pill({
       <Waveform level={level} color={color} running />
     ) : state.phase === 'transcribing' || asking ? (
       <Shimmer color={color} />
-    ) : state.phase === 'speaking' ? (
-      <Arcs color={color} />
     ) : null
 
   // Main pauses the dismissal timer while the pointer is here, so the bubble
@@ -73,21 +71,10 @@ export function Pill({
         'or-surface or-enter flex flex-col gap-1.5 px-3.5 py-2 leading-normal',
         // Only the dispatched bubble has a second line, and only it needs a
         // predictable width for the transcript to truncate against.
-        wide ? 'w-[320px] rounded-xl' : 'rounded-full',
-        state.phase === 'speaking' ? 'or-emit' : ''
+        wide ? 'w-[320px] rounded-xl' : 'rounded-full'
       ]
         .filter(Boolean)
         .join(' ')}
-      style={
-        state.phase === 'speaking'
-          ? ({
-              borderColor: `${color}73`,
-              '--or-halo-soft': `${color}2e`,
-              '--or-halo-mid': `${color}21`,
-              '--or-halo-strong': `${color}5c`
-            } as React.CSSProperties)
-          : undefined
-      }
     >
       <div className="flex items-center gap-2.5" style={{ color }}>
         {glyph}

@@ -23,7 +23,8 @@ export function PipCluster({ pips }: { pips: PipEntry[] }): React.JSX.Element {
             pip.state === 'needs-attention' ? 'or-pip-attn' : '',
             pip.state === 'asking' ? 'or-pip-asking' : '',
             pip.state === 'paused' ? 'or-pip-paused' : '',
-            pip.state === 'speaking' ? 'or-pip-speaking' : ''
+            pip.state === 'speaking' ? 'or-pip-speaking' : '',
+            pip.state === 'error' ? 'or-pip-error' : ''
           ]
             .filter(Boolean)
             .join(' ')}

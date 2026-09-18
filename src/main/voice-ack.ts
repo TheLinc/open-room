@@ -1,4 +1,28 @@
+import type { AgentError } from '@shared/agent-runtime'
 import { speakableAsIs } from './condense'
+
+/**
+ * What is said when a voice-initiated turn fails.
+ *
+ * "On it." followed by silence is the worst version of a failure: by voice
+ * the reply is what the user is waiting to hear, and with the window hidden
+ * nothing else says the turn ended. The line is the app's own, never the
+ * error text, which routinely carries paths, exit codes and command lines;
+ * the notification and the pane have those. No agent name, for the same
+ * reason as `acknowledgement`.
+ */
+export function failureLine(error: AgentError): string {
+  switch (error.kind) {
+    case 'rate-limited':
+      return 'Usage limit reached. Waiting for it to reset.'
+    case 'not-authenticated':
+      return 'Signed out of Claude Code. Sign in again.'
+    case 'model-unavailable':
+      return 'That model is not available on this account.'
+    default:
+      return 'That did not work. The window has the error.'
+  }
+}
 
 /**
  * What is said back, immediately, to a prompt that arrived by voice.

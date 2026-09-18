@@ -69,7 +69,8 @@ import { MicrophoneTest } from './microphone-test'
 import { AppTray } from './tray'
 import { trayVoiceToggle, voiceActive } from './tray-voice'
 import { IpcChannel } from '@shared/ipc'
-import type { RateLimitStatus } from '@shared/agent-runtime'
+import type { AgentRuntime, RateLimitStatus } from '@shared/agent-runtime'
+import { errorNotification } from '@shared/error-notice'
 import { pipsFor } from '@shared/pips'
 import { mostRecentAwaiting } from '@shared/awaiting'
 import { describeQuota, msUntilReset, quotaSeverity, shouldNotifyQuota } from '@shared/quota'
@@ -373,12 +374,41 @@ function onQuotaReported(limit: RateLimitStatus): void {
   }).show()
 }
 
+/** Each agent's last reported state, so a failure is announced once. */
+const lastStates = new Map<string, AgentRuntime['state']>()
+
+/**
+ * One native notification when a turn ends in error. The main window is
+ * usually hidden while agents work, and nothing else carries a failure out
+ * of it: the silence fallback runs on success only, and the HUD's error pip
+ * makes no sound. Gated on the step into `error` by `errorNotification`, so
+ * the runtime re-emitted on every patch cannot repeat it, and on not
+ * watching the pane, the same rule as speech: the pane already shows it.
+ */
+async function notifyError(runtime: AgentRuntime): Promise<void> {
+  const previous = lastStates.get(runtime.agentId)
+  lastStates.set(runtime.agentId, runtime.state)
+  if (runtime.state !== 'error' || previous === 'error' || !Notification.isSupported()) return
+  const watched = watching(
+    {
+      windowFocused: mainWindow !== null && !mainWindow.isDestroyed() && mainWindow.isFocused(),
+      selectedAgentId
+    },
+    runtime.agentId
+  )
+  if (watched) return
+  const agent = (await store.list()).agents.find((a) => a.config.id === runtime.agentId)
+  const notice = errorNotification(previous, runtime, agent?.config.name ?? runtime.agentId)
+  if (notice) new Notification({ ...notice, urgency: 'critical' }).show()
+}
+
 const supervisor = new AgentSupervisor(
   {
     onRuntime: (runtime) => {
       broadcastRuntime(runtime)
       void pushHud()
       if (runtime.error?.kind === 'not-authenticated') void recheckLogin()
+      void notifyError(runtime)
     },
     onTranscript: broadcastTranscript,
     onPermissionRequest: (request) => {

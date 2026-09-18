@@ -54,7 +54,7 @@ export function Roster({
             <span
               className={[
                 'ml-auto shrink-0 pl-2 text-[9.5px]',
-                pip.state === 'needs-attention'
+                pip.state === 'needs-attention' || pip.state === 'error'
                   ? 'text-red-400'
                   : pip.state === 'asking'
                     ? 'text-amber-300'
@@ -69,7 +69,9 @@ export function Roster({
                     ? 'usage limit'
                     : pip.state === 'speaking'
                       ? 'speaking'
-                      : 'working'}
+                      : pip.state === 'error'
+                        ? 'error'
+                        : 'working'}
             </span>
           </button>
 
@@ -101,6 +103,15 @@ export function Roster({
               title={pip.question}
             >
               {pip.question}
+            </div>
+          )}
+
+          {pip.error && (
+            <div
+              className="line-clamp-2 px-1.5 pt-0.5 pb-1.5 text-[10.5px] leading-snug text-or-fg/75"
+              title={pip.error}
+            >
+              {pip.error}
             </div>
           )}
         </div>

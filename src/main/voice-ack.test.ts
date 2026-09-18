@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { acknowledgement, openingCandidate, openingLine } from './voice-ack'
+import { acknowledgement, failureLine, openingCandidate, openingLine } from './voice-ack'
 
 describe('openingCandidate', () => {
   const assistant = (content: unknown) => ({ type: 'assistant', message: { content } })
@@ -68,5 +68,35 @@ describe('openingLine', () => {
 
   it('leaves an empty first message unspoken', () => {
     expect(openingLine(voiceTurn, '   ')).toBeNull()
+  })
+})
+
+describe('failureLine', () => {
+  it('names the usage limit when that is the cause', () => {
+    expect(failureLine({ kind: 'rate-limited', message: 'x' })).toBe(
+      'Usage limit reached. Waiting for it to reset.'
+    )
+  })
+
+  it('says to sign in again when the login is gone', () => {
+    expect(failureLine({ kind: 'not-authenticated', message: 'x' })).toBe(
+      'Signed out of Claude Code. Sign in again.'
+    )
+  })
+
+  it('points at the plan for a model the account cannot use', () => {
+    expect(failureLine({ kind: 'model-unavailable', message: 'x' })).toBe(
+      'That model is not available on this account.'
+    )
+  })
+
+  it('falls back to one plain line for anything else', () => {
+    expect(failureLine({ kind: 'crashed', message: 'exited with code 1' })).toBe(
+      'That did not work. The window has the error.'
+    )
+  })
+
+  it('never carries the error text, which may hold paths and code', () => {
+    expect(failureLine({ kind: 'unknown', message: 'C:\\x\\y.ts failed' })).not.toContain('y.ts')
   })
 })

@@ -8,9 +8,10 @@ import type { PipEntry } from './voice-input'
 const STATE_ORDER: Record<PipEntry['state'], number> = {
   'needs-attention': 0,
   asking: 1,
-  paused: 2,
-  working: 3,
-  speaking: 4
+  error: 2,
+  paused: 3,
+  working: 4,
+  speaking: 5
 }
 
 /**
@@ -40,6 +41,13 @@ const STATE_ORDER: Record<PipEntry['state'], number> = {
  * still being prepared. Either keeps the pip; any other state on the same
  * agent outranks it, since a mid-task progress line is a detail of working.
  *
+ * An agent whose turn ended in error stays up as `error` until the runtime
+ * leaves that state (the next prompt, Stop, End session). Nothing else
+ * reports a failure to someone away from the window: the silence fallback
+ * runs on success only, and a pip that vanished at the result read as a
+ * task that finished. It sorts after a question, which the roster can
+ * answer, and before a quota pause, which clears itself.
+ *
  * The sort is stable, so pips keep their positions while unrelated runtimes
  * update. The cluster is on screen for minutes at a time and it is a click
  * target — reshuffling under the pointer would make it unusable.
@@ -68,8 +76,11 @@ export function pipsFor(
     const hasSession = runtime.state === 'working' || runtime.state === 'ready'
     const paused = quotaReached && hasSession
     const hasLine = runtime.speechPending || speaking.has(runtime.agentId)
+    const errored = runtime.state === 'error'
 
-    if (!request && !asking && !paused && !hasLine && runtime.state !== 'working') continue
+    if (!request && !asking && !paused && !hasLine && !errored && runtime.state !== 'working') {
+      continue
+    }
 
     const base = {
       agentId: runtime.agentId,
@@ -90,6 +101,8 @@ export function pipsFor(
       })
     } else if (asking) {
       entries.push({ ...base, state: 'asking', question: asking.text })
+    } else if (errored) {
+      entries.push({ ...base, state: 'error', error: runtime.error?.message ?? 'Unknown error' })
     } else if (paused) {
       entries.push({ ...base, state: 'paused' })
     } else if (runtime.state === 'working') {
