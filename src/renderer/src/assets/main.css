@@ -440,3 +440,18 @@
     opacity: 1;
   }
 }
+
+/*
+ * Radix hides the scrollbar in every select list with an unlayered style tag
+ * of its own, which a Tailwind utility (layered) can never beat. A list that
+ * opts in with `SelectContent scrollbar` gets it back here. `scrollbar-width`
+ * returns to `auto` rather than being set: any other value switches off the
+ * app's `::-webkit-scrollbar` styling above.
+ */
+[data-radix-select-viewport][data-scrollbar] {
+  scrollbar-width: auto;
+}
+
+[data-radix-select-viewport][data-scrollbar]::-webkit-scrollbar {
+  display: block;
+}

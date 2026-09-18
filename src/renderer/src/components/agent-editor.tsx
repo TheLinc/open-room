@@ -82,6 +82,15 @@ function useSystemVoices(enabled: boolean): SystemVoice[] {
   return voices
 }
 
+function sameKokoroStatus(a: KokoroStatus, b: KokoroStatus): boolean {
+  return (
+    a.loaded === b.loaded &&
+    a.installed === b.installed &&
+    a.progress === b.progress &&
+    a.error === b.error
+  )
+}
+
 /**
  * Tracks whether the neural weights are present, polling while they load.
  *
@@ -109,7 +118,10 @@ function useKokoroStatus(enabled: boolean): KokoroStatus {
     const poll = async (): Promise<void> => {
       const next = await window.openRoom.kokoroStatus()
       if (cancelled) return
-      setStatus(next)
+      // Kept as the same object when nothing changed. A new one every second
+      // re-rendered the whole editor, and an open Select re-aligns itself on
+      // render, so the voice list snapped back to the top while being scrolled.
+      setStatus((prev) => (sameKokoroStatus(prev, next) ? prev : next))
 
       if (next.installed && !next.loaded && !warming && next.progress === undefined) {
         warming = true
@@ -974,7 +986,7 @@ export function AgentEditor({
                                   <SelectTrigger disabled={!voiceReady}>
                                     <SelectValue placeholder="Choose a voice" />
                                   </SelectTrigger>
-                                  <SelectContent>
+                                  <SelectContent scrollbar>
                                     {voiceProvider === 'system' ? (
                                       <>
                                         <SelectItem value={UNSET}>System default</SelectItem>
