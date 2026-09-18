@@ -1147,6 +1147,11 @@ export class AgentSupervisor {
     await this.stop(agentId)
     this.runtimes.delete(agentId)
     this.chosen.delete(agentId)
+    // The windows hold live entries and the runtime by agent id, and an agent
+    // created later under the same name gets the same id, so they have to be
+    // told. Without this the new agent opened on the deleted one's chat.
+    this.events.onTranscriptCleared(agentId)
+    this.events.onRuntime(emptyRuntime(agentId))
   }
 
   private rejectPendingFor(agentId: string): void {

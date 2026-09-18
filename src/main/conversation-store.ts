@@ -23,8 +23,14 @@ import type { ArchiveReader } from './archive-store'
 
 export const AGENT_TAG_PREFIX = 'open-room:'
 
-export function agentTag(agentId: string): string {
-  return `${AGENT_TAG_PREFIX}${agentId}`
+/**
+ * The tag carries the agent's `instance` as well as its id, because the id is
+ * derived from the name and comes back when an agent is deleted and recreated
+ * under the same name, while the old transcripts are still on disk.
+ */
+export function agentTag(config: { id: string; instance?: string }): string {
+  const base = `${AGENT_TAG_PREFIX}${config.id}`
+  return config.instance ? `${base}:${config.instance}` : base
 }
 
 /** What the store needs to know about worktrees; `WorktreeManager` provides it. */
@@ -74,7 +80,7 @@ export class ConversationStore {
         .catch(() => [])
 
       for (const session of sessions) {
-        if (session.tag !== agentTag(agent.config.id) || seen.has(session.sessionId)) continue
+        if (session.tag !== agentTag(agent.config) || seen.has(session.sessionId)) continue
         seen.add(session.sessionId)
         conversations.push({
           sessionId: session.sessionId,
@@ -101,7 +107,7 @@ export class ConversationStore {
   async claim(agent: Agent, sessionId: string): Promise<void> {
     if (!agent.config.persistSession) return
     await this.sessionsFor(agent)
-      .tagSession(sessionId, agentTag(agent.config.id), {
+      .tagSession(sessionId, agentTag(agent.config), {
         dir: await this.dirFor(agent, sessionId)
       })
       .catch(() => {

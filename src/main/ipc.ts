@@ -1,5 +1,11 @@
 import { app, BrowserWindow, dialog, ipcMain, Notification } from 'electron'
-import { agentConfigSchema, slugifyAgentName, type Agent } from '@shared/agent'
+import {
+  agentConfigSchema,
+  newAgentInstance,
+  slugifyAgentName,
+  withStoredInstance,
+  type Agent
+} from '@shared/agent'
 import type {
   AgentRuntime,
   RateLimitStatus,
@@ -166,7 +172,9 @@ export function registerIpcHandlers(
       if (await store.exists(id)) {
         throw new Error(`An agent named “${agent.config.name}” already exists.`)
       }
-      await store.write({ ...agent, config: { ...agent.config, id } })
+      // A fresh instance every time, so an agent recreated under a deleted
+      // one's name does not inherit its conversations.
+      await store.write({ ...agent, config: { ...agent.config, id, instance: newAgentInstance() } })
       probeNewDistro(agent.config.wsl)
     })
   })
@@ -179,7 +187,11 @@ export function registerIpcHandlers(
       if (!(await store.exists(parsed.id))) {
         throw new Error('That agent no longer exists on disk.')
       }
-      await store.write({ ...agent, config: parsed })
+      // The instance belongs to the directory, not to the editor: the form
+      // does not carry it, and a renderer must not be able to move an agent
+      // onto another's conversations. Whatever is on disk wins.
+      const stored = await store.read(parsed.id).catch(() => null)
+      await store.write({ ...agent, config: withStoredInstance(parsed, stored?.config) })
       probeNewDistro(parsed.wsl)
     })
   })

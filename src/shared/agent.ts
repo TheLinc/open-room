@@ -121,6 +121,18 @@ export const agentNameSchema = z
 export const agentConfigSchema = z.object({
   /** Slug derived from the name at creation. Stable across renames. */
   id: z.string().regex(/^[a-z0-9-]+$/, 'Invalid agent id'),
+  /**
+   * Stamped by main when the agent is created, and part of its conversation
+   * tag. The id is reused when an agent is deleted and one with the same name
+   * is created, and the deleted agent's transcripts stay on disk, so without
+   * this the new agent picked up the old one's conversations. Absent on
+   * agents created before the field, which keep the bare tag and so keep
+   * their history.
+   */
+  instance: z
+    .string()
+    .regex(/^[a-z0-9]+$/, 'Invalid agent instance')
+    .optional(),
   name: agentNameSchema,
   color: z.enum(AGENT_COLOR_IDS),
   /**
@@ -198,6 +210,26 @@ export function slugifyAgentName(name: string): string {
     .replace(/['’]/g, '')
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
+}
+
+/** A new `instance` stamp: 12 hex characters, unique enough per agent id. */
+export function newAgentInstance(): string {
+  return globalThis.crypto.randomUUID().replace(/-/g, '').slice(0, 12)
+}
+
+/**
+ * The config to write on an update. `instance` is taken from the stored
+ * config whatever the incoming one says, including its absence: dropping it
+ * would detach the agent from its conversations, and changing it would attach
+ * the agent to someone else's.
+ */
+export function withStoredInstance(
+  incoming: AgentConfig,
+  stored: AgentConfig | undefined
+): AgentConfig {
+  const rest = { ...incoming }
+  delete rest.instance
+  return stored?.instance ? { ...rest, instance: stored.instance } : rest
 }
 
 export const DEFAULT_AGENT_CONTEXT = `# Role

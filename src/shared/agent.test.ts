@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { agentConfigSchema, agentNameSchema, createDefaultAgent, slugifyAgentName } from './agent'
+import {
+  agentConfigSchema,
+  agentNameSchema,
+  createDefaultAgent,
+  newAgentInstance,
+  slugifyAgentName,
+  withStoredInstance
+} from './agent'
 
 const validConfig = {
   id: 'atlas',
@@ -178,5 +185,26 @@ describe('createDefaultAgent', () => {
 
   it('runs on the host unless a WSL distro is set', () => {
     expect(createDefaultAgent('Atlas', 'C:/work', 'cyan').config.wsl).toBe(null)
+  })
+})
+
+describe('agent instance', () => {
+  const config = agentConfigSchema.parse(validConfig)
+
+  it('stamps a fresh value each time', () => {
+    const a = newAgentInstance()
+    expect(agentConfigSchema.parse({ ...validConfig, instance: a }).instance).toBe(a)
+    expect(newAgentInstance()).not.toBe(a)
+  })
+
+  it('keeps the stored instance on update, whatever the editor sends', () => {
+    const stored = { ...config, instance: 'aaa111' }
+    expect(withStoredInstance(config, stored).instance).toBe('aaa111')
+    expect(withStoredInstance({ ...config, instance: 'bbb222' }, stored).instance).toBe('aaa111')
+  })
+
+  it('never adds one to an agent that had none', () => {
+    expect('instance' in withStoredInstance({ ...config, instance: 'bbb222' }, config)).toBe(false)
+    expect('instance' in withStoredInstance(config, undefined)).toBe(false)
   })
 })
