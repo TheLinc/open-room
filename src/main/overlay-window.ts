@@ -27,7 +27,12 @@ import {
  */
 
 const WIDTH = 460
-const HEIGHT = 220
+/**
+ * Tall enough for the pill's longest state: a side question's answer, capped
+ * in the pill and scrolled past that. At 220 a long answer ran off the top of
+ * the window and was cut off (field report).
+ */
+const HEIGHT = 360
 
 /** Clear of the Windows taskbar and the macOS Dock. */
 const BOTTOM_MARGIN = 64

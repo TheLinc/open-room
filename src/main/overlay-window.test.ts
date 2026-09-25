@@ -29,7 +29,7 @@ vi.mock('electron', () => {
     constructor(options: Electron.BrowserWindowConstructorOptions) {
       created.push(options)
       windows.push(this)
-      this.bounds = { x: options.x ?? 0, y: options.y ?? 0, width: 460, height: 220 }
+      this.bounds = { x: options.x ?? 0, y: options.y ?? 0, width: 460, height: 360 }
     }
     getBounds = (): Electron.Rectangle => this.bounds
     setBounds = vi.fn((bounds: Electron.Rectangle) => {
@@ -135,7 +135,7 @@ describe('overlay window placement', () => {
     expect(window.showInactive).toHaveBeenCalled()
     expect(window.setBounds).toHaveBeenCalledWith({
       x: -1920 + Math.round((1920 - 460) / 2),
-      y: 1040 - 220 - 64
+      y: 1040 - 360 - 64
     })
   })
 
@@ -156,7 +156,7 @@ describe('overlay window placement', () => {
 
     expect(window.setBounds).toHaveBeenCalledWith({
       x: Math.round((2560 - 460) / 2),
-      y: 1400 - 220 - 64
+      y: 1400 - 360 - 64
     })
   })
 

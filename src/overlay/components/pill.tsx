@@ -23,8 +23,8 @@ export function Pill({
   level: () => number
   onHoverChange?: (hovered: boolean) => void
 }): React.JSX.Element {
-  // Clickable, for the cancel button and the drag grip. It used to pass
-  // clicks through, so nothing reaching past it could
+  // Clickable, for the cancel button, the drag grip and scrolling a long
+  // answer. It used to pass clicks through, so nothing reaching past it could
   // hit it by accident; now that it can be dragged out of the way, the
   // controls are worth more than that.
   const { ref, hovered } = useHitBox(true)
@@ -167,7 +167,9 @@ export function Pill({
             // One line by default, with a faded right edge rather than an
             // ellipsis: a fade says "there is more" without pretending the
             // truncation is the message. The full text is in the chat pane.
-            hovered ? '' : 'overflow-hidden whitespace-nowrap'
+            // Expanded on hover, and capped there: a long dictation would
+            // otherwise run off the top of the window.
+            hovered ? 'or-scroll max-h-[120px]' : 'overflow-hidden whitespace-nowrap'
           ]
             .filter(Boolean)
             .join(' ')}
@@ -184,9 +186,13 @@ export function Pill({
         </div>
       ) : null}
 
-      {/* The answer is read, not glanced at: full width, wrapped, no fade. */}
+      {/* The answer is read, not glanced at: full width, wrapped, no fade.
+          Capped and scrolled, since the window has a fixed height and a long
+          answer used to be cut off at its top edge. */}
       {answered && state.answer ? (
-        <div className="text-[10.5px] leading-[1.45] text-or-fg">{state.answer}</div>
+        <div className="or-scroll max-h-[200px] pr-1 text-[10.5px] leading-[1.45] text-or-fg">
+          {state.answer}
+        </div>
       ) : null}
 
       {asking ? <div className="text-[10px] leading-normal text-or-fg/70">Asking…</div> : null}

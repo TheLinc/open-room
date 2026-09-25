@@ -66,6 +66,16 @@ body {
 }
 
 /*
+ * Long text in the pill (an answer, an expanded transcript) scrolls inside a
+ * cap rather than growing past the top of the fixed window.
+ */
+.or-scroll {
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in oklab, var(--or-fg) 30%, transparent) transparent;
+}
+
+/*
  * The bubble's surface.
  *
  * Fully opaque rather than translucent: `backdrop-filter` has nothing
