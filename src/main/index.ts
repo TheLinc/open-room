@@ -742,7 +742,19 @@ const micTest = new MicrophoneTest({
  * Run at launch and whenever settings or the agent files change, since both
  * can add, remove or rebind a hotkey.
  */
+/**
+ * True while a shortcut field is recording. A registered global shortcut is
+ * taken by the OS before any window sees it, so recording a combination that
+ * is already bound (re-entering the push-to-talk key, say) started a voice
+ * capture instead and the field never saw the key.
+ */
+let hotkeysSuspended = false
+
 async function refreshHotkeys(): Promise<void> {
+  if (hotkeysSuspended) {
+    hotkeys.apply([])
+    return
+  }
   const [settings, loaded] = await Promise.all([store.readSettings(), store.list()])
   hotkeyFailures = hotkeys.apply(bindingsFor(settings, loaded.agents))
   broadcastHotkeyFailures(hotkeyFailures)
@@ -995,6 +1007,11 @@ app.whenReady().then(async () => {
   // explicitly. onTrigger re-checks every precondition itself.
   ipcMain.on(IpcChannel.triggerVoiceCapture, (_event, agentId: unknown) => {
     if (typeof agentId === 'string' && agentId !== '') void controller.onTrigger(agentId)
+  })
+
+  ipcMain.on(IpcChannel.suspendHotkeys, (_event, suspended: unknown) => {
+    hotkeysSuspended = suspended === true
+    void refreshHotkeys()
   })
 
   ipcMain.on(IpcChannel.overlayWakeSegment, (_event, pcm: string) => {

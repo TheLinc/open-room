@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { X } from 'lucide-react'
-import { acceleratorFromEvent } from '@shared/accelerator'
+import { IDLE_RECORDER, keyDown, keyUp } from '@/lib/chord-recorder'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 
@@ -11,6 +11,12 @@ import { Button } from '@/components/ui/button'
  * character, so a text input records only the letter and yields a bare `a` —
  * which Electron registers happily and which then swallows that key in every
  * application on the machine.
+ *
+ * While recording, keys are read on the window in the capture phase, ahead
+ * of everything else. The dialog around this field closes on Escape through
+ * a document-level listener that runs before any handler on the field
+ * itself, so a React `stopPropagation` here came too late and Escape closed
+ * the whole dialog instead of cancelling the recording.
  */
 export function HotkeyInput({
   value,
@@ -24,26 +30,54 @@ export function HotkeyInput({
   placeholder?: string
 }): React.JSX.Element {
   const [recording, setRecording] = useState(false)
+  const [display, setDisplay] = useState('')
+  const onChangeRef = useRef(onChange)
+  useEffect(() => {
+    onChangeRef.current = onChange
+  }, [onChange])
 
-  const onKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>): void => {
-    event.preventDefault()
-    event.stopPropagation()
+  useEffect(() => {
+    if (!recording) return
+    let recorder = IDLE_RECORDER
+    // The app's own global shortcuts would otherwise take a combination that
+    // is already bound before this window sees it.
+    window.openRoom.suspendHotkeys(true)
 
-    // Escape leaves the field alone rather than clearing it — it is the
-    // universal "never mind", and it is also what cancels a live recording.
-    if (event.code === 'Escape') {
-      setRecording(false)
-      return
+    const down = (event: KeyboardEvent): void => {
+      event.preventDefault()
+      event.stopPropagation()
+      // Escape leaves the field alone rather than clearing it: it is the
+      // universal "never mind", and it must never reach the dialog.
+      if (event.code === 'Escape') {
+        setRecording(false)
+        return
+      }
+      recorder = keyDown(recorder, event)
+      setDisplay(recorder.display)
     }
 
-    // Null means only modifiers are down so far. Keep waiting: the user is
-    // still assembling the chord.
-    const accelerator = acceleratorFromEvent(event)
-    if (accelerator === null) return
+    const up = (event: KeyboardEvent): void => {
+      event.preventDefault()
+      event.stopPropagation()
+      const result = keyUp(recorder, event)
+      recorder = result.recorder
+      if (result.commit) {
+        onChangeRef.current(result.commit)
+        setRecording(false)
+      } else if (recorder.pressed.length === 0) {
+        setDisplay('')
+      }
+    }
 
-    onChange(accelerator)
-    setRecording(false)
-  }
+    window.addEventListener('keydown', down, true)
+    window.addEventListener('keyup', up, true)
+    return () => {
+      window.removeEventListener('keydown', down, true)
+      window.removeEventListener('keyup', up, true)
+      window.openRoom.suspendHotkeys(false)
+      setDisplay('')
+    }
+  }, [recording])
 
   return (
     <div className="flex items-center gap-2">
@@ -52,7 +86,6 @@ export function HotkeyInput({
         type="button"
         onClick={() => setRecording(true)}
         onBlur={() => setRecording(false)}
-        onKeyDown={recording ? onKeyDown : undefined}
         aria-label={recording ? 'Press a shortcut' : `Shortcut: ${value || 'none'}`}
         className={cn(
           'flex h-9 flex-1 items-center rounded-md border px-3 text-left text-sm transition-colors',
@@ -63,7 +96,11 @@ export function HotkeyInput({
         )}
       >
         {recording ? (
-          <span className="animate-pulse">Press a shortcut…</span>
+          display ? (
+            <span className="font-mono text-xs text-foreground">{display}</span>
+          ) : (
+            <span className="animate-pulse">Press a shortcut, then let go…</span>
+          )
         ) : value ? (
           <span className="font-mono text-xs">{value}</span>
         ) : (

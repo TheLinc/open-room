@@ -223,6 +223,10 @@ const openRoom: OpenRoomApi = {
   // permission the session handler in main denies to everything.
   copyText: (text: string): void => clipboard.writeText(text),
 
+  suspendHotkeys: (suspended: boolean): void => {
+    ipcRenderer.send(IpcChannel.suspendHotkeys, suspended)
+  },
+
   openInEditor: (agentId: string, path: string, line?: number): Promise<MutationResult> =>
     ipcRenderer.invoke(IpcChannel.openInEditor, agentId, path, line),
 

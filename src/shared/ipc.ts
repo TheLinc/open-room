@@ -156,6 +156,8 @@ export const IpcChannel = {
   overlayMuteWake: 'overlay:mute-wake',
   /** overlay → main, one segment the gate accepted, as base64 PCM. */
   overlayWakeSegment: 'overlay:wake-segment',
+  /** renderer → main, a shortcut field started (true) or stopped (false) recording. */
+  suspendHotkeys: 'hotkeys:suspend',
   /** overlay → main, the input devices it can see. */
   overlayMicrophones: 'overlay:microphones',
   /** main → overlay, which device to listen on. Empty is the system default. */
@@ -428,6 +430,8 @@ export type OpenRoomApi = {
   pathForFile: (file: File) => string
   /** Puts text on the system clipboard. */
   copyText: (text: string) => void
+  /** Releases the app's global shortcuts while a shortcut field records, so it can see them. */
+  suspendHotkeys: (suspended: boolean) => void
 
   /** Opens a path (relative to the agent's workspace, or absolute) in the user's editor. */
   openInEditor: (agentId: string, path: string, line?: number) => Promise<MutationResult>
