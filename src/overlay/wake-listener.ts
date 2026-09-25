@@ -22,13 +22,9 @@ export class WakeListener {
   /** Suppressed while the app is speaking, so it cannot hear itself. */
   private muted = false
 
-  private wasSpeaking = false
-
   constructor(
     private readonly onSegment: (samples: Float32Array) => void,
-    private readonly onError: (message: string) => void,
-    /** Someone started talking over the app. */
-    private readonly onBargeIn: () => void = () => {}
+    private readonly onError: (message: string) => void
   ) {}
 
   get isListening(): boolean {
@@ -84,17 +80,12 @@ export class WakeListener {
 
     const verdict = segmenter.push(this.capture.level(), performance.now() - this.startedAt)
 
-    const started = segmenter.isSpeaking && !this.wasSpeaking
-    this.wasSpeaking = segmenter.isSpeaking
-
-    // While muted the gate keeps running — the noise floor must stay current,
-    // and barge-in depends on still noticing speech — but no transcript may
-    // leave this renderer.
+    // While muted the gate keeps running so the noise floor stays current,
+    // but no transcript may leave this renderer. Speech here is not treated
+    // as barge-in: echo cancellation only subtracts audio Chromium plays, and
+    // the TTS player is a separate process, so the app's own voice through
+    // speakers read as someone talking over it and cut lines off mid-sentence.
     if (this.muted) {
-      // Talking over the app stops it. This is only safe because the stream
-      // is opened with echo cancellation, so what remains after the app's own
-      // playback is subtracted is the user.
-      if (started) this.onBargeIn()
       if (verdict !== 'listening') this.capture.discardBuffered(0)
       return
     }

@@ -117,11 +117,6 @@ const overlay = {
     ipcRenderer.send(IpcChannel.overlayLevel, rms)
   },
 
-  /** Someone started talking over the app. */
-  reportBargeIn: (): void => {
-    ipcRenderer.send(IpcChannel.overlayBargeIn)
-  },
-
   /** One segment the gate accepted. */
   reportWakeSegment: (pcm: string): void => {
     ipcRenderer.send(IpcChannel.overlayWakeSegment, pcm)

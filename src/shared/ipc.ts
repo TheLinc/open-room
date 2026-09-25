@@ -156,8 +156,6 @@ export const IpcChannel = {
   overlayMuteWake: 'overlay:mute-wake',
   /** overlay → main, one segment the gate accepted, as base64 PCM. */
   overlayWakeSegment: 'overlay:wake-segment',
-  /** overlay → main, someone started talking over the app. */
-  overlayBargeIn: 'overlay:barge-in',
   /** overlay → main, the input devices it can see. */
   overlayMicrophones: 'overlay:microphones',
   /** main → overlay, which device to listen on. Empty is the system default. */

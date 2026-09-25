@@ -166,8 +166,7 @@ export default function App(): React.JSX.Element | null {
   useEffect(() => {
     const listener = new WakeListener(
       (samples) => window.overlay.reportWakeSegment(encodePcm(samples)),
-      (message) => window.overlay.reportEvent({ type: 'failed', message }),
-      () => window.overlay.reportBargeIn()
+      (message) => window.overlay.reportEvent({ type: 'failed', message })
     )
 
     const offStart = window.overlay.onStartWake(() => void listener.start())

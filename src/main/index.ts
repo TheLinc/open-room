@@ -655,7 +655,14 @@ const controller = new VoiceController({
     return conversation?.title ?? 'New conversation'
   },
 
-  startCapture: () => overlay.startCapture(),
+  // Opening a capture is the barge-in: the user is about to talk, so playback
+  // stops and whatever was queued behind it is dropped. It lives here rather
+  // than on detected speech because the app's own voice through speakers is
+  // indistinguishable from the user's (see wake-listener.ts).
+  startCapture: () => {
+    speech.bargeIn()
+    overlay.startCapture()
+  },
   stopCapture: () => overlay.stopCapture(),
   discardCapture: () => overlay.discardCapture(),
   registerEscape: (handler) => hotkeys.registerEscape(handler),
@@ -992,10 +999,6 @@ app.whenReady().then(async () => {
   ipcMain.on(IpcChannel.overlayWakeSegment, (_event, pcm: string) => {
     void wake.onSegment(decodePcm(pcm))
   })
-
-  // Talking over an agent stops it, and abandons whatever was queued behind
-  // it — those lines were written for a moment that has passed.
-  ipcMain.on(IpcChannel.overlayBargeIn, () => speech.bargeIn())
 
   ipcMain.on(IpcChannel.overlayMicrophones, (_event, devices: MicrophoneDevice[]) => {
     microphones = devices

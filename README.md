@@ -232,7 +232,7 @@ An app that both speaks and listens has to not answer itself. Three layers, from
 2. **Listening is muted for the duration of playback plus 300 ms.**
 3. **Any transcript overlapping the currently-playing text by 60% is dropped as an echo.**
 
-Barge-in is in tension with the mute: to interrupt the app you must keep listening while it speaks. The listener therefore keeps *detecting* while muted but stops *emitting* — speech during playback triggers barge-in and nothing else. That is only sound because the stream is opened with echo cancellation, so what survives subtraction of the app's own output is you.
+To interrupt an agent that is talking, press the push-to-talk hotkey or the mic button. Opening a capture stops playback. Plain talking over it does not, because echo cancellation only removes audio Chromium plays itself, and speech plays through a separate process, so the app could not tell your voice from its own.
 
 ### Quota, context and concurrency
 
