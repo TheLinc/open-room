@@ -20,7 +20,7 @@ process.env.OPEN_ROOM_MODELS = root
 vi.mock('kokoro-js', () => ({ KokoroTTS: { from_pretrained: vi.fn() } }))
 vi.mock('@huggingface/transformers', () => ({ env: { cacheDir: '' } }))
 
-const { isKokoroInstalled, isKokoroLoaded } = await import('./kokoro')
+const { isKokoroInstalled, isKokoroLoaded, renderAttempts } = await import('./kokoro')
 
 const MODEL_DIR = join(root, 'onnx-community', 'Kokoro-82M-v1.0-ONNX')
 
@@ -58,5 +58,23 @@ describe('isKokoroInstalled', () => {
     // The exact case that produced the bug: on disk, cold in memory.
     expect(isKokoroLoaded()).toBe(false)
     await expect(isKokoroInstalled()).resolves.toBe(true)
+  })
+})
+
+describe('renderAttempts', () => {
+  it('tries the line as written first, then nudges the speed either way', () => {
+    expect(renderAttempts('Should I commit these changes?', 1).slice(0, 3)).toEqual([
+      { text: 'Should I commit these changes?', speed: 1 },
+      { text: 'Should I commit these changes?', speed: 0.97 },
+      { text: 'Should I commit these changes?', speed: 1.03 }
+    ])
+  })
+
+  it('tries the line without its final punctuation last', () => {
+    expect(renderAttempts('Hey Janet.', 1).at(-1)).toEqual({ text: 'Hey Janet', speed: 1 })
+  })
+
+  it('does not repeat an attempt for a line with no final punctuation', () => {
+    expect(renderAttempts('All done', 1)).toHaveLength(3)
   })
 })

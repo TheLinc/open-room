@@ -622,6 +622,8 @@ The synthesised clip is discarded rather than played; playback is warmed with a 
 
 **Kokoro uses `fp16`, and the choice is counter-intuitive.** Measured for a 2.4 s utterance: q8 1883 ms, fp16 624 ms, fp32 586 ms. int8 has no fast path here, so the *smallest* quantisation is by far the *slowest*. Benchmarking q8 alone nearly caused the engine to be rejected.
 
+**fp16 renders some lines as all NaN, and the same line every time.** Measured: 8 of 48 ordinary agent lines across six voices ("Should I commit these changes?" in `am_michael`), and 5 of 18 short phrases in `am_fenrir`. Saved as a WAV that plays as silence, with no error anywhere, so an agent simply said nothing. `renderAttempts` in `kokoro.ts` retries at 3% slower, 3% faster, then without the final punctuation; every one of 72 lines rendered after that. If all fail, `synthesize` falls back to the platform's default system voice, which is also where any other Kokoro failure now lands. fp32 was not measured for NaN: only the fp16 weights are downloaded.
+
 **Windows SAPI synthesis is fast — about 265 ms (RTF 0.10).** An earlier note claimed ~2 s of PowerShell startup per utterance; that was a mis-measurement of speak-to-*completion*, which includes playback. There is no synthesis latency problem to solve on Windows.
 
 **The neural stack must stay lazily imported.** `import('./kokoro')` happens on first use, not at module load: transformers.js pulls a large wasm phonemizer, and importing it eagerly wedges sidecar startup so even `ping` never answers.

@@ -170,9 +170,17 @@ export async function synthesize(
     if (options.provider === 'kokoro') {
       // Kokoro writes the WAV itself, so playback and interruption are
       // unchanged — the backend only supplies a different file.
-      const { synthesizeKokoro } = await import('./kokoro')
-      await synthesizeKokoro(text, options, file)
-      return { wavPath: file, cleanup }
+      try {
+        const { synthesizeKokoro } = await import('./kokoro')
+        await synthesizeKokoro(text, options, file)
+        return { wavPath: file, cleanup }
+      } catch (error) {
+        // Voice resolution degrades rather than fails: the platform default
+        // voice still says the line. The Kokoro id means nothing to it.
+        process.stderr.write(`Kokoro failed, using the system voice: ${String(error)}\n`)
+        await cleanup()
+        return synthesize(text, { rate: options.rate, provider: 'system' })
+      }
     }
 
     if (isWindows) {

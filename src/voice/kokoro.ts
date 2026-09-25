@@ -138,10 +138,36 @@ export async function synthesizeKokoro(
   const tts = await loadKokoro()
   const voice = options.voiceId || DEFAULT_KOKORO_VOICE
 
-  const audio = await tts.generate(text, {
-    voice: voice as NonNullable<Parameters<KokoroTTS['generate']>[1]>['voice'],
-    speed: 1 / Math.max(0.5, options.rate)
-  })
+  for (const attempt of renderAttempts(text, 1 / Math.max(0.5, options.rate))) {
+    const audio = await tts.generate(attempt.text, {
+      voice: voice as NonNullable<Parameters<KokoroTTS['generate']>[1]>['voice'],
+      speed: attempt.speed
+    })
+    if (!(audio.audio as Float32Array).some(Number.isNaN)) {
+      await audio.save(outPath)
+      return
+    }
+  }
 
-  await audio.save(outPath)
+  throw new Error('Kokoro rendered this line as silence')
+}
+
+/**
+ * What to render when the fp16 model returns NaN for every sample.
+ *
+ * It does, for particular text and voice pairs, every time: measured, 8 of 48
+ * ordinary agent lines across six voices ("Should I commit these changes?" in
+ * `am_michael`), and such a WAV plays as silence with no error anywhere. A
+ * speed 3% either side, or the line without its final punctuation, rendered
+ * every failing case tried, and is inaudible as a change. If all of them fail
+ * the caller falls back to a system voice.
+ */
+export function renderAttempts(text: string, speed: number): { text: string; speed: number }[] {
+  const bare = text.replace(/[.?!]+\s*$/, '')
+  return [
+    { text, speed },
+    { text, speed: speed * 0.97 },
+    { text, speed: speed * 1.03 },
+    ...(bare && bare !== text ? [{ text: bare, speed }] : [])
+  ]
 }
