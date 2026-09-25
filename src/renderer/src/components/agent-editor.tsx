@@ -1,7 +1,15 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useForm, Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { AlertTriangle, Download, FolderOpen, Loader2, Trash2, Volume2 } from 'lucide-react'
+import {
+  AlertTriangle,
+  Download,
+  FolderOpen,
+  Loader2,
+  RotateCcw,
+  Trash2,
+  Volume2
+} from 'lucide-react'
 import {
   AGENT_COLORS,
   CLAUDE_CODE_TOOLS,
@@ -25,6 +33,7 @@ import type { KokoroStatus, SystemVoice } from '@shared/voice-rpc'
 import { DEFAULT_KOKORO_VOICE, KOKORO_VOICES } from '@shared/kokoro-voices'
 import {
   agentFormSchema,
+  resetFormValues,
   setAllToolPermissions,
   toAgent,
   toFormValues,
@@ -175,6 +184,7 @@ export function AgentEditor({
   const isNew = agent === undefined
   const [saveError, setSaveError] = useState<string | null>(null)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
+  const [resetDone, setResetDone] = useState(false)
   const staticDialog = useStaticDialog()
   const [page, setPage] = useState<EditorPage>('identity')
   const modelAccess = useModelAccess()
@@ -197,6 +207,7 @@ export function AgentEditor({
       form.reset(defaults)
       setSaveError(null)
       setConfirmingDelete(false)
+      setResetDone(false)
       setPage('identity')
     }
   }, [open, defaults, form])
@@ -723,8 +734,8 @@ export function AgentEditor({
                             <div className="flex flex-col gap-1">
                               <p className="text-sm font-medium">Tools</p>
                               <p className="text-sm text-muted-foreground">
-                                Every tool is available to the agent. This controls whether it
-                                asks you first.
+                                Every tool is available to the agent. This controls whether it asks
+                                you first.
                               </p>
                             </div>
                             {/* Shows the shared setting while every row agrees, and the
@@ -1075,15 +1086,32 @@ export function AgentEditor({
             {isNew ? (
               <span />
             ) : (
-              <Button
-                type="button"
-                variant={confirmingDelete ? 'destructive' : 'ghost'}
-                onClick={() => (confirmingDelete ? handleDelete() : setConfirmingDelete(true))}
-                onBlur={() => setConfirmingDelete(false)}
-              >
-                <Trash2 />
-                {confirmingDelete ? 'Confirm delete' : 'Delete'}
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant={confirmingDelete ? 'destructive' : 'ghost'}
+                  onClick={() => (confirmingDelete ? handleDelete() : setConfirmingDelete(true))}
+                  onBlur={() => setConfirmingDelete(false)}
+                >
+                  <Trash2 />
+                  {confirmingDelete ? 'Confirm delete' : 'Delete'}
+                </Button>
+                {/* Only the form changes, so no confirm: Cancel undoes it. */}
+                <Button
+                  type="button"
+                  variant="ghost"
+                  title="Model, permissions, tools, MCP servers, voice and shortcut go back to a new agent's defaults. Name, character, AGENT.md and workspace stay. Nothing is saved until you click Save."
+                  onClick={() => {
+                    form.reset(resetFormValues(form.getValues(), CLAUDE_CODE_TOOLS), {
+                      keepDefaultValues: true
+                    })
+                    setResetDone(true)
+                  }}
+                >
+                  <RotateCcw />
+                  {resetDone ? 'Reset. Save to keep it' : 'Reset to defaults'}
+                </Button>
+              </div>
             )}
 
             <div className="flex gap-2">

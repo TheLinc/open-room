@@ -3,6 +3,7 @@ import { agentConfigSchema, CLAUDE_CODE_TOOLS, createDefaultAgent } from '@share
 import {
   agentFormSchema,
   parseMcpServers,
+  resetFormValues,
   toAgent,
   toFormValues,
   setAllToolPermissions,
@@ -196,5 +197,48 @@ describe('parseMcpServers', () => {
     const values = toFormValues(withServers, CLAUDE_CODE_TOOLS)
     expect(values.mcpServersJson).toContain('npx')
     expect(toAgent(values, 'atlas').config.mcpServers).toEqual({ local: { command: 'npx' } })
+  })
+})
+
+describe('resetFormValues', () => {
+  const tools = ['Read', 'Bash'] as const
+  const customised = {
+    ...toFormValues(agent(), tools),
+    avatar: 'loop' as const,
+    context: '# Atlas. Runs CI.',
+    wslDistro: 'Ubuntu',
+    workspacePath: '/home/me/ci',
+    model: 'claude-opus-5' as const,
+    permissionMode: 'plan' as const,
+    toolPermissions: { Read: 'deny' as const, Bash: 'allow' as const },
+    hotkey: 'CommandOrControl+Alt+A',
+    ttsEnabled: true,
+    worktrees: true
+  }
+
+  it('puts every setting back to what a new agent gets', () => {
+    const reset = resetFormValues(customised, tools)
+    const fresh = toFormValues(agent(), tools)
+    expect(reset.model).toBe(fresh.model)
+    expect(reset.permissionMode).toBe('default')
+    expect(reset.toolPermissions).toEqual(fresh.toolPermissions)
+    expect(reset.hotkey).toBe('')
+    expect(reset.ttsEnabled).toBe(false)
+    expect(reset.worktrees).toBe(false)
+  })
+
+  it('keeps who the agent is and where it works', () => {
+    expect(resetFormValues(customised, tools)).toMatchObject({
+      name: 'Atlas',
+      color: 'amber',
+      avatar: 'loop',
+      context: '# Atlas. Runs CI.',
+      workspacePath: '/home/me/ci',
+      wslDistro: 'Ubuntu'
+    })
+  })
+
+  it('passes the form schema', () => {
+    expect(agentFormSchema.safeParse(resetFormValues(customised, tools)).success).toBe(true)
   })
 })

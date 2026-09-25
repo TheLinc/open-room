@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Download, Loader2 } from 'lucide-react'
+import { Download, Loader2, RotateCcw } from 'lucide-react'
 import {
   STT_MODEL_ID,
   WAKE_MODEL_ID,
@@ -11,7 +11,7 @@ import {
 import type { HotkeyFailure } from '@shared/hotkeys'
 import type { MicrophoneDevice } from '@shared/voice-input'
 import type { SttStatus } from '@shared/voice-rpc'
-import type { AppSettings } from '@shared/settings'
+import { DEFAULT_SETTINGS, type AppSettings } from '@shared/settings'
 import { useSettings } from '@/hooks/use-settings'
 import { useStaticDialog } from '@/hooks/use-static-dialog'
 import { explainAccelerator } from '@shared/accelerator'
@@ -142,6 +142,7 @@ export function SettingsDialog({
   // the global hotkeys once per character, so this one is held locally and
   // written after a pause (or on blur). Null means "showing the saved value".
   const [editorDraft, setEditorDraft] = useState<string | null>(null)
+  const [confirmingReset, setConfirmingReset] = useState(false)
   const flushEditor = useCallback((): void => {
     if (editorDraft === null || !settings) return
     if (editorDraft !== settings.editorCommand) {
@@ -376,6 +377,34 @@ export function SettingsDialog({
                       A command; {'{path}'} and {'{line}'} are filled in. Leave empty to use
                       whatever opens the file type.
                     </p>
+                  </div>
+
+                  {/* Settings save on change, so this one asks twice, the same
+                      way Delete agent does. */}
+                  <div className="space-y-2 border-t border-border pt-4">
+                    <Label>Reset settings</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Puts every setting on every page back to its default. Push-to-talk and wake
+                      words turn off. Agents, conversations and downloaded models stay.
+                    </p>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={confirmingReset ? 'destructive' : 'outline'}
+                      onClick={() => {
+                        if (!confirmingReset) {
+                          setConfirmingReset(true)
+                          return
+                        }
+                        setConfirmingReset(false)
+                        setEditorDraft(null)
+                        void save(DEFAULT_SETTINGS)
+                      }}
+                      onBlur={() => setConfirmingReset(false)}
+                    >
+                      <RotateCcw />
+                      {confirmingReset ? 'Confirm reset' : 'Reset to defaults'}
+                    </Button>
                   </div>
                 </section>
               )}

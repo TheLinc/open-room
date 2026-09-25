@@ -6,6 +6,7 @@ import {
   EFFORT_LEVELS,
   MODEL_IDS,
   mcpServerSchema,
+  createDefaultAgent,
   slugifyAgentName,
   type Agent
 } from '@shared/agent'
@@ -230,5 +231,30 @@ export function toAgent(values: AgentFormValues, id?: string): Agent {
         : { enabled: false as const }
     },
     context: values.context
+  }
+}
+
+/**
+ * The form with every setting back at a new agent's default, keeping what
+ * makes the agent itself: its name, colour, character, role file (AGENT.md),
+ * workspace and WSL distro. Only the form changes; nothing is written until
+ * Save, so Cancel undoes it.
+ */
+export function resetFormValues(
+  current: AgentFormValues,
+  tools: readonly string[]
+): AgentFormValues {
+  const defaults = toFormValues(
+    createDefaultAgent(current.name, current.workspacePath, current.color),
+    tools
+  )
+  return {
+    ...defaults,
+    name: current.name,
+    color: current.color,
+    avatar: current.avatar,
+    context: current.context,
+    workspacePath: current.workspacePath,
+    wslDistro: current.wslDistro
   }
 }
