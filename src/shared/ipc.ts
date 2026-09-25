@@ -427,6 +427,8 @@ export type OpenRoomApi = {
   listWorkspaceFiles: (agentId: string) => Promise<string[]>
   /** The absolute path of a dropped File; empty for a pasted blob with none. */
   pathForFile: (file: File) => string
+  /** Puts text on the system clipboard. */
+  copyText: (text: string) => void
 
   /** Opens a path (relative to the agent's workspace, or absolute) in the user's editor. */
   openInEditor: (agentId: string, path: string, line?: number) => Promise<MutationResult>

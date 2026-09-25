@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer, webUtils } from 'electron'
+import { clipboard, contextBridge, ipcRenderer, webUtils } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 import type { Agent } from '@shared/agent'
 import type { ImageAttachment } from '@shared/attachments'
@@ -216,6 +216,10 @@ const openRoom: OpenRoomApi = {
       return ''
     }
   },
+
+  // Electron's clipboard rather than `navigator.clipboard`, whose write is a
+  // permission the session handler in main denies to everything.
+  copyText: (text: string): void => clipboard.writeText(text),
 
   openInEditor: (agentId: string, path: string, line?: number): Promise<MutationResult> =>
     ipcRenderer.invoke(IpcChannel.openInEditor, agentId, path, line),

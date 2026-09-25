@@ -73,7 +73,7 @@ function Block({
       return markdown ? (
         <MarkdownText text={block.text ?? ''} />
       ) : (
-        <p className="text-sm whitespace-pre-wrap">{block.text}</p>
+        <p className="text-sm whitespace-pre-wrap wrap-anywhere">{block.text}</p>
       )
 
     case 'thinking':
@@ -240,7 +240,7 @@ export const TranscriptMessage = memo(function TranscriptMessage({
 
     return (
       <div className="flex justify-end">
-        <div className="max-w-[85%] rounded-lg bg-muted px-3 py-2 text-sm whitespace-pre-wrap">
+        <div className="max-w-[85%] rounded-lg bg-muted px-3 py-2 text-sm whitespace-pre-wrap wrap-anywhere">
           {imageBlocks.length > 0 && (
             <div className="mb-2 flex flex-wrap gap-2">
               {imageBlocks.map((b, i) => (
