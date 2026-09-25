@@ -98,8 +98,22 @@ describe('chord recorder', () => {
       }
     }
     const recorder = keyDown(keyDown(IDLE_RECORDER, new Held('ShiftLeft')), new Held('KeyA'))
-    expect(keyUp(recorder, { code: 'KeyA' }).commit).toBeNull()
+    expect(keyUp(recorder, new Held('KeyA')).commit).toBeNull()
     expect(recorder.chord).toBe('CommandOrControl+Shift+A')
+  })
+
+  it('recovers when Windows swallows the rest of an Alt+Space press', () => {
+    // Measured: Alt+Shift+Space delivered these two key-downs and nothing
+    // else, no Space and no key-ups. The next chord must still commit.
+    const { commit } = play([
+      ['down', 'AltLeft', 'alt'],
+      ['down', 'ShiftLeft', 'alt', 'shift'],
+      ['down', 'ControlLeft', 'ctrl'],
+      ['down', 'KeyK', 'ctrl'],
+      ['up', 'KeyK', 'ctrl'],
+      ['up', 'ControlLeft']
+    ])
+    expect(commit).toBe('CommandOrControl+K')
   })
 
   it('uses the last main key pressed while its modifiers stay down', () => {

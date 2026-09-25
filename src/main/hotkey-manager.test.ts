@@ -200,3 +200,42 @@ describe('HotkeyManager', () => {
     expect(registered.size).toBe(0)
   })
 })
+
+describe('catching Alt+Space chords while a shortcut field records', () => {
+  it('reports the chord pressed, since the page never sees it', () => {
+    const manager = new HotkeyManager(() => {})
+    const caught: string[] = []
+    manager.catchReserved((accelerator) => caught.push(accelerator))
+
+    registered.get('Alt+Shift+Space')?.()
+
+    expect(caught).toEqual(['Alt+Shift+Space'])
+  })
+
+  it('skips a chord another app holds, and keeps the rest', () => {
+    // Measured on one machine: Notion holds Alt+Space globally.
+    taken = ['Alt+Space']
+    const manager = new HotkeyManager(() => {})
+    manager.catchReserved(() => {})
+
+    expect(registered.has('Alt+Space')).toBe(false)
+    expect(registered.has('Alt+Shift+Space')).toBe(true)
+  })
+
+  it('lets go of every chord when the recording ends', () => {
+    const manager = new HotkeyManager(() => {})
+    manager.catchReserved(() => {})
+    manager.releaseReserved()
+
+    expect(registered.size).toBe(0)
+  })
+
+  it('leaves alone a chord the user already bound', () => {
+    const manager = new HotkeyManager(() => {})
+    manager.apply(bindingsFor({ ...enabled, pushToTalkHotkey: 'Alt+Shift+Space' }, []))
+    manager.catchReserved(() => {})
+    manager.releaseReserved()
+
+    expect(registered.has('Alt+Shift+Space')).toBe(true)
+  })
+})

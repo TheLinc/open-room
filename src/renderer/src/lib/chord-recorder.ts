@@ -45,10 +45,28 @@ function isMainKey(code: string): boolean {
   )
 }
 
+/**
+ * Held keys, less any modifier the event says is no longer down.
+ *
+ * Windows takes Alt+Space for the window menu before the page sees it, and
+ * swallows every key-up of that press with it: measured, Alt+Shift+Space
+ * delivered `AltLeft` and `ShiftLeft` down and nothing else. Trusting the
+ * key-ups alone left Alt and Shift "held" for good, and no later chord could
+ * ever commit. Every key event carries the true modifier state, so it heals.
+ */
+function stillHeld(pressed: readonly string[], event: KeyChord): string[] {
+  return pressed.filter((code) => {
+    if (code.startsWith('Control')) return event.ctrlKey
+    if (code.startsWith('Shift')) return event.shiftKey
+    if (code.startsWith('Alt')) return event.altKey
+    if (code.startsWith('Meta') || code.startsWith('OS')) return event.metaKey
+    return true
+  })
+}
+
 export function keyDown(recorder: Recorder, event: KeyChord): Recorder {
-  const pressed = recorder.pressed.includes(event.code)
-    ? recorder.pressed
-    : [...recorder.pressed, event.code]
+  const held = stillHeld(recorder.pressed, event)
+  const pressed = held.includes(event.code) ? held : [...held, event.code]
   const main = isMainKey(event.code) ? event.code : recorder.main
 
   // Built from this event's modifier flags and the main key only while that
@@ -66,16 +84,16 @@ export function keyDown(recorder: Recorder, event: KeyChord): Recorder {
         })
       : recorder.chord
 
-  const held = main && pressed.includes(main) ? chord : [...modifiersOf(event), '…'].join('+')
-  return { pressed, main, chord, display: held ?? '' }
+  const display = main && pressed.includes(main) ? chord : [...modifiersOf(event), '…'].join('+')
+  return { pressed, main, chord, display: display ?? '' }
 }
 
 /** Releasing the last key held commits the chord, if one was ever made. */
 export function keyUp(
   recorder: Recorder,
-  event: Pick<KeyChord, 'code'>
+  event: KeyChord
 ): { recorder: Recorder; commit: string | null } {
-  const pressed = recorder.pressed.filter((code) => code !== event.code)
+  const pressed = stillHeld(recorder.pressed, event).filter((code) => code !== event.code)
   if (pressed.length > 0) return { recorder: { ...recorder, pressed }, commit: null }
   // Only modifiers were pressed and released: nothing to commit, keep waiting.
   if (!recorder.chord) return { recorder: IDLE_RECORDER, commit: null }

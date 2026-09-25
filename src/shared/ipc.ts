@@ -158,6 +158,8 @@ export const IpcChannel = {
   overlayWakeSegment: 'overlay:wake-segment',
   /** renderer → main, a shortcut field started (true) or stopped (false) recording. */
   suspendHotkeys: 'hotkeys:suspend',
+  /** main → renderer, a chord the recording field could not see itself (Alt+Space). */
+  hotkeyRecorded: 'hotkeys:recorded',
   /** overlay → main, the input devices it can see. */
   overlayMicrophones: 'overlay:microphones',
   /** main → overlay, which device to listen on. Empty is the system default. */
@@ -436,6 +438,8 @@ export type OpenRoomApi = {
   copyText: (text: string) => void
   /** Releases the app's global shortcuts while a shortcut field records, so it can see them. */
   suspendHotkeys: (suspended: boolean) => void
+  /** A chord main caught for the recording field; see `RESERVED_CHORDS`. */
+  onHotkeyRecorded: (listener: (accelerator: string) => void) => () => void
 
   /** Opens a path (relative to the agent's workspace, or absolute) in the user's editor. */
   openInEditor: (agentId: string, path: string, line?: number) => Promise<MutationResult>

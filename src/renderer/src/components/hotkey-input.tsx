@@ -69,11 +69,18 @@ export function HotkeyInput({
       }
     }
 
+    // Alt+Space chords never reach the page; main catches them instead.
+    const offReserved = window.openRoom.onHotkeyRecorded((accelerator) => {
+      onChangeRef.current(accelerator)
+      setRecording(false)
+    })
+
     window.addEventListener('keydown', down, true)
     window.addEventListener('keyup', up, true)
     return () => {
       window.removeEventListener('keydown', down, true)
       window.removeEventListener('keyup', up, true)
+      offReserved()
       window.openRoom.suspendHotkeys(false)
       setDisplay('')
     }

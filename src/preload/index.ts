@@ -227,6 +227,9 @@ const openRoom: OpenRoomApi = {
     ipcRenderer.send(IpcChannel.suspendHotkeys, suspended)
   },
 
+  onHotkeyRecorded: (listener: (accelerator: string) => void): (() => void) =>
+    subscribe(IpcChannel.hotkeyRecorded, (payload) => listener(payload as string)),
+
   openInEditor: (agentId: string, path: string, line?: number): Promise<MutationResult> =>
     ipcRenderer.invoke(IpcChannel.openInEditor, agentId, path, line),
 

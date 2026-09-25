@@ -42,8 +42,46 @@ export function bindingsFor(settings: AppSettings, agents: Agent[]): HotkeyBindi
   return bindings
 }
 
+/**
+ * Chords a shortcut field cannot see, caught for it while it records.
+ *
+ * Windows takes Alt+Space for the window menu before the page gets the key,
+ * and the menu then holds every key press after it: measured, Alt+Shift+Space
+ * delivered Alt and Shift down to the page and nothing else, and the next
+ * chord went nowhere either. A global shortcut fires before the window menu,
+ * so these are registered for the life of a recording and handed to the
+ * field. The same way PowerToys Run owns Alt+Space.
+ */
+export const RESERVED_CHORDS = [
+  'Alt+Space',
+  'Alt+Shift+Space',
+  'CommandOrControl+Alt+Space',
+  'CommandOrControl+Alt+Shift+Space'
+]
+
 export class HotkeyManager {
   private current: HotkeyBinding[] = []
+  private reserved: string[] = []
+
+  /** While a shortcut field records: report `RESERVED_CHORDS` as they are pressed. */
+  catchReserved(onChord: (accelerator: string) => void): void {
+    this.releaseReserved()
+    for (const accelerator of RESERVED_CHORDS) {
+      if (globalShortcut.isRegistered(accelerator)) continue
+      try {
+        if (globalShortcut.register(accelerator, () => onChord(accelerator))) {
+          this.reserved.push(accelerator)
+        }
+      } catch {
+        // Not registrable here; the field just cannot record that one.
+      }
+    }
+  }
+
+  releaseReserved(): void {
+    for (const accelerator of this.reserved) globalShortcut.unregister(accelerator)
+    this.reserved = []
+  }
 
   constructor(private readonly onTrigger: (agentId: string | null) => void) {}
 

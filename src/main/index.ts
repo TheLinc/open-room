@@ -1019,9 +1019,16 @@ app.whenReady().then(async () => {
     if (typeof agentId === 'string' && agentId !== '') void controller.onTrigger(agentId)
   })
 
-  ipcMain.on(IpcChannel.suspendHotkeys, (_event, suspended: unknown) => {
+  ipcMain.on(IpcChannel.suspendHotkeys, (event, suspended: unknown) => {
     hotkeysSuspended = suspended === true
-    void refreshHotkeys()
+    // Released before the refresh, which may register one of the same chords.
+    if (!hotkeysSuspended) hotkeys.releaseReserved()
+    void refreshHotkeys().then(() => {
+      if (!hotkeysSuspended || process.platform !== 'win32') return
+      hotkeys.catchReserved((accelerator) => {
+        if (!event.sender.isDestroyed()) event.sender.send(IpcChannel.hotkeyRecorded, accelerator)
+      })
+    })
   })
 
   ipcMain.on(IpcChannel.overlayWakeSegment, (_event, pcm: string) => {
