@@ -189,14 +189,15 @@ async function handle(request: VoiceRequest): Promise<unknown> {
     case 'listen': {
       const samples = decodeSamples(request.params.pcm)
 
-      const { isVadLoaded, loadVad, isSpeech } = await vadModule()
+      const { isVadLoaded, loadVad, speechFrames, acceptsSpeech, speechSpan } = await vadModule()
       if (!isVadLoaded()) await loadVad(VAD_MODEL_ID)
-      if (!(await isSpeech(samples))) return { speech: false }
+      const frames = await speechFrames(samples)
+      if (!acceptsSpeech(frames.speech, frames.total)) return { speech: false }
 
       const { isSttLoaded, loadStt, transcribe } = await sttModule()
       if (!isSttLoaded()) await loadStt(STT_MODEL_ID)
 
-      return { speech: true, text: await transcribe(samples) }
+      return { speech: true, text: await transcribe(speechSpan(samples, frames)) }
     }
 
     case 'transcribe': {

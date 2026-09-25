@@ -1,3 +1,5 @@
+import { quietLevel } from './endpointer'
+
 /**
  * Cutting an always-open microphone into segments worth listening to.
  *
@@ -15,6 +17,19 @@
 export type SegmenterConfig = {
   /** How long to sample the room before arming. */
   floorSampleMs: number
+  /**
+   * Trailing window the noise floor is read from, all day long.
+   *
+   * The floor used to be the mean of the first 400 ms and then never moved,
+   * but a microphone left open for hours hears the room change: a fan comes
+   * on, a TV starts, automatic gain drifts. Too low a floor keeps a segment
+   * open to `maxSegmentMs`, so a wake phrase lands mid-segment where the
+   * matcher (anchored to the front) cannot see it; too high a one never
+   * opens a segment for a normal voice. A low percentile of the last few
+   * seconds follows the room both ways and still reads the gaps between
+   * words rather than the words.
+   */
+  floorWindowMs: number
   /** Silence this long, after speech, closes a segment. */
   hangMs: number
   /** How far above the noise floor counts as speech. */
@@ -32,6 +47,7 @@ export type SegmenterConfig = {
 
 export const DEFAULT_SEGMENTER: SegmenterConfig = {
   floorSampleMs: 400,
+  floorWindowMs: 6000,
   hangMs: 700,
   speechMultiplier: 3,
   maxSegmentMs: 15_000,
@@ -50,7 +66,8 @@ export type SegmenterVerdict =
   | 'discard'
 
 export class Segmenter {
-  private floorSamples: number[] = []
+  private recent: { at: number; rms: number }[] = []
+  private armed = false
   private floor = 0
   private speaking = false
   private lastLoudMs = 0
@@ -69,18 +86,16 @@ export class Segmenter {
    * never resets — segments are bounded relative to it, not to it.
    */
   push(rms: number, elapsedMs: number): SegmenterVerdict {
-    // Sample the room first. Speech during this window raises the floor and
-    // makes the gate less sensitive, which is the safe direction to err.
-    if (elapsedMs < this.config.floorSampleMs) {
-      this.floorSamples.push(rms)
-      return 'listening'
-    }
+    this.recent.push({ at: elapsedMs, rms })
+    while (this.recent[0].at < elapsedMs - this.config.floorWindowMs) this.recent.shift()
 
-    if (this.floor === 0) {
-      const mean =
-        this.floorSamples.reduce((sum, value) => sum + value, 0) /
-        Math.max(1, this.floorSamples.length)
-      this.floor = Math.max(mean, MIN_FLOOR)
+    // Sample the room before arming, so the first frames are judged against
+    // something rather than against nothing.
+    if (elapsedMs < this.config.floorSampleMs) return 'listening'
+
+    this.floor = Math.max(quietLevel(this.recent.map((frame) => frame.rms)), MIN_FLOOR)
+    if (!this.armed) {
+      this.armed = true
       this.lastResetMs = elapsedMs
     }
 

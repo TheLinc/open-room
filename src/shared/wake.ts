@@ -66,7 +66,26 @@ function stripAside(rest: string[]): { aside: boolean; rest: string[] } {
  * front of a spoken agent line, so widening this does not weaken the
  * self-trigger guarantee.
  */
-const PREFIXES = new Set(['hey', 'hay', 'ey'])
+const PREFIXES = new Set(['hey', 'hay', 'ey', 'hi'])
+
+/**
+ * The prefix run into the name as one word: "Hanova", "Hainova" for "hey
+ * Nova". Moonshine writes it that way often enough to matter (in noise, up to
+ * 14 of 126 synthesised wake phrases). What follows the `h` and its vowels
+ * must sound like the whole name, and the name must carry at least two
+ * consonant sounds, or "hello" would wake an agent called Ella and "here"
+ * one called Ray.
+ */
+function unfuse(word: string, agents: WakeCandidate[]): string | null {
+  // The lookahead stops the vowel run giving letters back: "hain" must leave
+  // "n", not "in", which sounds like Juno.
+  const remainder = /^h[aeiy]+(?![aeiy])(.{2,})$/.exec(word)?.[1]
+  if (!remainder) return null
+  const fits = agents.some(
+    (agent) => phoneticKeys(agent.name)[0].length >= 2 && soundsLike([remainder], agent.name)
+  )
+  return fits ? remainder : null
+}
 
 /** Longest agent name we will look for, in words. */
 const MAX_NAME_WORDS = 4
@@ -104,10 +123,17 @@ function soundsLike(spoken: string[], name: string): boolean {
  */
 export function matchWake(transcript: string, agents: WakeCandidate[]): WakeMatch | null {
   const spoken = words(transcript)
-  if (spoken.length < 2) return null
-  if (!PREFIXES.has(spoken[0])) return null
+  if (spoken.length === 0) return null
 
-  const rest = spoken.slice(1)
+  let rest: string[]
+  if (PREFIXES.has(spoken[0])) {
+    rest = spoken.slice(1)
+  } else {
+    const remainder = unfuse(spoken[0], agents)
+    if (!remainder) return null
+    rest = [remainder, ...spoken.slice(1)]
+  }
+  if (rest.length === 0) return null
 
   // Longest name first, so "Code Review" wins over an agent called "Code".
   for (let length = Math.min(MAX_NAME_WORDS, rest.length); length >= 1; length -= 1) {

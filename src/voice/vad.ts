@@ -117,9 +117,9 @@ export function acceptsSpeech(speechFrames: number, total: number, minMs = MIN_S
  */
 export async function speechFrames(
   samples: Float32Array
-): Promise<{ speech: number; total: number }> {
+): Promise<{ speech: number; total: number; first: number; last: number }> {
   if (!session) throw new Error('No voice-activity model is loaded.')
-  if (samples.length < VAD_FRAME) return { speech: 0, total: 0 }
+  if (samples.length < VAD_FRAME) return { speech: 0, total: 0, first: -1, last: -1 }
 
   const ort = await import('onnxruntime-node')
   let state = new ort.Tensor('float32', new Float32Array(2 * 128), [...STATE_SHAPE])
@@ -127,6 +127,8 @@ export async function speechFrames(
 
   let frames = 0
   let speech = 0
+  let first = -1
+  let last = -1
 
   for (let offset = 0; offset + VAD_FRAME <= samples.length; offset += VAD_FRAME) {
     const frame = samples.subarray(offset, offset + VAD_FRAME)
@@ -137,11 +139,40 @@ export async function speechFrames(
     })
 
     state = output.stateN as unknown as typeof state
-    if (Number(output.output.data[0]) > SPEECH_THRESHOLD) speech += 1
+    if (Number(output.output.data[0]) > SPEECH_THRESHOLD) {
+      speech += 1
+      if (first < 0) first = offset
+      last = offset + VAD_FRAME
+    }
     frames += 1
   }
 
-  return { speech, total: frames }
+  return { speech, total: frames, first, last }
+}
+
+/** Kept before the first speech frame, so a soft onset survives the cut. */
+const LEAD_MARGIN = 4000
+/** Kept after the last, for a trailing consonant Silero scored low. */
+const TAIL_MARGIN = 4800
+
+/**
+ * The part of a segment Silero heard speech in, plus a margin either side.
+ *
+ * Moonshine returns an empty transcript for audio that opens with silence,
+ * and every wake segment does: 500 ms of pre-roll plus whatever quiet built up
+ * since the last idle flush. Measured on 126 synthesised "hey <name>" clips,
+ * 82 matched with 0.5 s of lead silence and none with 3 s; cut to this span,
+ * 117 and 115.
+ */
+export function speechSpan(
+  samples: Float32Array,
+  span: { first: number; last: number }
+): Float32Array {
+  if (span.first < 0) return samples
+  return samples.subarray(
+    Math.max(0, span.first - LEAD_MARGIN),
+    Math.min(samples.length, span.last + TAIL_MARGIN)
+  )
 }
 
 /**

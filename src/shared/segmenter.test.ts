@@ -118,4 +118,48 @@ describe('Segmenter', () => {
 
     expect(decisions.filter((d) => d.verdict === 'segment')).toHaveLength(2)
   })
+
+  it('follows a room that gets louder, so noise stops holding a segment open', () => {
+    const segmenter = new Segmenter()
+    const hum = QUIET * 10
+    const settled = run(segmenter, [settle])
+    // A fan comes on: at first it reads as speech, then the floor catches up.
+    const fan = run(segmenter, [{ level: hum, ms: 20_000 }], settled.now)
+    const lastSegment = Math.max(
+      ...fan.decisions.filter((d) => d.verdict === 'segment').map((d) => d.at)
+    )
+    expect(lastSegment - settled.now).toBeLessThan(DEFAULT_SEGMENTER.maxSegmentMs)
+    expect(segmenter.isSpeaking).toBe(false)
+
+    // A voice over the fan still opens and closes a segment.
+    const { decisions } = run(
+      segmenter,
+      [
+        { level: LOUD, ms: 800 },
+        { level: hum, ms: DEFAULT_SEGMENTER.hangMs + 100 }
+      ],
+      fan.now
+    )
+    expect(decisions.some((d) => d.verdict === 'segment')).toBe(true)
+  })
+
+  it('follows a room that gets quieter, so a floor set in noise does not stay deaf', () => {
+    const segmenter = new Segmenter()
+    const noisy = QUIET * 30
+    // Listening starts in a noisy room, then the noise stops.
+    const settled = run(segmenter, [
+      { level: noisy, ms: 3000 },
+      { level: QUIET, ms: DEFAULT_SEGMENTER.floorWindowMs + 500 }
+    ])
+    // A soft voice, well under three times the old floor.
+    const { decisions } = run(
+      segmenter,
+      [
+        { level: noisy * 2, ms: 800 },
+        { level: QUIET, ms: DEFAULT_SEGMENTER.hangMs + 100 }
+      ],
+      settled.now
+    )
+    expect(decisions.some((d) => d.verdict === 'segment')).toBe(true)
+  })
 })

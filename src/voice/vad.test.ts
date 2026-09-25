@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { MIN_SPEECH_MS, VAD_FRAME, acceptsSpeech, frameMs } from './vad'
+import { MIN_SPEECH_MS, VAD_FRAME, acceptsSpeech, frameMs, speechSpan } from './vad'
 
 /**
  * The verdict, without the model.
@@ -52,5 +52,24 @@ describe('acceptsSpeech', () => {
 describe('frameMs', () => {
   it('is the duration of one Silero frame at 16 kHz', () => {
     expect(frameMs()).toBeCloseTo((VAD_FRAME / 16000) * 1000, 5)
+  })
+})
+
+describe('speechSpan', () => {
+  const second = 16_000
+  const samples = new Float32Array(5 * second)
+
+  it('cuts leading and trailing silence, keeping a margin either side', () => {
+    // Speech from 3.0 s to 3.8 s in a 5 s segment.
+    const span = speechSpan(samples, { first: 3 * second, last: 3.8 * second })
+    expect(span.length / second).toBeCloseTo(0.8 + 0.25 + 0.3, 5)
+  })
+
+  it('never reaches outside the segment', () => {
+    expect(speechSpan(samples, { first: 0, last: 5 * second }).length).toBe(samples.length)
+  })
+
+  it('leaves a segment with no speech frames alone', () => {
+    expect(speechSpan(samples, { first: -1, last: -1 })).toBe(samples)
   })
 })

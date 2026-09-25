@@ -72,7 +72,7 @@ export function rmsOf(frame: Float32Array): number {
  * to the very voice that set it — but the beat of quiet before their first
  * word is still in the samples, and a low percentile reads that instead.
  */
-function quietLevel(samples: number[]): number {
+export function quietLevel(samples: number[]): number {
   if (samples.length === 0) return 0
   const sorted = [...samples].sort((a, b) => a - b)
   return sorted[Math.floor(0.25 * (sorted.length - 1))]

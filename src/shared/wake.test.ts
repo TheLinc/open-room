@@ -119,6 +119,37 @@ describe('matchWake', () => {
   })
 })
 
+describe('matchWake, as the speech model actually writes it', () => {
+  const agents = [
+    { id: 'nova', name: 'Nova' },
+    { id: 'derek', name: 'Derek' },
+    { id: 'ella', name: 'Ella' },
+    { id: 'ray', name: 'Ray' }
+  ]
+
+  it('accepts "hi" as the prefix', () => {
+    expect(matchWake('Hi Derek, run the tests.', agents)?.agentId).toBe('derek')
+  })
+
+  it('accepts the prefix run into the name', () => {
+    expect(matchWake('Hanova run the tests', agents)).toEqual({
+      agentId: 'nova',
+      prompt: 'run the tests',
+      aside: false
+    })
+    expect(matchWake('Hainova.', agents)).toEqual({ agentId: 'nova', prompt: '', aside: false })
+  })
+
+  it('does not read an ordinary h-word as a fused wake phrase', () => {
+    expect(matchWake('Hello, how are you?', agents)).toBeNull()
+    expect(matchWake('Here we go again', agents)).toBeNull()
+    expect(matchWake('Happy birthday', agents)).toBeNull()
+    // Measured: "hey Nova" in a system voice came back as this, and "in"
+    // shares a phonetic key with Juno.
+    expect(matchWake('Hain over.', [{ id: 'juno', name: 'Juno' }])).toBeNull()
+  })
+})
+
 describe('echoesPlayback', () => {
   it('recognises the app hearing its own voice', () => {
     expect(echoesPlayback('the build is green', 'Atlas — the build is green')).toBe(true)
