@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import {
+  discoveredModels,
   modelAccessFrom,
   modelAllowed,
+  modelLabel,
   modelUnavailableLine,
+  pickerModels,
   type ModelAccess
 } from './model-access'
 
@@ -78,5 +81,73 @@ describe('modelUnavailableLine', () => {
     const access: ModelAccess = { state: 'known', models: [], fable: false }
     expect(modelUnavailableLine(access, 'claude-opus-5')).toBeNull()
     expect(modelUnavailableLine({ state: 'unknown' }, 'claude-fable-5-1')).toBeNull()
+  })
+})
+
+/**
+ * The list the bundled CLI returned on 2026-09-25, descriptions included,
+ * plus a model this build has never heard of, shaped the same way.
+ */
+const WITH_NEW_MODEL = [
+  {
+    value: 'default',
+    resolvedModel: 'claude-opus-5[1m]',
+    displayName: 'Default (recommended)',
+    description: 'Opus 5 with 1M context · Best for everyday, complex tasks'
+  },
+  {
+    value: 'opus6',
+    resolvedModel: 'claude-opus-6[1m]',
+    displayName: 'Opus',
+    description: 'Opus 6 with 1M context · Best for everyday, complex tasks'
+  },
+  {
+    value: 'sonnet',
+    resolvedModel: 'claude-sonnet-5',
+    displayName: 'Sonnet',
+    description: 'Sonnet 5 · Efficient for routine tasks'
+  },
+  {
+    value: 'haiku',
+    resolvedModel: 'claude-haiku-4-5-20251001',
+    displayName: 'Haiku',
+    description: 'Haiku 4.5 · Fastest for quick answers'
+  }
+]
+
+describe('discoveredModels', () => {
+  it('offers a model the CLI knows and the app does not, named from its description', () => {
+    expect(discoveredModels(WITH_NEW_MODEL)).toEqual([
+      { id: 'claude-opus-6', label: 'Opus 6', hint: 'Best for everyday, complex tasks' }
+    ])
+  })
+
+  it('does not repeat a model the app already lists under a dated id or an alias', () => {
+    expect(discoveredModels(MAX_RUN_A)).toEqual([])
+  })
+
+  it('ignores anything that does not look like a Claude model id', () => {
+    expect(discoveredModels([{ value: 'default', resolvedModel: 'gpt-4' }])).toEqual([])
+  })
+})
+
+describe('pickerModels', () => {
+  it('puts discovered models ahead of the app’s own list', () => {
+    const models = pickerModels(modelAccessFrom(WITH_NEW_MODEL))
+    expect(models[0].id).toBe('claude-opus-6')
+    expect(models.map((model) => model.id)).toContain('claude-sonnet-5')
+  })
+
+  it('is the app’s own list while the probe has not answered', () => {
+    expect(pickerModels({ state: 'unknown' })[0].id).toBe('claude-fable-5-1')
+  })
+
+  it('keeps an agent’s configured model even when nothing else names it', () => {
+    const models = pickerModels({ state: 'unknown' }, 'claude-opus-6')
+    expect(models[0]).toMatchObject({ id: 'claude-opus-6', label: 'claude-opus-6' })
+  })
+
+  it('labels a discovered model by name', () => {
+    expect(modelLabel(modelAccessFrom(WITH_NEW_MODEL), 'claude-opus-6')).toBe('Opus 6')
   })
 })

@@ -358,7 +358,7 @@ type AgentConfig = {
   name: string // wake-word target, freely renameable
   color: string // identity color, used in overlay + chat
   avatar: 'clawd' | 'bit' | 'terminal' | 'block' | 'loop' // pixel character, drawn in `color`
-  model: string // claude-opus-5 | claude-sonnet-5 | claude-haiku-4-5 | claude-opus-4-8
+  model: string // any `claude-*` id (MODEL_ID); MODELS names the known ones
   effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max'
   fallbackModel?: string
   workspacePath: string
@@ -400,6 +400,8 @@ It is also a large latency win, because each of those servers is started per tur
 **The list is a picker, not a catalogue.** Two runs on one Max account listed `claude-fable-5-1[1m]` once and `claude-fable-5[1m]` once, and Fable 5 ran while only 5.1 was listed. So `modelAllowed` (`src/shared/model-access.ts`) answers "does the account have the Fable tier" and never "is this exact id listed": a non-Fable id is always allowed, a Fable id is refused only when access is `known` and no Fable row appeared, and `unknown` allows everything, because a probe that failed must never lock a model the account does have.
 
 **Disabled, not hidden.** A Fable row that vanished would read as the app lacking the model rather than the plan; the editor and the session controls show it disabled with "Not included in your plan", and an agent already configured for one carries an amber line in its pane header. The plan-lacks-Fable branch could not be exercised on this machine (Max account) and is tested against a stubbed list; the runtime backstop is tested against the measured payload.
+
+**The picker follows the bundled CLI, so a new model needs no Open Room release unless it needs a newer CLI.** The same probe's rows are aliases (`sonnet`, `opus[1m]`, `default`) that resolve to wire ids, sometimes dated (`claude-haiku-4-5-20251001`); `discoveredModels` keeps the ones `MODELS` does not name, labelled from the description, which leads with the real name ("Opus 5 with 1M context · Best for everyday, complex tasks", measured; the display name is only "Opus"). `pickerModels` puts those first, then `MODELS`, plus the agent's own model if neither names it, so a model found on an earlier launch still shows while this launch's probe is unknown. The config schema and `sanitizeOverrides` check a model id's shape (`MODEL_ID`, `claude-` then lowercase, digits, dots and dashes) rather than membership of a list. `MODELS` stays as curated labels and the offline fallback. Measured in the dev app with Sonnet 5 taken out of `MODELS`: the probe reported it and the editor offered "Sonnet 5 — Efficient for routine tasks" first. The limit is the gotcha below: the list is whatever the bundled CLI knows, and a model that needs a newer CLI still needs an SDK bump and a release.
 
 **The plugin servers go; the claude.ai connector does not, and the two runs that established this disagreed.** The docs say `~/.claude.json`, claude.ai MCP connectors and managed policy settings are read regardless of `settingSources`. The first measurement appeared to refute that — the only server left was `openroom-voice`, and this file recorded "trust the init message over the documentation". A later run on the same machine reported `["claude.ai Google Drive", "openroom-voice"]`, which is what the docs predicted all along.
 

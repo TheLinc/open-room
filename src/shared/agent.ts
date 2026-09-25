@@ -39,7 +39,12 @@ export const MODELS = [
   }
 ] as const
 
-export const MODEL_IDS = MODELS.map((m) => m.id) as [string, ...string[]]
+/**
+ * What a model id looks like. Not a list: models the bundled CLI reports are
+ * offered as they appear (`discoveredModels`), so a config naming a model
+ * this build has never heard of is valid as long as it has the shape of one.
+ */
+export const MODEL_ID = /^claude-[a-z0-9.-]+$/
 
 export const EFFORT_LEVELS = ['low', 'medium', 'high', 'xhigh', 'max'] as const
 
@@ -141,9 +146,9 @@ export const agentConfigSchema = z.object({
    * existed still has a face.
    */
   avatar: z.enum(PIXEL_VARIANT_IDS).default(DEFAULT_PIXEL_VARIANT),
-  model: z.enum(MODEL_IDS),
+  model: z.string().regex(MODEL_ID, 'Not a model id'),
   effort: z.enum(EFFORT_LEVELS).optional(),
-  fallbackModel: z.enum(MODEL_IDS).optional(),
+  fallbackModel: z.string().regex(MODEL_ID, 'Not a model id').optional(),
   workspacePath: z.string().min(1, 'Workspace path is required'),
   mcpServers: z.record(z.string(), mcpServerSchema).default({}),
 

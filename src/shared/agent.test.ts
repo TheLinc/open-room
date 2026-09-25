@@ -208,3 +208,17 @@ describe('agent instance', () => {
     expect('instance' in withStoredInstance(config, undefined)).toBe(false)
   })
 })
+
+describe('model ids', () => {
+  it('accepts a model this build has never listed, so a new release needs no app update', () => {
+    expect(agentConfigSchema.safeParse({ ...validConfig, model: 'claude-opus-6' }).success).toBe(
+      true
+    )
+  })
+
+  it('still refuses something that is not a Claude model id', () => {
+    expect(agentConfigSchema.safeParse({ ...validConfig, model: 'opus; rm -rf' }).success).toBe(
+      false
+    )
+  })
+})

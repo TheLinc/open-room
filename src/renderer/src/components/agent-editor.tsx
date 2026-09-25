@@ -15,7 +15,6 @@ import {
   CLAUDE_CODE_TOOLS,
   createDefaultAgent,
   EFFORT_LEVELS,
-  MODELS,
   type Agent
 } from '@shared/agent'
 import { checkAgentName } from '@shared/phonetics'
@@ -28,7 +27,7 @@ import { DialogNav } from '@/components/dialog-nav'
 import { EDITOR_PAGES, flaggedPages, type EditorPage } from '@/lib/dialog-pages'
 import { useStaticDialog } from '@/hooks/use-static-dialog'
 import { useModelAccess } from '@/hooks/use-model-access'
-import { modelAllowed, NOT_IN_PLAN } from '@shared/model-access'
+import { modelAllowed, NOT_IN_PLAN, pickerModels } from '@shared/model-access'
 import type { KokoroStatus, SystemVoice } from '@shared/voice-rpc'
 import { DEFAULT_KOKORO_VOICE, KOKORO_VOICES } from '@shared/kokoro-voices'
 import {
@@ -613,14 +612,19 @@ export function AgentEditor({
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                              {MODELS.map((model) => {
+                              {pickerModels(modelAccess, field.value).map((model) => {
                                 // Disabled, not hidden: a Fable row that
                                 // simply vanished would read as the app
                                 // lacking the model rather than the plan.
                                 const allowed = modelAllowed(modelAccess, model.id)
                                 return (
                                   <SelectItem key={model.id} value={model.id} disabled={!allowed}>
-                                    {model.label} — {allowed ? model.hint : NOT_IN_PLAN}
+                                    {model.label}
+                                    {allowed
+                                      ? model.hint
+                                        ? ` — ${model.hint}`
+                                        : ''
+                                      : ` — ${NOT_IN_PLAN}`}
                                   </SelectItem>
                                 )
                               })}
@@ -674,15 +678,17 @@ export function AgentEditor({
                               </SelectTrigger>
                               <SelectContent>
                                 <SelectItem value={UNSET}>None</SelectItem>
-                                {MODELS.map((model) => (
-                                  <SelectItem
-                                    key={model.id}
-                                    value={model.id}
-                                    disabled={!modelAllowed(modelAccess, model.id)}
-                                  >
-                                    {model.label}
-                                  </SelectItem>
-                                ))}
+                                {pickerModels(modelAccess, field.value || undefined).map(
+                                  (model) => (
+                                    <SelectItem
+                                      key={model.id}
+                                      value={model.id}
+                                      disabled={!modelAllowed(modelAccess, model.id)}
+                                    >
+                                      {model.label}
+                                    </SelectItem>
+                                  )
+                                )}
                               </SelectContent>
                             </Select>
                           )}

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { ChevronDown, RotateCcw, SlidersHorizontal } from 'lucide-react'
-import { EFFORT_LEVELS, MODELS, type AgentConfig } from '@shared/agent'
+import { EFFORT_LEVELS, type AgentConfig } from '@shared/agent'
 import {
   effectiveSettings,
   permissionModeNotice,
@@ -9,7 +9,13 @@ import {
   type SessionOverridePatch,
   type SessionOverrides
 } from '@shared/session-overrides'
-import { modelAllowed, NOT_IN_PLAN, type ModelAccess } from '@shared/model-access'
+import {
+  modelAllowed,
+  modelLabel,
+  NOT_IN_PLAN,
+  pickerModels,
+  type ModelAccess
+} from '@shared/model-access'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 
@@ -49,7 +55,7 @@ export function SessionControls({
   const modeNotice = permissionModeNotice(active.permissionMode, sessionPermissionMode)
   const changed = overriddenFields(config, overrides)
 
-  const modelLabel = MODELS.find((m) => m.id === active.model)?.label ?? active.model
+  const activeLabel = modelLabel(modelAccess, active.model)
 
   return (
     <div className="relative">
@@ -62,7 +68,7 @@ export function SessionControls({
         className="gap-1.5 font-normal"
       >
         <SlidersHorizontal className="size-3.5 opacity-60" />
-        <span className="truncate">{modelLabel}</span>
+        <span className="truncate">{activeLabel}</span>
         {changed.length > 0 && (
           // The one signal that this session is not what the agent is
           // configured to be. Without it an override set an hour ago is
@@ -92,7 +98,7 @@ export function SessionControls({
             <div className="flex flex-col gap-3 px-3 py-3">
               <Group
                 label="Model"
-                options={MODELS.map((m) => {
+                options={pickerModels(modelAccess, config.model).map((m) => {
                   const allowed = modelAllowed(modelAccess, m.id)
                   return {
                     id: m.id,
@@ -101,7 +107,7 @@ export function SessionControls({
                     hint: allowed ? undefined : NOT_IN_PLAN
                   }
                 })}
-                fallback={MODELS.find((m) => m.id === config.model)?.label ?? config.model}
+                fallback={modelLabel(modelAccess, config.model)}
                 selected={overrides.model}
                 onPick={(model) => onChange({ model })}
               />

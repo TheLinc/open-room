@@ -1,4 +1,4 @@
-import { EFFORT_LEVELS, MODEL_IDS, type AgentConfig } from './agent'
+import { EFFORT_LEVELS, MODEL_ID, type AgentConfig } from './agent'
 
 /**
  * Per-session overrides for the settings an agent's config fixes.
@@ -148,7 +148,7 @@ export function sanitizeOverrides(patch: unknown): SessionOverridePatch {
   const clean: SessionOverridePatch = {}
 
   if (raw.model === null) clean.model = null
-  else if (typeof raw.model === 'string' && MODEL_IDS.includes(raw.model)) clean.model = raw.model
+  else if (typeof raw.model === 'string' && MODEL_ID.test(raw.model)) clean.model = raw.model
 
   if (raw.effort === null) clean.effort = null
   else if (
