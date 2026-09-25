@@ -6,6 +6,7 @@ import {
   type VoiceNotification
 } from '@shared/voice-rpc'
 import { STT_MODEL_ID, findEntry } from '@shared/model-catalog'
+import { recordWakeSegment } from './wake-debug'
 import { LiveSession } from './live-session'
 import { listSystemVoices, synthesize } from './synth'
 import { ModelManager } from './model-manager'
@@ -209,15 +210,23 @@ async function handle(request: VoiceRequest): Promise<unknown> {
     case 'listen': {
       const samples = decodeSamples(request.params.pcm)
 
-      const { isVadLoaded, loadVad, speechFrames, acceptsSpeech, speechSpan } = await vadModule()
+      const { isVadLoaded, loadVad, speechFrames, acceptsSpeech, speechSpan, frameMs } =
+        await vadModule()
       if (!isVadLoaded()) await loadVad(VAD_MODEL_ID)
       const frames = await speechFrames(samples)
-      if (!acceptsSpeech(frames.speech, frames.total)) return { speech: false }
+      const speechMs = Math.round(frames.speech * frameMs())
+
+      if (!acceptsSpeech(frames.speech, frames.total)) {
+        void recordWakeSegment(samples, { speechMs }).catch(() => {})
+        return { speech: false }
+      }
 
       const { isSttLoaded, loadStt, transcribe } = await sttModule()
       if (!isSttLoaded()) await loadStt(STT_MODEL_ID)
 
-      return { speech: true, text: await transcribe(speechSpan(samples, frames)) }
+      const text = await transcribe(speechSpan(samples, frames))
+      void recordWakeSegment(samples, { speechMs, text }).catch(() => {})
+      return { speech: true, text }
     }
 
     case 'transcribe': {

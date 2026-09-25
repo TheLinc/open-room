@@ -38,8 +38,12 @@ const SAMPLE_RATE = 22_050
  * no such care.
  */
 export function silentWav(ms: number = SILENCE_MS, sampleRate: number = SAMPLE_RATE): Buffer {
-  const samples = Math.max(1, Math.round((ms / 1000) * sampleRate))
-  const dataBytes = samples * 2
+  return pcmWav(new Float32Array(Math.max(1, Math.round((ms / 1000) * sampleRate))), sampleRate)
+}
+
+/** Mono 16-bit PCM WAV of float samples, clipped to [-1, 1]. */
+export function pcmWav(samples: Float32Array, sampleRate: number): Buffer {
+  const dataBytes = samples.length * 2
   const buffer = Buffer.alloc(44 + dataBytes)
 
   buffer.write('RIFF', 0, 'ascii')
@@ -55,7 +59,9 @@ export function silentWav(ms: number = SILENCE_MS, sampleRate: number = SAMPLE_R
   buffer.writeUInt16LE(16, 34) // bits per sample
   buffer.write('data', 36, 'ascii')
   buffer.writeUInt32LE(dataBytes, 40)
-  // The samples themselves are already zero.
+  samples.forEach((sample, i) => {
+    buffer.writeInt16LE(Math.round(Math.max(-1, Math.min(1, sample)) * 32767), 44 + i * 2)
+  })
 
   return buffer
 }
