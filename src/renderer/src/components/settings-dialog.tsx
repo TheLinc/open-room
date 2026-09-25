@@ -374,8 +374,9 @@ export function SettingsDialog({
                       onBlur={flushEditor}
                     />
                     <p className="text-xs text-muted-foreground">
-                      A command; {'{path}'} and {'{line}'} are filled in. Leave empty to use
-                      whatever opens the file type.
+                      A command; {'{path}'} and {'{line}'} are filled in. Leave empty to open files
+                      in VS Code, Cursor or Windsurf if one is installed, in the window you already
+                      have open, and otherwise in whatever opens the file type.
                     </p>
                   </div>
 

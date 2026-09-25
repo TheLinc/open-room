@@ -337,3 +337,37 @@ export async function openInEditor(
     })
   })
 }
+
+/**
+ * Editors that take `-g path:line` and, by default, open the file in the
+ * window already open rather than a new one. In order of preference.
+ */
+const KNOWN_EDITORS = ['code', 'cursor', 'windsurf']
+
+/**
+ * The command to use when the "Open files with" setting is empty.
+ *
+ * Empty used to mean the OS default for the file type, which for a `.ts`
+ * file is often nothing like the user's editor (field report: they wanted it
+ * in "my already open code editor"). The first known editor on PATH wins; the
+ * OS default is still the answer when none is installed, and a command in the
+ * setting always overrides this.
+ */
+export function detectEditorCommand(
+  env: NodeJS.ProcessEnv,
+  platform: NodeJS.Platform,
+  exists: (p: string) => boolean
+): string {
+  for (const name of KNOWN_EDITORS) {
+    if (resolveExecutable(name, env, platform, exists)) return `${name} -g {path}:{line}`
+  }
+  return ''
+}
+
+let detected: string | undefined
+
+/** `detectEditorCommand` for this process, looked up once: PATH does not change under a running app. */
+export function detectedEditorCommand(): string {
+  detected ??= detectEditorCommand(process.env, process.platform, existsSync)
+  return detected
+}

@@ -1,6 +1,7 @@
 import { isAbsolute, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
+  detectEditorCommand,
   editorInvocation,
   isExecutableTarget,
   openInEditor,
@@ -46,6 +47,31 @@ describe('resolveTarget', () => {
     const absolute = resolve('elsewhere', 'b.ts')
     expect(isAbsolute(absolute)).toBe(true)
     expect(resolveTarget(absolute, resolve('workspace-root'))).toBe(absolute)
+  })
+})
+
+describe('detectEditorCommand', () => {
+  const env = { PATH: '/usr/bin:/usr/local/bin' }
+  const installed =
+    (...names: string[]) =>
+    (p: string): boolean =>
+      names.some((name) => p === `/usr/local/bin/${name}`)
+
+  it('prefers VS Code, which reuses the window already open', () => {
+    expect(detectEditorCommand(env, 'darwin', installed('code', 'cursor'))).toBe(
+      'code -g {path}:{line}'
+    )
+  })
+
+  it('falls through to Cursor, then Windsurf', () => {
+    expect(detectEditorCommand(env, 'darwin', installed('cursor'))).toBe('cursor -g {path}:{line}')
+    expect(detectEditorCommand(env, 'darwin', installed('windsurf'))).toBe(
+      'windsurf -g {path}:{line}'
+    )
+  })
+
+  it('leaves the OS default in charge when no known editor is installed', () => {
+    expect(detectEditorCommand(env, 'darwin', installed())).toBe('')
   })
 })
 

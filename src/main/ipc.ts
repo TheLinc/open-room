@@ -35,7 +35,7 @@ import {
 import { linuxToUnc, type WslConfig, type WslDistro } from '@shared/wsl'
 import { stat } from 'node:fs/promises'
 import { ConfigStore } from './config-store'
-import { openInEditor, resolveTarget } from './open-in-editor'
+import { detectedEditorCommand, openInEditor, resolveTarget } from './open-in-editor'
 import { fileDiff, fileStats } from './file-diff'
 import type { FileStat } from '@shared/numstat'
 import { Git } from './git'
@@ -526,7 +526,10 @@ export function registerIpcHandlers(
               path.startsWith('/') ? path : `${cwd.replace(/\/+$/, '')}/${path}`
             )
           : resolveTarget(path, cwd)
-        return await openInEditor(settings.editorCommand, target, safeLine)
+        // An empty setting means "my editor": VS Code, Cursor or Windsurf if
+        // one is installed, which opens the file in the window already open.
+        const command = settings.editorCommand.trim() || detectedEditorCommand()
+        return await openInEditor(command, target, safeLine)
       } catch (error) {
         return { ok: false, message: describeError(error) }
       }
