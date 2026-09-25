@@ -73,6 +73,44 @@ let vadError: string | undefined
 let sttProgress: number | undefined
 let sttError: string | undefined
 
+/** Downloads Silero if it is missing (2 MB) and loads it. */
+async function ensureVad(): Promise<void> {
+  vadError = undefined
+  try {
+    const entry = findEntry(VAD_MODEL_ID)
+    if (!entry) throw new Error(`Unknown model: ${VAD_MODEL_ID}`)
+
+    if (!(await models.isInstalled(entry))) {
+      await models.download(VAD_MODEL_ID, (p) => {
+        vadProgress = (p.receivedBytes / p.totalBytes) * 0.9
+      })
+    }
+
+    const { loadVad } = await vadModule()
+    await loadVad(VAD_MODEL_ID)
+    vadProgress = 1
+  } catch (error) {
+    vadError = error instanceof Error ? error.message : String(error)
+    throw error
+  }
+}
+
+/**
+ * Transcribes only the part Silero heard speech in, when Silero is loaded.
+ *
+ * Moonshine returns an empty transcript for audio that opens with silence
+ * (see `speechSpan`). A dictation whose first second was a pause came back
+ * empty: measured, 5 of 6 clips at a 1 s pause and 6 of 6 at 2 s. Without
+ * Silero the audio goes through whole, as it always did.
+ */
+async function transcribeSpeech(samples: Float32Array): Promise<string> {
+  const { transcribe } = await sttModule()
+  const vad = await vadModule()
+  if (!vad.isVadLoaded()) return transcribe(samples)
+  const frames = await vad.speechFrames(samples)
+  return frames.first < 0 ? '' : transcribe(vad.speechSpan(samples, frames))
+}
+
 /** The in-flight utterance, so a new one can cancel the one before it. */
 let currentSpeech: { cleanup: () => Promise<void> } | null = null
 
@@ -156,27 +194,9 @@ async function handle(request: VoiceRequest): Promise<unknown> {
       return { loaded: isVadLoaded(), installed, progress: vadProgress, error: vadError }
     }
 
-    case 'loadVad': {
-      vadError = undefined
-      try {
-        const entry = findEntry(VAD_MODEL_ID)
-        if (!entry) throw new Error(`Unknown model: ${VAD_MODEL_ID}`)
-
-        if (!(await models.isInstalled(entry))) {
-          await models.download(VAD_MODEL_ID, (p) => {
-            vadProgress = (p.receivedBytes / p.totalBytes) * 0.9
-          })
-        }
-
-        const { loadVad } = await vadModule()
-        await loadVad(VAD_MODEL_ID)
-        vadProgress = 1
-      } catch (error) {
-        vadError = error instanceof Error ? error.message : String(error)
-        throw error
-      }
+    case 'loadVad':
+      await ensureVad()
       return { loaded: true }
-    }
 
     /**
      * One always-on listening segment: gate first, transcribe only if it
@@ -201,7 +221,7 @@ async function handle(request: VoiceRequest): Promise<unknown> {
     }
 
     case 'transcribe': {
-      const { isSttLoaded, loadStt, transcribe } = await sttModule()
+      const { isSttLoaded, loadStt } = await sttModule()
 
       // Installed is not loaded. Nothing loads the model on the capture path,
       // so after every restart the first utterance would arrive at a pipeline
@@ -211,7 +231,7 @@ async function handle(request: VoiceRequest): Promise<unknown> {
       if (!isSttLoaded()) await loadStt(STT_MODEL_ID)
 
       const samples = decodeSamples(request.params.pcm)
-      return { text: await transcribe(samples) }
+      return { text: await transcribeSpeech(samples) }
     }
 
     /**
@@ -220,11 +240,14 @@ async function handle(request: VoiceRequest): Promise<unknown> {
      * partial is late rather than the whole capture failing.
      */
     case 'startLive': {
-      const { isSttLoaded, loadStt, transcribe } = await sttModule()
+      const { isSttLoaded, loadStt } = await sttModule()
       if (!isSttLoaded()) await loadStt(STT_MODEL_ID)
+      // Not awaited: the first dictation on a machine without Silero goes
+      // through untrimmed rather than waiting on a download.
+      if (!(await vadModule()).isVadLoaded()) void ensureVad().catch(() => {})
       live?.cancel()
       live = new LiveSession({
-        transcribe,
+        transcribe: transcribeSpeech,
         onPartial: (partial) => notify({ event: 'partial', ...partial })
       })
       return null
