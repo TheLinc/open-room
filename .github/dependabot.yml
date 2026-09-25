@@ -1,0 +1,23 @@
+# Keeps the Agent SDK current, because it decides which Claude models agents
+# can use. Agents run the `claude` binary bundled inside
+# @anthropic-ai/claude-agent-sdk, and a new model often needs a newer one
+# ("Claude Code 2.1.233 does not support this model; version 2.1.251 or newer
+# is required"). The pickers already offer whatever that binary reports, so
+# this PR is usually the only change a new model needs. CI runs on it like any
+# other pull request; merging and tagging is the release.
+#
+# Only the SDK: every other dependency is updated by hand, deliberately (see
+# the pins on onnxruntime-node and @huggingface/transformers in CLAUDE.md).
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: daily
+    allow:
+      - dependency-name: '@anthropic-ai/claude-agent-sdk'
+    # Raise the floor in package.json too, so it never trails the lockfile
+    # and a fresh install cannot resolve to the older bundled CLI.
+    versioning-strategy: increase
+    commit-message:
+      prefix: chore
