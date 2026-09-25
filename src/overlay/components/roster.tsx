@@ -1,5 +1,6 @@
 import type { PermissionDecision } from '@shared/agent-runtime'
 import type { PipEntry } from '@shared/voice-input'
+import { DragGrip } from './grip'
 
 /**
  * The hover expansion.
@@ -14,10 +15,13 @@ import type { PipEntry } from '@shared/voice-input'
  */
 export function Roster({
   pips,
+  grip = false,
   onSelect,
   onRespond
 }: {
   pips: PipEntry[]
+  /** Show the drag handle: the pointer has rested here long enough. */
+  grip?: boolean
   onSelect: (agentId: string) => void
   onRespond: (requestId: string, decision: PermissionDecision) => void
 }): React.JSX.Element {
@@ -30,6 +34,11 @@ export function Roster({
         detailed ? 'w-[340px]' : 'min-w-[196px]'
       ].join(' ')}
     >
+      {grip ? (
+        <div className="flex justify-center pb-0.5">
+          <DragGrip />
+        </div>
+      ) : null}
       {pips.map((pip) => (
         <div key={pip.agentId} className="flex flex-col">
           <button

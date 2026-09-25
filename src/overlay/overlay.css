@@ -58,6 +58,13 @@ body {
   cursor: default;
 }
 
+/* The handle the whole overlay is dragged by. */
+.or-grip {
+  touch-action: none;
+  width: 16px;
+  height: 16px;
+}
+
 /*
  * The bubble's surface.
  *

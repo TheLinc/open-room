@@ -119,8 +119,17 @@ export type OverlayEvent =
   | { type: 'noSpeech' }
   | { type: 'maxDuration' }
   | { type: 'failed'; message: string }
+  /** The pill's cancel button, the same as Esc. */
+  | { type: 'cancelRequested' }
 
-const OBSERVED = ['speechStarted', 'silence', 'noSpeech', 'maxDuration', 'failed'] as const
+const OBSERVED = [
+  'speechStarted',
+  'silence',
+  'noSpeech',
+  'maxDuration',
+  'failed',
+  'cancelRequested'
+] as const
 
 /**
  * Validates an event arriving over IPC.

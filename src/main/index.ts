@@ -433,7 +433,7 @@ const supervisor = new AgentSupervisor(
  * Created at launch and kept for the process lifetime — shown and hidden,
  * never created and destroyed.
  */
-const overlay = new OverlayWindow()
+const overlay = new OverlayWindow(join(store.root, 'overlay.json'))
 
 /** Ends sessions left idle, since each one holds a full CLI subprocess. */
 let idleReaper: NodeJS.Timeout | null = null
@@ -1001,6 +1001,16 @@ app.whenReady().then(async () => {
 
   ipcMain.on(IpcChannel.overlayHover, (_event, hovered: boolean) => {
     controller.setHovered(hovered)
+  })
+
+  ipcMain.on(IpcChannel.overlayGrip, (_event, visible: unknown) => {
+    overlay.setGrip(visible === true)
+  })
+
+  ipcMain.on(IpcChannel.overlayDrag, (_event, phase: unknown, x: unknown, y: unknown) => {
+    if (phase !== 'start' && phase !== 'move' && phase !== 'end') return
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return
+    overlay.dragPointer(phase, { x: x as number, y: y as number })
   })
 
   // The pane's mic button: the same toggle as a per-agent hotkey, aimed

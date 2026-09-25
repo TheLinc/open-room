@@ -2,6 +2,7 @@ import type { PipEntry } from '@shared/voice-input'
 import { useHitBox } from '../use-hit-box'
 import { PipCluster } from './pip-cluster'
 import { Roster } from './roster'
+import { useGripVisible } from '../use-grip'
 
 /**
  * The working HUD, collapsed to dots and expanded on hover.
@@ -16,6 +17,7 @@ import { Roster } from './roster'
  */
 export function Hud({ pips }: { pips: PipEntry[] }): React.JSX.Element {
   const { ref, hovered } = useHitBox(true)
+  const grip = useGripVisible(hovered)
 
   return (
     <div className="grid items-end justify-items-center">
@@ -37,6 +39,7 @@ export function Hud({ pips }: { pips: PipEntry[] }): React.JSX.Element {
         ].join(' ')}
       >
         <Roster
+          grip={grip}
           pips={pips}
           onSelect={(agentId) => window.overlay.selectAgent(agentId)}
           onRespond={(requestId, decision) =>

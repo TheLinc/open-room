@@ -3,6 +3,8 @@ import type { OverlayState } from '@shared/voice-input'
 import { useHitBox } from '../use-hit-box'
 import { Waveform } from './waveform'
 import { CircleGlyph, MicGlyph, Shimmer, TickGlyph } from './glyphs'
+import { useGripVisible } from '../use-grip'
+import { DragGrip } from './grip'
 
 /**
  * The bottom-centre bubble.
@@ -21,10 +23,12 @@ export function Pill({
   level: () => number
   onHoverChange?: (hovered: boolean) => void
 }): React.JSX.Element {
-  // Not clickable: a transient bubble you can hit by accident while reaching
-  // for what is underneath is a bug. The box is reported purely so main can
-  // tell us when the cursor is on it.
-  const { ref, hovered } = useHitBox(false)
+  // Clickable, for the cancel button and the drag grip. It used to pass
+  // clicks through, so nothing reaching past it could
+  // hit it by accident; now that it can be dragged out of the way, the
+  // controls are worth more than that.
+  const { ref, hovered } = useHitBox(true)
+  const grip = useGripVisible(hovered)
   const color = state.agentColor || '#71717a'
   const dispatched = state.phase === 'dispatched'
   const asking = state.phase === 'asking'
@@ -41,6 +45,9 @@ export function Pill({
   // The bubbles with a second line: a prompt, a question, an answer, or the
   // live transcript.
   const wide = dispatched || asking || answered || live
+  // While the microphone is open or the words are being decoded, the capture
+  // can still be thrown away: the same as Esc.
+  const cancellable = state.phase === 'listening' || state.phase === 'transcribing'
 
   const glyph =
     state.phase === 'listening' ? (
@@ -77,6 +84,7 @@ export function Pill({
         .join(' ')}
     >
       <div className="flex items-center gap-2.5" style={{ color }}>
+        {grip ? <DragGrip vertical /> : null}
         {glyph}
 
         <span className="flex min-w-0 items-baseline gap-1.5">
@@ -91,6 +99,36 @@ export function Pill({
         </span>
 
         {trailing ? <span className="ml-auto flex items-center">{trailing}</span> : null}
+
+        {cancellable ? (
+          <button
+            type="button"
+            aria-label="Cancel"
+            title="Cancel (Esc)"
+            // The release, not the click: this window never receives the
+            // press (see the roster's rows).
+            onMouseUp={(event) => {
+              if (event.button === 0) window.overlay.reportEvent({ type: 'cancelRequested' })
+            }}
+            className={[
+              'flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-full text-or-fg/55 transition-colors duration-100 hover:bg-or-fg/10 hover:text-or-fg',
+              trailing ? '' : 'ml-auto'
+            ]
+              .filter(Boolean)
+              .join(' ')}
+          >
+            <svg
+              aria-hidden
+              width="8"
+              height="8"
+              viewBox="0 0 8 8"
+              stroke="currentColor"
+              strokeWidth="1.5"
+            >
+              <path d="M1 1l6 6M7 1L1 7" strokeLinecap="round" />
+            </svg>
+          </button>
+        ) : null}
       </div>
 
       {/* A side question is labelled as one, since the words are not going

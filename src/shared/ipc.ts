@@ -184,6 +184,10 @@ export const IpcChannel = {
   overlayEvent: 'overlay:event',
   /** overlay → main, pointer entered or left the bubble; pauses dismissal. */
   overlayHover: 'overlay:hover',
+  /** overlay → main, the drag grip appeared (true) or went (false). */
+  overlayGrip: 'overlay:grip',
+  /** overlay → main, a drag on the grip: `start` and `move` carry the pointer's screen position. */
+  overlayDrag: 'overlay:drag',
   /** main → overlay, one pip per working or blocked agent. */
   overlayPips: 'overlay:pips',
   /** overlay → main, raise the main window on this agent. */

@@ -14,6 +14,7 @@ const screenListeners = new Map<string, () => void>()
 let workArea = { x: 0, y: 0, width: 1920, height: 1080 }
 
 type FakeWindow = {
+  getBounds: () => Electron.Rectangle
   setBounds: ReturnType<typeof vi.fn>
   showInactive: ReturnType<typeof vi.fn>
   visible: boolean
@@ -22,6 +23,7 @@ type FakeWindow = {
 vi.mock('electron', () => {
   class FakeBrowserWindow {
     webContents = { on: vi.fn(), send: vi.fn(), id: 1 }
+    on = vi.fn()
     visible = false
     bounds: Electron.Rectangle
     constructor(options: Electron.BrowserWindowConstructorOptions) {
@@ -36,6 +38,7 @@ vi.mock('electron', () => {
     setAlwaysOnTop = vi.fn()
     setVisibleOnAllWorkspaces = vi.fn()
     setIgnoreMouseEvents = vi.fn()
+    setFocusable = vi.fn()
     loadFile = vi.fn()
     loadURL = vi.fn()
     isDestroyed = (): boolean => false
@@ -51,6 +54,7 @@ vi.mock('electron', () => {
     BrowserWindow: FakeBrowserWindow,
     screen: {
       getPrimaryDisplay: () => ({ workArea }),
+      getAllDisplays: () => [{ workArea }],
       getCursorScreenPoint: () => ({ x: -1, y: -1 }),
       on: (event: string, listener: () => void) => {
         screenListeners.set(event, listener)
@@ -64,18 +68,21 @@ vi.mock('electron', () => {
 vi.mock('@electron-toolkit/utils', () => ({ is: { dev: false } }))
 
 const { OverlayWindow } = await import('./overlay-window')
+
+/** A path with nothing at it: never dragged, so the default placement. */
+const NO_SAVED_POSITION = 'no-such-dir/overlay.json'
 const { HIDDEN_OVERLAY } = await import('@shared/voice-input')
 
 function optionsOfNewOverlay(): Electron.BrowserWindowConstructorOptions {
   created.length = 0
-  new OverlayWindow().create()
+  new OverlayWindow(NO_SAVED_POSITION).create()
   return created[0]
 }
 
 function newOverlay(): { overlay: InstanceType<typeof OverlayWindow>; window: FakeWindow } {
   windows.length = 0
   workArea = { x: 0, y: 0, width: 1920, height: 1080 }
-  const overlay = new OverlayWindow()
+  const overlay = new OverlayWindow(NO_SAVED_POSITION)
   overlay.create()
   return { overlay, window: windows[0] }
 }
@@ -151,5 +158,21 @@ describe('overlay window placement', () => {
       x: Math.round((2560 - 460) / 2),
       y: 1400 - 220 - 64
     })
+  })
+
+  it('goes back where the user dragged it, read from disk at launch', async () => {
+    const { mkdtemp, writeFile } = await import('node:fs/promises')
+    const { tmpdir } = await import('node:os')
+    const { join } = await import('node:path')
+    const file = join(await mkdtemp(join(tmpdir(), 'overlay-')), 'overlay.json')
+    await writeFile(file, JSON.stringify({ x: 200, y: 100 }))
+
+    windows.length = 0
+    workArea = { x: 0, y: 0, width: 1920, height: 1080 }
+    const overlay = new OverlayWindow(file)
+    overlay.create()
+    overlay.send(LISTENING)
+
+    expect(windows[0].getBounds()).toMatchObject({ x: 200, y: 100 })
   })
 })

@@ -1,7 +1,10 @@
+import { readFileSync } from 'node:fs'
+import { writeFile } from 'node:fs/promises'
 import { BrowserWindow, screen } from 'electron'
 import { join } from 'path'
 import { is } from '@electron-toolkit/utils'
 import { IpcChannel } from '@shared/ipc'
+import { overlayPosition, parseSavedPosition, type Point } from '@shared/overlay-position'
 import {
   EMPTY_HIT_BOX,
   HIDDEN_OVERLAY,
@@ -83,6 +86,21 @@ export class OverlayWindow {
   /** Registered once for the process; the window it moves is looked up live. */
   private watchingDisplays = false
 
+  /** Where the user last dragged the overlay, or null if never. */
+  private saved: Point | null = null
+
+  /** A drag in progress: where the window and the pointer were at the press. */
+  private drag: { window: Point; pointer: Point } | null = null
+
+  /** @param positionFile where a dragged position is kept across launches. */
+  constructor(private readonly positionFile: string) {
+    try {
+      this.saved = parseSavedPosition(JSON.parse(readFileSync(positionFile, 'utf8')))
+    } catch {
+      // Never dragged, or unreadable: the default placement it is.
+    }
+  }
+
   create(): void {
     const { x, y } = this.placement()
 
@@ -95,6 +113,8 @@ export class OverlayWindow {
       frame: false,
       transparent: true,
       resizable: false,
+      // Only this class moves it: on a display change, and when the grip is
+      // dragged (see `dragPointer`).
       movable: false,
       minimizable: false,
       maximizable: false,
@@ -195,6 +215,8 @@ export class OverlayWindow {
       // Click-through is restored on the way out: the HUD turns it off to
       // become clickable, and a hidden window must not keep that setting.
       this.window.setIgnoreMouseEvents(true, { forward: true })
+      // The grip goes with the content, and unmounting sends nothing.
+      this.window.setFocusable(false)
       this.window.hide()
       return
     }
@@ -209,18 +231,21 @@ export class OverlayWindow {
   }
 
   /**
-   * Where the overlay belongs: bottom centre of the primary display.
+   * Where the overlay belongs: where the user dragged it, if that is still on
+   * a screen, else bottom centre of the primary display.
    *
-   * Deliberately the primary display rather than whichever screen holds the
+   * The default is the primary display rather than whichever screen holds the
    * cursor or the main window: the overlay should appear in one predictable
-   * place.
+   * place until the user picks another.
    */
   private placement(): { x: number; y: number } {
     const { workArea } = screen.getPrimaryDisplay()
-    return {
+    const fallback = {
       x: Math.round(workArea.x + (workArea.width - WIDTH) / 2),
       y: Math.round(workArea.y + workArea.height - HEIGHT - BOTTOM_MARGIN)
     }
+    const areas = screen.getAllDisplays().map((display) => display.workArea)
+    return overlayPosition(this.saved, { width: WIDTH, height: HEIGHT }, areas, fallback)
   }
 
   /** Moves the window back to where it belongs, if anything has moved it. */
@@ -232,6 +257,55 @@ export class OverlayWindow {
     if (current.x === wanted.x && current.y === wanted.y) return
 
     this.window.setBounds(wanted)
+  }
+
+  /**
+   * The drag grip is showing, or has gone.
+   *
+   * The window is `focusable: false` so it never takes focus from the app the
+   * user is working in, and on Windows that also means its mouse-down is
+   * swallowed, and a drag starts with that press. Measured with a real
+   * cursor: until the window was focusable the grip received nothing. So it
+   * can take focus only while the grip is up, which is only after a
+   * deliberate three-second rest on it.
+   */
+  setGrip(visible: boolean): void {
+    if (!this.window || this.window.isDestroyed()) return
+    this.window.setFocusable(visible)
+    if (!visible && this.window.isFocused()) this.window.blur()
+  }
+
+  /**
+   * The grip being dragged, in screen coordinates.
+   *
+   * The window follows the pointer by the distance it has moved since the
+   * press, and the spot it is dropped on is saved: the next launch, and every
+   * show after a display change, go back there (`overlayPosition`).
+   */
+  dragPointer(phase: 'start' | 'move' | 'end', pointer: Point): void {
+    if (!this.window || this.window.isDestroyed()) return
+
+    if (phase === 'start') {
+      const { x, y } = this.window.getBounds()
+      this.drag = { window: { x, y }, pointer }
+      return
+    }
+    if (!this.drag) return
+
+    if (phase === 'move') {
+      this.window.setBounds({
+        x: Math.round(this.drag.window.x + pointer.x - this.drag.pointer.x),
+        y: Math.round(this.drag.window.y + pointer.y - this.drag.pointer.y)
+      })
+      return
+    }
+
+    this.drag = null
+    const { x, y } = this.window.getBounds()
+    this.saved = { x, y }
+    void writeFile(this.positionFile, JSON.stringify(this.saved), 'utf8').catch(() => {})
+    // The press focused the window (see `setGrip`); give focus back.
+    if (this.window.isFocused()) this.window.blur()
   }
 
   /** Open the microphone. */

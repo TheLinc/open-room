@@ -77,6 +77,16 @@ const overlay = {
     ipcRenderer.send(IpcChannel.overlayHover, hovered)
   },
 
+  /** The grip is being dragged; main moves the window to follow. */
+  reportDrag: (phase: 'start' | 'move' | 'end', x = 0, y = 0): void => {
+    ipcRenderer.send(IpcChannel.overlayDrag, phase, x, y)
+  },
+
+  /** The drag grip is showing, so the window must be able to take a press. */
+  reportGrip: (visible: boolean): void => {
+    ipcRenderer.send(IpcChannel.overlayGrip, visible)
+  },
+
   /** Begin always-on wake listening. */
   onStartWake: (listener: () => void): (() => void) =>
     onSignal(IpcChannel.overlayStartWake, listener),
