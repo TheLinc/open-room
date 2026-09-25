@@ -389,9 +389,10 @@ export type OpenRoomApi = {
    * stops — including when main stops it on the timeout rather than the user.
    */
   onMicrophoneLevel: (listener: (rms: number | null) => void) => () => void
-  sttStatus: () => Promise<SttStatus>
+  /** `model` is a catalog id; absent means dictation's speech model. */
+  sttStatus: (model?: string) => Promise<SttStatus>
   /** Downloads and loads the speech model. Resolves when it is usable. */
-  loadSttModel: () => Promise<MutationResult>
+  loadSttModel: (model?: string) => Promise<MutationResult>
   /**
    * The current failures.
    *

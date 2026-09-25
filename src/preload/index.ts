@@ -180,9 +180,11 @@ const openRoom: OpenRoomApi = {
   onMicrophoneLevel: (listener: (rms: number | null) => void): (() => void) =>
     subscribe(IpcChannel.microphoneLevel, (payload) => listener(payload as number | null)),
 
-  sttStatus: (): Promise<SttStatus> => ipcRenderer.invoke(IpcChannel.sttStatus),
+  sttStatus: (model?: string): Promise<SttStatus> =>
+    ipcRenderer.invoke(IpcChannel.sttStatus, model),
 
-  loadSttModel: (): Promise<MutationResult> => ipcRenderer.invoke(IpcChannel.loadSttModel),
+  loadSttModel: (model?: string): Promise<MutationResult> =>
+    ipcRenderer.invoke(IpcChannel.loadSttModel, model),
 
   getHotkeyFailures: (): Promise<HotkeyFailure[]> =>
     ipcRenderer.invoke(IpcChannel.getHotkeyFailures),

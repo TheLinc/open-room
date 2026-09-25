@@ -1,6 +1,7 @@
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { env, pipeline, type AutomaticSpeechRecognitionPipeline } from '@huggingface/transformers'
+import { STT_MODEL_ID } from '@shared/model-catalog'
 
 /**
  * Speech to text on transformers.js and onnxruntime, the same stack Kokoro
@@ -12,7 +13,7 @@ import { env, pipeline, type AutomaticSpeechRecognitionPipeline } from '@hugging
  * Whisper tiny on measurement: the same words, with punctuation and casing,
  * at a cost that scales with the audio rather than Whisper's fixed 30 s
  * window, which is what lets `LiveSession` decode the growing capture once a
- * second. Whisper is gone from the catalog; nothing loads it any more.
+ * second. Whisper tiny is back for wake segments only (`WAKE_MODEL_ID`).
  */
 
 /** The model is trained on 16 kHz mono; anything else must be resampled first. */
@@ -30,11 +31,15 @@ export function sttModelRoot(): string {
   return join(root, 'stt')
 }
 
-let instance: AutomaticSpeechRecognitionPipeline | null = null
-let loading: Promise<AutomaticSpeechRecognitionPipeline> | null = null
+/**
+ * One pipeline per model id: Moonshine for dictation and, when installed,
+ * Whisper tiny for wake segments (`WAKE_MODEL_ID`).
+ */
+const instances = new Map<string, AutomaticSpeechRecognitionPipeline>()
+const loading = new Map<string, Promise<AutomaticSpeechRecognitionPipeline>>()
 
-export function isSttLoaded(): boolean {
-  return instance !== null
+export function isSttLoaded(modelId: string = STT_MODEL_ID): boolean {
+  return instances.has(modelId)
 }
 
 /**
@@ -52,14 +57,16 @@ export function loadStt(
   modelId: string,
   onProgress?: (progress: number | undefined) => void
 ): Promise<AutomaticSpeechRecognitionPipeline> {
-  if (instance) return Promise.resolve(instance)
+  const loaded = instances.get(modelId)
+  if (loaded) return Promise.resolve(loaded)
 
-  if (!loading) {
+  let pending = loading.get(modelId)
+  if (!pending) {
     env.allowRemoteModels = false
     env.allowLocalModels = true
     env.localModelPath = sttModelRoot()
 
-    loading = pipeline('automatic-speech-recognition', modelId, {
+    pending = pipeline('automatic-speech-recognition', modelId, {
       dtype: 'fp32',
       device: 'cpu',
       progress_callback: (report) => {
@@ -68,18 +75,19 @@ export function loadStt(
       }
     })
       .then((asr) => {
-        instance = asr
+        instances.set(modelId, asr)
         return asr
       })
       .catch((error) => {
         // Clear the shared promise so a failed load can be retried rather
         // than every later caller inheriting the same rejection.
-        loading = null
+        loading.delete(modelId)
         throw error
       })
+    loading.set(modelId, pending)
   }
 
-  return loading
+  return pending
 }
 
 /**
@@ -89,17 +97,21 @@ export function loadStt(
  * what a mis-tapped hotkey produces. Dispatching an empty prompt to an agent
  * would be worse than doing nothing.
  */
-export async function transcribe(samples: Float32Array): Promise<string> {
+export async function transcribe(
+  samples: Float32Array,
+  modelId: string = STT_MODEL_ID
+): Promise<string> {
   if (samples.length < STT_SAMPLE_RATE * 0.2) return ''
 
   // Loading is the caller's job: it needs a model id, and doing it here would
   // hide a 147 MB download behind what looks like a transcription call.
+  const instance = instances.get(modelId)
   if (!instance) throw new Error('No speech-to-text model is loaded.')
 
   // No chunking options: Moonshine has no fixed window and takes the audio
-  // as it is. (Whisper's pipeline truncated at 30 s unless told to chunk,
-  // measured as 84 of 118 words on a 42 s clip with no error; that is one
-  // reason it is gone.)
+  // as it is, and Whisper only ever gets a wake segment, which the segmenter
+  // caps at 15 s. (Whisper's pipeline truncates at 30 s unless told to
+  // chunk: measured, 84 of 118 words on a 42 s clip, with no error.)
   const result = await instance(samples)
   const text = Array.isArray(result) ? result[0]?.text : result.text
 

@@ -5,7 +5,7 @@ import {
   type VoiceResponse,
   type VoiceNotification
 } from '@shared/voice-rpc'
-import { STT_MODEL_ID, findEntry } from '@shared/model-catalog'
+import { STT_MODEL_ID, WAKE_MODEL_ID, findEntry } from '@shared/model-catalog'
 import { recordWakeSegment } from './wake-debug'
 import { LiveSession } from './live-session'
 import { listSystemVoices, synthesize } from './synth'
@@ -71,8 +71,9 @@ let kokoroProgress: number | undefined
 let kokoroError: string | undefined
 let vadProgress: number | undefined
 let vadError: string | undefined
-let sttProgress: number | undefined
-let sttError: string | undefined
+/** Per speech model, since dictation's and wake words' can download separately. */
+const sttProgress = new Map<string, number>()
+const sttError = new Map<string, string>()
 
 /** Downloads Silero if it is missing (2 MB) and loads it. */
 async function ensureVad(): Promise<void> {
@@ -110,6 +111,16 @@ async function transcribeSpeech(samples: Float32Array): Promise<string> {
   if (!vad.isVadLoaded()) return transcribe(samples)
   const frames = await vad.speechFrames(samples)
   return frames.first < 0 ? '' : transcribe(vad.speechSpan(samples, frames))
+}
+
+/**
+ * Whisper tiny for wake segments when it is installed, Moonshine otherwise.
+ * Asked per segment, so a download finishing mid-session takes effect on the
+ * next one; the check is two `stat` calls, and segments are seconds apart.
+ */
+async function wakeModel(): Promise<string> {
+  const entry = findEntry(WAKE_MODEL_ID)
+  return entry && (await models.isInstalled(entry)) ? WAKE_MODEL_ID : STT_MODEL_ID
 }
 
 /** The in-flight utterance, so a new one can cancel the one before it. */
@@ -157,32 +168,39 @@ async function handle(request: VoiceRequest): Promise<unknown> {
     }
 
     case 'sttStatus': {
+      const model = request.params?.model ?? STT_MODEL_ID
       const { isSttLoaded } = await sttModule()
-      const entry = findEntry(STT_MODEL_ID)
-      const installed = entry ? await models.isInstalled(entry) : false
-      return { loaded: isSttLoaded(), installed, progress: sttProgress, error: sttError }
+      const entry = findEntry(model)
+      const installed = entry?.kind === 'stt' ? await models.isInstalled(entry) : false
+      return {
+        loaded: isSttLoaded(model),
+        installed,
+        progress: sttProgress.get(model),
+        error: sttError.get(model)
+      }
     }
 
     case 'loadStt': {
-      sttError = undefined
+      const model = request.params?.model ?? STT_MODEL_ID
+      sttError.delete(model)
       try {
-        const entry = findEntry(STT_MODEL_ID)
-        if (!entry) throw new Error(`Unknown model: ${STT_MODEL_ID}`)
+        const entry = findEntry(model)
+        if (entry?.kind !== 'stt') throw new Error(`Unknown speech model: ${model}`)
 
         // Download reports 0–0.9 and loading the last tenth. The download is
         // 147 MB and the load is under a second, so a bar that sat at 100%
         // while the model initialised would read as a hang.
         if (!(await models.isInstalled(entry))) {
-          await models.download(STT_MODEL_ID, (p) => {
-            sttProgress = (p.receivedBytes / p.totalBytes) * 0.9
+          await models.download(model, (p) => {
+            sttProgress.set(model, (p.receivedBytes / p.totalBytes) * 0.9)
           })
         }
 
         const { loadStt } = await sttModule()
-        await loadStt(STT_MODEL_ID)
-        sttProgress = 1
+        await loadStt(model)
+        sttProgress.set(model, 1)
       } catch (error) {
-        sttError = error instanceof Error ? error.message : String(error)
+        sttError.set(model, error instanceof Error ? error.message : String(error))
         throw error
       }
       return { loaded: true }
@@ -221,10 +239,11 @@ async function handle(request: VoiceRequest): Promise<unknown> {
         return { speech: false }
       }
 
+      const model = await wakeModel()
       const { isSttLoaded, loadStt, transcribe } = await sttModule()
-      if (!isSttLoaded()) await loadStt(STT_MODEL_ID)
+      if (!isSttLoaded(model)) await loadStt(model)
 
-      const text = await transcribe(speechSpan(samples, frames))
+      const text = await transcribe(speechSpan(samples, frames), model)
       void recordWakeSegment(samples, { speechMs, text }).catch(() => {})
       return { speech: true, text }
     }

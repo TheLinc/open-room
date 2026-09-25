@@ -1,6 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Download, Loader2 } from 'lucide-react'
-import { STT_MODEL_ID, findEntry, formatBytes, totalBytes } from '@shared/model-catalog'
+import {
+  STT_MODEL_ID,
+  WAKE_MODEL_ID,
+  findEntry,
+  formatBytes,
+  totalBytes,
+  type CatalogEntry
+} from '@shared/model-catalog'
 import type { HotkeyFailure } from '@shared/hotkeys'
 import type { MicrophoneDevice } from '@shared/voice-input'
 import type { SttStatus } from '@shared/voice-rpc'
@@ -34,7 +41,18 @@ import {
   SelectValue
 } from '@/components/ui/select'
 
-/** The only speech model Phase 5a wires up. */
+/**
+ * The speech models each switch needs. Wake words need both: Whisper hears
+ * the wake phrase, and Moonshine transcribes the capture a bare "hey Atlas"
+ * opens.
+ */
+const MODELS_FOR = {
+  ptt: [STT_MODEL_ID],
+  wake: [STT_MODEL_ID, WAKE_MODEL_ID]
+} as const
+
+/** Shown in the speech-model section, in this order. */
+const SPEECH_MODELS = [STT_MODEL_ID, WAKE_MODEL_ID]
 
 /** Radix Select cannot hold an empty string, and empty is "system default". */
 const SYSTEM_DEFAULT = '__default__'
@@ -49,6 +67,12 @@ const ALIASES = new Set(['default', 'communications'])
 /** Windows appends a USB vendor:product pair that means nothing to a user. */
 function deviceLabel(label: string): string {
   return label.replace(/\s*\([0-9a-f]{4}:[0-9a-f]{4}\)\s*$/i, '').trim()
+}
+
+/** Status of every speech model the dialog shows, keyed by catalog id. */
+async function readSpeechModels(): Promise<Record<string, SttStatus>> {
+  const statuses = await Promise.all(SPEECH_MODELS.map((id) => window.openRoom.sttStatus(id)))
+  return Object.fromEntries(SPEECH_MODELS.map((id, i) => [id, statuses[i]]))
 }
 
 export type { SettingsHighlight }
@@ -67,9 +91,12 @@ export function SettingsDialog({
 }): React.JSX.Element {
   const { settings, save, error } = useSettings()
   const staticDialog = useStaticDialog()
-  const [stt, setStt] = useState<SttStatus | null>(null)
-  const [downloading, setDownloading] = useState(false)
-  const [downloadError, setDownloadError] = useState<string | null>(null)
+  const [stt, setStt] = useState<Record<string, SttStatus>>({})
+  // The model id being fetched, one at a time.
+  const [downloading, setDownloading] = useState<string | null>(null)
+  const [downloadError, setDownloadError] = useState<{ model: string; message: string } | null>(
+    null
+  )
   const [microphones, setMicrophones] = useState<MicrophoneDevice[]>([])
 
   // Re-read on open: the model can be installed from elsewhere, and a stale
@@ -77,7 +104,7 @@ export function SettingsDialog({
   // change even more freely — headsets appear and vanish.
   useEffect(() => {
     if (!open) return
-    void window.openRoom.sttStatus().then(setStt)
+    void readSpeechModels().then(setStt)
     void window.openRoom.listMicrophones().then(setMicrophones)
   }, [open])
 
@@ -134,13 +161,17 @@ export function SettingsDialog({
     if (!downloading) return
 
     const timer = setInterval(() => {
-      void window.openRoom.sttStatus().then(setStt)
+      void readSpeechModels().then(setStt)
     }, 500)
     return () => clearInterval(timer)
   }, [downloading])
 
-  const entry = findEntry(STT_MODEL_ID)
-  const installed = stt?.installed ?? false
+  const installed = (id: string): boolean => stt[id]?.installed ?? false
+  const missingFor = (which: 'ptt' | 'wake'): CatalogEntry[] =>
+    MODELS_FOR[which]
+      .filter((id) => !installed(id))
+      .map((id) => findEntry(id))
+      .filter((entry): entry is CatalogEntry => Boolean(entry))
   const globalFailure = hotkeyFailures.find((failure) => failure.agentId === null)
 
   // The highlighted control scrolls into view and flashes once the settings
@@ -204,9 +235,9 @@ export function SettingsDialog({
 
   const requestEnable = (which: 'ptt' | 'wake', on: boolean): void => {
     setEnableError(null)
-    // Turning off never needs the model, and with it installed there is
+    // Turning off never needs a model, and with them installed there is
     // nothing to ask.
-    if (!on || installed) {
+    if (!on || missingFor(which).length === 0) {
       setPendingEnable(null)
       enable(which, on)
       return
@@ -221,15 +252,15 @@ export function SettingsDialog({
   // A failure of that download, shown beside the switches that asked for it.
   const [enableError, setEnableError] = useState<string | null>(null)
 
-  const download = async (): Promise<boolean> => {
-    setDownloading(true)
+  const download = async (model: string): Promise<boolean> => {
+    setDownloading(model)
     setDownloadError(null)
 
-    const result = await window.openRoom.loadSttModel()
+    const result = await window.openRoom.loadSttModel(model)
 
-    setDownloading(false)
-    setStt(await window.openRoom.sttStatus())
-    if (!result.ok) setDownloadError(result.message)
+    setDownloading(null)
+    setStt(await readSpeechModels())
+    if (!result.ok) setDownloadError({ model, message: result.message })
     return result.ok
   }
 
@@ -240,7 +271,11 @@ export function SettingsDialog({
 
     setCompleting(which)
     setEnableError(null)
-    const ok = await download()
+    let ok = true
+    for (const entry of missingFor(which)) {
+      ok = await download(entry.id)
+      if (!ok) break
+    }
     setCompleting(null)
 
     // Finish what the toggle started; a download that fails leaves the
@@ -372,7 +407,7 @@ export function SettingsDialog({
                         // how the download gets offered. It stays off until the
                         // model is actually installed, so a shortcut that cannot
                         // work still never exists.
-                        disabled={downloading}
+                        disabled={downloading !== null}
                         onCheckedChange={(checked) => requestEnable('ptt', checked)}
                       />
                     </div>
@@ -393,16 +428,23 @@ export function SettingsDialog({
                         // opt-in, and gating this on the other made hands-free-only
                         // use impossible — while turning push-to-talk off greyed
                         // this out with the microphone still open behind it.
-                        disabled={downloading}
+                        disabled={downloading !== null}
                         onCheckedChange={(checked) => requestEnable('wake', checked)}
                       />
                     </div>
 
-                    {pendingEnable && entry && (
+                    {pendingEnable && (
                       <div className="space-y-2 rounded-lg border border-border p-3">
                         <p className="text-sm">
                           {pendingEnable === 'ptt' ? 'Push-to-talk needs' : 'Wake words need'} the{' '}
-                          {entry.label} speech model — a one-time {formatBytes(totalBytes(entry))}{' '}
+                          {missingFor(pendingEnable)
+                            .map((entry) => entry.label)
+                            .join(' and ')}{' '}
+                          speech {missingFor(pendingEnable).length > 1 ? 'models' : 'model'}, a
+                          one-time{' '}
+                          {formatBytes(
+                            missingFor(pendingEnable).reduce((sum, e) => sum + totalBytes(e), 0)
+                          )}{' '}
                           download. It runs entirely on this machine; nothing you say is sent
                           anywhere.
                         </p>
@@ -422,11 +464,12 @@ export function SettingsDialog({
                       </div>
                     )}
 
-                    {completing && (
+                    {completing && downloading && (
                       <div className="space-y-1">
-                        <Progress value={(stt?.progress ?? 0) * 100} />
+                        <Progress value={(stt[downloading]?.progress ?? 0) * 100} />
                         <p className="text-xs text-muted-foreground">
-                          Downloading the speech model — the switch flips on when it lands.
+                          Downloading {findEntry(downloading)?.label ?? 'the speech model'}. The
+                          switch flips on when it lands.
                         </p>
                       </div>
                     )}
@@ -522,48 +565,65 @@ export function SettingsDialog({
                   </section>
 
                   <section className="space-y-3">
-                    <h3 className="text-sm font-medium">Speech model</h3>
+                    <h3 className="text-sm font-medium">Speech models</h3>
 
-                    {entry && (
-                      <div className="space-y-2 rounded-lg border border-border p-3">
-                        <div className="flex items-center justify-between gap-3">
-                          <div className="min-w-0">
-                            <p className="text-sm">{entry.label}</p>
-                            <p className="text-xs break-words text-muted-foreground">
-                              {formatBytes(totalBytes(entry))} · {entry.license} ·{' '}
-                              {entry.attribution}
-                            </p>
+                    {SPEECH_MODELS.map((id) => findEntry(id))
+                      .filter((entry): entry is CatalogEntry => Boolean(entry))
+                      .map((entry) => {
+                        const failure =
+                          downloadError?.model === entry.id
+                            ? downloadError.message
+                            : stt[entry.id]?.error
+                        return (
+                          <div
+                            key={entry.id}
+                            className="space-y-2 rounded-lg border border-border p-3"
+                          >
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="min-w-0">
+                                <p className="text-sm">{entry.label}</p>
+                                <p className="text-xs text-muted-foreground">{entry.description}</p>
+                                <p className="text-xs break-words text-muted-foreground">
+                                  {formatBytes(totalBytes(entry))} · {entry.license} ·{' '}
+                                  {entry.attribution}
+                                </p>
+                              </div>
+                              {installed(entry.id) ? (
+                                <span className="shrink-0 text-xs text-muted-foreground">
+                                  Installed
+                                </span>
+                              ) : (
+                                <Button
+                                  size="sm"
+                                  className="shrink-0"
+                                  disabled={downloading !== null}
+                                  onClick={() => void download(entry.id)}
+                                >
+                                  {downloading === entry.id ? (
+                                    <Loader2 className="animate-spin" />
+                                  ) : (
+                                    <Download />
+                                  )}
+                                  {downloading === entry.id ? 'Downloading…' : 'Download'}
+                                </Button>
+                              )}
+                            </div>
+
+                            {downloading === entry.id && (
+                              <Progress value={(stt[entry.id]?.progress ?? 0) * 100} />
+                            )}
+                            {failure && <p className="text-xs text-destructive">{failure}</p>}
+                            {!installed(entry.id) && downloading !== entry.id && (
+                              <p className="text-xs text-muted-foreground">
+                                {entry.id === STT_MODEL_ID
+                                  ? 'Voice input stays off until this is installed. Flipping either switch above offers the download too.'
+                                  : 'Wake words work without it, less reliably: they fall back to the model above.'}{' '}
+                                It runs entirely on this machine; nothing you say is sent anywhere.
+                              </p>
+                            )}
                           </div>
-                          {installed ? (
-                            <span className="shrink-0 text-xs text-muted-foreground">
-                              Installed
-                            </span>
-                          ) : (
-                            <Button
-                              size="sm"
-                              className="shrink-0"
-                              disabled={downloading}
-                              onClick={() => void download()}
-                            >
-                              {downloading ? <Loader2 className="animate-spin" /> : <Download />}
-                              {downloading ? 'Downloading…' : 'Download'}
-                            </Button>
-                          )}
-                        </div>
-
-                        {downloading && <Progress value={(stt?.progress ?? 0) * 100} />}
-                        {(downloadError ?? stt?.error) && (
-                          <p className="text-xs text-destructive">{downloadError ?? stt?.error}</p>
-                        )}
-                        {!installed && !downloading && (
-                          <p className="text-xs text-muted-foreground">
-                            Voice input stays off until this is installed — flipping either switch
-                            above offers the download too. It runs entirely on this machine; nothing
-                            you say is sent anywhere.
-                          </p>
-                        )}
-                      </div>
-                    )}
+                        )
+                      })}
                   </section>
                 </>
               )}

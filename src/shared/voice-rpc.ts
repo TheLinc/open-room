@@ -18,8 +18,9 @@ export type VoiceRequest =
   | { id: number; method: 'warm' }
   | { id: number; method: 'kokoroStatus' }
   | { id: number; method: 'loadKokoro' }
-  | { id: number; method: 'sttStatus' }
-  | { id: number; method: 'loadStt' }
+  /** `model` is a catalog id; absent means `STT_MODEL_ID`. */
+  | { id: number; method: 'sttStatus'; params?: { model?: string } }
+  | { id: number; method: 'loadStt'; params?: { model?: string } }
   | { id: number; method: 'vadStatus' }
   | { id: number; method: 'loadVad' }
   | {

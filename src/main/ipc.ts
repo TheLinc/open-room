@@ -421,15 +421,19 @@ export function registerIpcHandlers(
     return guard(() => voice.loadKokoro())
   })
 
-  ipcMain.handle(IpcChannel.sttStatus, async (): Promise<SttStatus> => {
+  // `model` comes from the renderer; the sidecar refuses anything that is not
+  // a speech model in the catalog.
+  ipcMain.handle(IpcChannel.sttStatus, async (_e, model?: string): Promise<SttStatus> => {
     // A sidecar that is down means "not installed" for the UI's purposes:
     // nothing can be transcribed either way, and the dialog's job is to say
     // voice input cannot work, not to explain why.
-    return voice.sttStatus().catch(() => ({ loaded: false, installed: false }) satisfies SttStatus)
+    return voice
+      .sttStatus(typeof model === 'string' ? model : undefined)
+      .catch(() => ({ loaded: false, installed: false }) satisfies SttStatus)
   })
 
-  ipcMain.handle(IpcChannel.loadSttModel, async (): Promise<MutationResult> => {
-    return guard(() => voice.loadStt())
+  ipcMain.handle(IpcChannel.loadSttModel, async (_e, model?: string): Promise<MutationResult> => {
+    return guard(() => voice.loadStt(typeof model === 'string' ? model : undefined))
   })
 
   ipcMain.handle(IpcChannel.getSettings, (): Promise<AppSettings> => store.readSettings())

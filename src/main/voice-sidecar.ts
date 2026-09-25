@@ -209,8 +209,9 @@ export class VoiceSidecar {
     await this.request((id) => ({ id, method: 'stop' })).catch(() => {})
   }
 
-  async sttStatus(): Promise<SttStatus> {
-    const result = await this.request((id) => ({ id, method: 'sttStatus' }))
+  /** `model` is a catalog id; absent means dictation's (`STT_MODEL_ID`). */
+  async sttStatus(model?: string): Promise<SttStatus> {
+    const result = await this.request((id) => ({ id, method: 'sttStatus', params: { model } }))
     return (result ?? { loaded: false, installed: false }) as SttStatus
   }
 
@@ -220,8 +221,8 @@ export class VoiceSidecar {
    * Minutes on first call — 147 MB — and under a second afterwards. Poll
    * `sttStatus` for progress rather than waiting on this in a UI.
    */
-  async loadStt(): Promise<void> {
-    await this.request((id) => ({ id, method: 'loadStt' }))
+  async loadStt(model?: string): Promise<void> {
+    await this.request((id) => ({ id, method: 'loadStt', params: { model } }))
   }
 
   async vadStatus(): Promise<VadStatus> {

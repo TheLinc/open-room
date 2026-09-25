@@ -95,11 +95,37 @@ const MOONSHINE_FILES = [
  * 5, 13 and 42 s): the same words as Whisper tiny, with punctuation and
  * casing, at a cost that scales with the audio rather than Whisper's fixed
  * 30 s window (1 s of audio decoded in 55 ms against Whisper's 280 ms), which
- * is what makes re-decoding the live buffer once a second affordable. The
- * Whisper entries were removed once nothing loaded them (0.5.0 shipped
- * Moonshine); a leftover `stt/whisper-*` directory is inert.
+ * is what makes re-decoding the live buffer once a second affordable. Whisper
+ * was removed once nothing loaded it and came back, tiny only, for wake
+ * words (`WAKE_MODEL_ID`).
  */
 export const STT_MODEL_ID = 'moonshine-base-en'
+
+/**
+ * The model that transcribes wake segments: Whisper tiny, beside Moonshine
+ * rather than instead of it, because the two are good at different things.
+ * Moonshine re-decodes a growing dictation cheaply; Whisper reads a short
+ * "hey <name>" better. Measured on 126 synthesised wake phrases (6 names, 8
+ * voices), after both were cut to the span Silero marked as speech: Whisper
+ * matched 126 and Moonshine 121 with 0.5 s of padding, 115 and 108 at 15 dB
+ * SNR, and Moonshine misheard names Whisper did not ("Hey derek" for Eric).
+ * About 330 ms a segment against 110 ms, paid only when someone talks.
+ * Optional: without it, wake segments go to Moonshine.
+ */
+export const WAKE_MODEL_ID = 'whisper-tiny-en'
+
+const WHISPER_TINY = 'https://huggingface.co/onnx-community/whisper-tiny.en/resolve/main'
+
+/** What the ASR pipeline loads for Whisper at fp32, the same way as Moonshine's list. */
+const WHISPER_FILES = [
+  'onnx/decoder_model_merged.onnx',
+  'onnx/encoder_model.onnx',
+  'tokenizer.json',
+  'tokenizer_config.json',
+  'config.json',
+  'generation_config.json',
+  'preprocessor_config.json'
+] as const
 
 export const CATALOG: CatalogEntry[] = [
   {
@@ -112,6 +138,18 @@ export const CATALOG: CatalogEntry[] = [
     homepage: 'https://huggingface.co/onnx-community/moonshine-base-ONNX',
     files: MOONSHINE_FILES.map((name) =>
       recordedFile('moonshine-base-en', name, `${MOONSHINE}/${name}`)
+    )
+  },
+  {
+    id: 'whisper-tiny-en',
+    kind: 'stt',
+    label: 'Whisper Tiny (English)',
+    description: 'Hears wake words. Better than Moonshine at short phrases and names.',
+    license: 'Apache-2.0',
+    attribution: 'Whisper — OpenAI; ONNX conversion by onnx-community',
+    homepage: 'https://huggingface.co/onnx-community/whisper-tiny.en',
+    files: WHISPER_FILES.map((name) =>
+      recordedFile('whisper-tiny-en', name, `${WHISPER_TINY}/${name}`)
     )
   },
   {

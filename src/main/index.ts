@@ -75,6 +75,7 @@ import { pipsFor } from '@shared/pips'
 import { mostRecentAwaiting } from '@shared/awaiting'
 import { describeQuota, msUntilReset, quotaSeverity, shouldNotifyQuota } from '@shared/quota'
 import { decodePcm } from '@shared/pcm'
+import { WAKE_MODEL_ID } from '@shared/model-catalog'
 import {
   isOverlayEvent,
   type MicrophoneDevice,
@@ -1073,6 +1074,14 @@ app.whenReady().then(async () => {
       .sttStatus()
       .then((status) => (status.installed ? voice.loadStt() : undefined))
       .catch((error) => console.warn('Could not warm the speech model:', error))
+  }
+  // Whisper hears wake segments when it is installed; warming it is a load,
+  // never a download, and only for someone who has wake words on.
+  if (settings.wakeWordEnabled) {
+    voice
+      .sttStatus(WAKE_MODEL_ID)
+      .then((status) => (status.installed ? voice.loadStt(WAKE_MODEL_ID) : undefined))
+      .catch((error) => console.warn('Could not warm the wake model:', error))
   }
 
   // Agent files are hand-editable, so edits made outside the app must show up

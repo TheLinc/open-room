@@ -84,9 +84,18 @@ describe('loadStt', () => {
     const fresh = await freshStt()
     pipeline.mockResolvedValue({})
 
-    expect(fresh.isSttLoaded()).toBe(false)
+    expect(fresh.isSttLoaded('whisper-tiny-en')).toBe(false)
     await fresh.loadStt('whisper-tiny-en')
-    expect(fresh.isSttLoaded()).toBe(true)
+    expect(fresh.isSttLoaded('whisper-tiny-en')).toBe(true)
+  })
+
+  it('keeps one pipeline per model, so the wake model never stands in for dictation', async () => {
+    const fresh = await freshStt()
+    pipeline.mockResolvedValue({})
+
+    await fresh.loadStt('whisper-tiny-en')
+    expect(fresh.isSttLoaded()).toBe(false)
+    await expect(fresh.transcribe(new Float32Array(16_000))).rejects.toThrow(/no speech-to-text/i)
   })
 
   it('clears the shared promise on failure so a retry is possible', async () => {
