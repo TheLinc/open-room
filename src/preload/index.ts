@@ -27,6 +27,7 @@ import {
   type OpenRoomApi
 } from '@shared/ipc'
 import type { CaptureSnapshot, FileDiffResult, WorkspaceInfo } from '@shared/ipc'
+import type { FileStat } from '@shared/numstat'
 
 /**
  * The only bridge between renderer and main. Every method here must map to a
@@ -235,6 +236,9 @@ const openRoom: OpenRoomApi = {
 
   fileDiff: (agentId: string, path: string): Promise<FileDiffResult> =>
     ipcRenderer.invoke(IpcChannel.fileDiff, agentId, path),
+
+  fileStats: (agentId: string, paths: string[]): Promise<Record<string, FileStat>> =>
+    ipcRenderer.invoke(IpcChannel.fileStats, agentId, paths),
 
   inspectWorkspace: (path: string, wsl: WslConfig | null): Promise<WorkspaceInfo> =>
     ipcRenderer.invoke(IpcChannel.inspectWorkspace, path, wsl),

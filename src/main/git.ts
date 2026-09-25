@@ -139,6 +139,30 @@ export class Git {
    * A file git does not track yet, shown as all additions. `--no-index`
    * exits 1 when the sides differ, which here is the expected outcome.
    */
+  /** Which of `paths` git tracks, as it spells them (forward slashes, relative to `cwd`). */
+  async tracked(cwd: string, paths: string[]): Promise<string[]> {
+    const result = await this.run(['ls-files', '--', ...paths], cwd)
+    if (result.code !== 0) throw new Error(failure(result, 'git ls-files failed'))
+    return result.stdout.split(/\r?\n/).filter(Boolean)
+  }
+
+  /** `--numstat` for tracked files against `base`: one line per changed file. */
+  async numstat(cwd: string, base: string, paths: string[]): Promise<string> {
+    const result = await this.run(
+      ['diff', '--numstat', '--no-color', '--no-ext-diff', base, '--', ...paths],
+      cwd
+    )
+    if (result.code !== 0) throw new Error(failure(result, 'git diff failed'))
+    return result.stdout
+  }
+
+  /** `--numstat` for a file git does not track yet: every line an addition. */
+  async numstatUntracked(cwd: string, path: string): Promise<string> {
+    const result = await this.run(['diff', '--numstat', '--no-index', '--', '/dev/null', path], cwd)
+    if (result.code !== 0 && result.code !== 1) throw new Error(failure(result, 'git diff failed'))
+    return result.stdout
+  }
+
   async diffUntracked(cwd: string, path: string): Promise<string> {
     const result = await this.run(
       ['diff', '--no-color', '--no-ext-diff', '--no-index', '--', '/dev/null', path],

@@ -36,7 +36,8 @@ import { linuxToUnc, type WslConfig, type WslDistro } from '@shared/wsl'
 import { stat } from 'node:fs/promises'
 import { ConfigStore } from './config-store'
 import { openInEditor, resolveTarget } from './open-in-editor'
-import { fileDiff } from './file-diff'
+import { fileDiff, fileStats } from './file-diff'
+import type { FileStat } from '@shared/numstat'
 import { Git } from './git'
 import type { WorktreeManager } from './worktrees'
 import type { WslRuntime } from './wsl'
@@ -468,6 +469,24 @@ export function registerIpcHandlers(
         return await fileDiff(gitFor(agent), cwd, base, path, style)
       } catch (error) {
         return { ok: false, message: describeError(error) }
+      }
+    }
+  )
+
+  ipcMain.handle(
+    IpcChannel.fileStats,
+    async (_e, agentId: string, paths: unknown): Promise<Record<string, FileStat>> => {
+      // From the renderer, so shape-checked and bounded: one turn's files.
+      if (!Array.isArray(paths)) return {}
+      const list = paths.filter((p): p is string => typeof p === 'string').slice(0, 200)
+      try {
+        const agent = await store.read(agentId)
+        const { cwd, base } = await checkoutFor(agent)
+        const style = !agent.config.wsl && process.platform === 'win32' ? 'win32' : 'posix'
+        return await fileStats(gitFor(agent), cwd, base, list, style)
+      } catch {
+        // Counts are a convenience; the row still opens and diffs without them.
+        return {}
       }
     }
   )

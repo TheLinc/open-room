@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { ChevronDown, ChevronRight, FilePlus, FilePen, Loader2 } from 'lucide-react'
 import { displayPath, type ChangedFile } from '@shared/files-changed'
 import type { FileDiffResult } from '@shared/ipc'
+import type { FileStat } from '@shared/numstat'
 import { DiffView } from '@/components/diff-view'
 
 type Props = {
@@ -21,10 +22,31 @@ type Props = {
  * a turn can touch dozens of files, and most rows are never opened. It is
  * the file's current state against the conversation's base, which the view
  * labels, not a snapshot at the end of this turn.
+ *
+ * The lines added and removed are fetched for the whole list at once, one
+ * `git diff --numstat` for the turn, so its size reads without opening
+ * anything; they are the same comparison as the diff, and clicking them
+ * opens it.
  */
 export function FilesChanged({ agentId, files, cwd }: Props): React.JSX.Element | null {
   const [error, setError] = useState<string | null>(null)
   const [open, setOpen] = useState<Record<string, FileDiffResult | 'loading' | undefined>>({})
+  const [stats, setStats] = useState<Record<string, FileStat>>({})
+
+  // Keyed by the paths rather than the array, which the parent rebuilds on
+  // every render.
+  const pathKey = JSON.stringify(files.map((file) => file.path))
+  useEffect(() => {
+    const paths = JSON.parse(pathKey) as string[]
+    if (paths.length === 0) return
+    let cancelled = false
+    void window.openRoom.fileStats(agentId, paths).then((next) => {
+      if (!cancelled) setStats(next)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [agentId, pathKey])
 
   if (files.length === 0) return null
 
@@ -85,6 +107,7 @@ export function FilesChanged({ agentId, files, cwd }: Props): React.JSX.Element 
                 >
                   {displayPath(file.path, cwd)}
                 </button>
+                <LineCounts stat={stats[file.path]} onClick={() => void toggleDiff(file.path)} />
               </div>
               {state && state !== 'loading' && <DiffView result={state} />}
             </li>
@@ -93,5 +116,33 @@ export function FilesChanged({ agentId, files, cwd }: Props): React.JSX.Element 
       </ul>
       {error && <p className="mt-1.5 text-xs text-destructive">{error}</p>}
     </details>
+  )
+}
+
+/** `+12 −3` beside a path, the diff a click away. Nothing until the counts arrive. */
+function LineCounts({
+  stat,
+  onClick
+}: {
+  stat: FileStat | undefined
+  onClick: () => void
+}): React.JSX.Element | null {
+  if (!stat) return null
+  return (
+    <button
+      type="button"
+      title="Lines added and removed against the conversation's base. Click for the diff."
+      className="ml-auto flex shrink-0 gap-1.5 rounded px-1 tabular-nums hover:bg-foreground/8"
+      onClick={onClick}
+    >
+      {'binary' in stat ? (
+        <span className="text-muted-foreground">binary</span>
+      ) : (
+        <>
+          <span className="text-emerald-500">+{stat.added}</span>
+          <span className="text-red-500">−{stat.removed}</span>
+        </>
+      )}
+    </button>
   )
 }

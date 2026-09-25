@@ -1,5 +1,6 @@
 import { posix, win32 } from 'node:path'
 import type { FileDiffResult } from '@shared/ipc'
+import { parseNumstat, type FileStat } from '@shared/numstat'
 import { parseUnifiedDiff } from '@shared/unified-diff'
 import { MAX_DIFF_BYTES, type Git } from './git'
 
@@ -18,6 +19,52 @@ import { MAX_DIFF_BYTES, type Git } from './git'
  */
 
 export type DiffGit = Pick<Git, 'isTracked' | 'diffFile' | 'diffUntracked'>
+export type StatsGit = Pick<Git, 'tracked' | 'numstat' | 'numstatUntracked'>
+
+/**
+ * Lines added and removed for each of a turn's files, keyed by the path the
+ * caller passed. The same comparison as `fileDiff` (the file now against the
+ * conversation's base), so the counts and the expanded diff agree.
+ *
+ * One `ls-files` and one `--numstat` for the whole list, plus one per file
+ * git does not track yet, since `--no-index` takes a single pair. A tracked
+ * file missing from the output has not changed. Paths outside the checkout
+ * are left out, as `fileDiff` refuses them.
+ */
+export async function fileStats(
+  git: StatsGit | null,
+  cwd: string,
+  base: { kind: 'head' } | { kind: 'branch-base'; commit: string },
+  paths: string[],
+  style: 'win32' | 'posix'
+): Promise<Record<string, FileStat>> {
+  if (!git) return {}
+  const rels = new Map<string, string>()
+  for (const path of paths) {
+    const rel = pathWithin(cwd, path, style)
+    if (rel) rels.set(path, rel)
+  }
+  if (rels.size === 0) return {}
+
+  const tracked = new Set(await git.tracked(cwd, [...rels.values()]))
+  const changed = tracked.size
+    ? parseNumstat(
+        await git.numstat(cwd, base.kind === 'head' ? 'HEAD' : base.commit, [...tracked])
+      )
+    : new Map<string, FileStat>()
+
+  const stats: Record<string, FileStat> = {}
+  for (const [path, rel] of rels) {
+    if (tracked.has(rel)) {
+      stats[path] = changed.get(rel) ?? { added: 0, removed: 0 }
+      continue
+    }
+    const untracked = parseNumstat(await git.numstatUntracked(cwd, rel))
+    const stat = untracked.get(rel) ?? [...untracked.values()][0]
+    if (stat) stats[path] = stat
+  }
+  return stats
+}
 
 /**
  * Resolves the agent's path into `cwd`, refusing anything that escapes it.

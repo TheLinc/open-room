@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { fileDiff, pathWithin, type DiffGit } from './file-diff'
+import { fileDiff, fileStats, pathWithin, type DiffGit } from './file-diff'
 import { MAX_DIFF_BYTES } from './git'
 
 /**
@@ -115,5 +115,38 @@ describe('fileDiff', () => {
       ok: false,
       message: expect.stringContaining('Git was not found')
     })
+  })
+})
+
+describe('fileStats', () => {
+  const cwd = '/repo'
+  const git = {
+    tracked: async (_cwd: string, paths: string[]) =>
+      paths.filter((p) => p === 'src/a.ts' || p === 'src/same.ts'),
+    numstat: async () => '12\t3\tsrc/a.ts\n',
+    numstatUntracked: async (_cwd: string, path: string) => `4\t0\tnul => ${path}\n`
+  }
+
+  it('counts tracked, unchanged and new files, keyed by the path passed', async () => {
+    const stats = await fileStats(
+      git,
+      cwd,
+      { kind: 'head' },
+      ['/repo/src/a.ts', 'src/same.ts', '/repo/notes/new.md'],
+      'posix'
+    )
+    expect(stats).toEqual({
+      '/repo/src/a.ts': { added: 12, removed: 3 },
+      'src/same.ts': { added: 0, removed: 0 },
+      '/repo/notes/new.md': { added: 4, removed: 0 }
+    })
+  })
+
+  it('leaves out a path outside the checkout', async () => {
+    expect(await fileStats(git, cwd, { kind: 'head' }, ['/etc/passwd'], 'posix')).toEqual({})
+  })
+
+  it('returns nothing without git', async () => {
+    expect(await fileStats(null, cwd, { kind: 'head' }, ['/repo/src/a.ts'], 'posix')).toEqual({})
   })
 })

@@ -1,4 +1,5 @@
 import type { Agent } from './agent'
+import type { FileStat } from './numstat'
 import type { ImageAttachment } from './attachments'
 import type {
   AgentRuntime,
@@ -201,6 +202,7 @@ export const IpcChannel = {
   openInEditor: 'files:open-in-editor',
   /** A read-only unified diff of one file the agent changed. */
   fileDiff: 'files:diff',
+  fileStats: 'files:stats',
   /** Whether a folder is a git repository, for the editor's worktree switch. */
   inspectWorkspace: 'agents:inspect-workspace',
   /** Installed WSL distros, for the editor's Run in WSL control. Empty off Windows. */
@@ -448,6 +450,8 @@ export type OpenRoomApi = {
    * conversation's checkout. Read-only; the editor owns accept and revert.
    */
   fileDiff: (agentId: string, path: string) => Promise<FileDiffResult>
+  /** Lines added and removed per file, keyed by the path passed; files it cannot read are absent. */
+  fileStats: (agentId: string, paths: string[]) => Promise<Record<string, FileStat>>
   /** Whether a folder exists and is a git repository. */
   inspectWorkspace: (path: string, wsl: WslConfig | null) => Promise<WorkspaceInfo>
   /** Installed WSL distros, for the editor's Run in WSL control. Empty off Windows. */
